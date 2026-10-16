@@ -1,11 +1,16 @@
 {
-  "name": "@agent-network/server",
+  "name": "@scbee/server",
   "version": "0.0.0",
   "type": "module",
   "main": "dist/index.js",
-  "bin": { "agent-network": "dist/bin.js" },
-  "engines": { "node": ">=22.13" },
+  "bin": {
+    "scbee": "dist/bin.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
   "dependencies": {
-    "@agent-network/registry-core": "*"
-  }
+    "@scbee/registry-core": "*"
+  },
+  "license": "Apache-2.0"
 }

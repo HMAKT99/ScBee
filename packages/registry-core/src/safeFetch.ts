@@ -58,7 +58,7 @@ const defaultRequester: Requester = (r, { timeoutMs, maxBytes }) =>
         method: "GET",
         path: r.url.pathname + r.url.search,
         servername: r.url.hostname,
-        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "agent-network/0.0 (+registry)" },
+        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)" },
         timeout: timeoutMs,
       },
       (res) => {

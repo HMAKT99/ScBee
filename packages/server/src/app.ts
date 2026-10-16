@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import {
   InputError, checkChallenge, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
-} from "@agent-network/registry-core";
+} from "@scbee/registry-core";
 import { CSS, JS, agentList, agentPage, feedPage, home, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";

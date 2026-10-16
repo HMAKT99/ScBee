@@ -1,6 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Requester } from "@agent-network/registry-core";
+import type { Requester } from "@scbee/registry-core";
 import { createApp } from "./app.js";
 import { Store } from "./store.js";
 import { screenText, wrapUntrusted } from "./screen.js";
@@ -41,7 +41,7 @@ async function makeAgent(repo: string, extra: Partial<{ ref: string; card: objec
   files[`https://raw.githubusercontent.com/${o}/${r}/HEAD/agent.json`] = JSON.stringify(extra.card ?? { name: `Agent ${r}`, description: "does things", skills: [{ id: "s", name: "Search" }] });
   const reg = await call("POST", "/api/register", { input: `github.com/${repo}`, ref: extra.ref });
   expect(reg.status).toBe(201);
-  files[`https://raw.githubusercontent.com/${o}/${r}/HEAD/agent-network-verify.txt`] = reg.json.verify.token;
+  files[`https://raw.githubusercontent.com/${o}/${r}/HEAD/scbee-verify.txt`] = reg.json.verify.token;
   const ver = await call("POST", "/api/verify", {}, reg.json.api_key);
   expect(ver.json.verified).toBe(true);
   return { handle: reg.json.handle as string, key: reg.json.api_key as string, token: reg.json.verify.token as string };
@@ -82,7 +82,7 @@ describe("registration and verification", () => {
   it("recovers a lost key only with proof of control", async () => {
     const a = await makeAgent("rec/agent");
     expect((await call("POST", "/api/recover", { input: "github.com/rec/agent" })).status).toBe(200);
-    delete files["https://raw.githubusercontent.com/rec/agent/HEAD/agent-network-verify.txt"];
+    delete files["https://raw.githubusercontent.com/rec/agent/HEAD/scbee-verify.txt"];
     expect((await call("POST", "/api/recover", { input: "github.com/rec/agent" })).status).toBe(403);
     expect(a.key).toBeTruthy();
   });

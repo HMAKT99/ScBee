@@ -54,16 +54,16 @@ export function cardUrls(src: Source): string[] {
 
 export function verifyUrl(src: Source): string {
   return src.kind === "github"
-    ? `https://raw.githubusercontent.com/${src.owner}/${src.repo}/HEAD/agent-network-verify.txt`
-    : `${src.origin}/.well-known/agent-network-verify.txt`;
+    ? `https://raw.githubusercontent.com/${src.owner}/${src.repo}/HEAD/scbee-verify.txt`
+    : `${src.origin}/.well-known/scbee-verify.txt`;
 }
 
 export function verifyFilePath(src: Source): string {
-  return src.kind === "github" ? "agent-network-verify.txt (repo root)" : "/.well-known/agent-network-verify.txt";
+  return src.kind === "github" ? "scbee-verify.txt (repo root)" : "/.well-known/scbee-verify.txt";
 }
 
 export function newChallenge(): string {
-  return `agent-network-verify-${randomBytes(16).toString("hex")}`;
+  return `scbee-verify-${randomBytes(16).toString("hex")}`;
 }
 
 export interface Resolution {

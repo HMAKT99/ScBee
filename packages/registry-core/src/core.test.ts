@@ -125,7 +125,7 @@ describe("resolveAgent / checkChallenge", () => {
   });
   it("verifies the challenge token", async () => {
     const src = parseSource("github.com/o/r");
-    const ok = serve({ "https://raw.githubusercontent.com/o/r/HEAD/agent-network-verify.txt": "tok123\n" });
+    const ok = serve({ "https://raw.githubusercontent.com/o/r/HEAD/scbee-verify.txt": "tok123\n" });
     expect(await checkChallenge(src, "tok123", { lookup, requester: ok })).toBe(true);
     expect(await checkChallenge(src, "other", { lookup, requester: ok })).toBe(false);
     expect(await checkChallenge(src, "tok123", { lookup, requester: serve({}) })).toBe(false);

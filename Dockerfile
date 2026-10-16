@@ -6,7 +6,7 @@ RUN npm ci && npm run build
 
 FROM node:22-slim
 WORKDIR /app
-ENV NODE_ENV=production PORT=8787 DB_PATH=/data/agent-network.db
+ENV NODE_ENV=production PORT=8787 DB_PATH=/data/scbee.db
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/packages ./packages
 RUN npm ci --omit=dev && mkdir -p /data && chown node:node /data
