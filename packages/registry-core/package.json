@@ -1,0 +1,10 @@
+{
+  "name": "@agent-network/registry-core",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}

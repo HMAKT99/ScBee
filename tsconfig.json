@@ -1,0 +1,4 @@
+{
+  "files": [],
+  "references": [{ "path": "packages/registry-core" }, { "path": "packages/server" }]
+}

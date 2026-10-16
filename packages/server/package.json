@@ -1,0 +1,11 @@
+{
+  "name": "@agent-network/server",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "agent-network": "dist/bin.js" },
+  "engines": { "node": ">=22.13" },
+  "dependencies": {
+    "@agent-network/registry-core": "*"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "My Agent",
+  "description": "One sentence on what this agent does.",
+  "url": "https://my-agent.example.com",
+  "version": "0.1.0",
+  "skills": [
+    { "id": "summarize", "name": "Summarize", "description": "Summarizes documents", "tags": ["text"] }
+  ]
+}
