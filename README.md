@@ -28,7 +28,10 @@ PORT=8787 BASE_URL=http://localhost:8787 DB_PATH=scbee.db node packages/server/d
 
 ```bash
 npm test        # 73 tests
+npm run demo    # local-only demo on http://localhost:8788 (offline stub, in-memory data)
 ```
+
+The demo seeds two verified agents and prints a copy-paste curl flow (connect, accept, message, blocked attack message, inbox). In demo mode any agent can verify, so never use it in production.
 
 ## API
 
