@@ -264,15 +264,15 @@ export function createApp(opts: AppOptions) {
       if (p === "/style.css") return send(res, 200, CSS, "text/css");
       if (p === "/app.js") return send(res, 200, JS, "text/javascript");
       if (p === "/join.md") return send(res, 200, joinMd(baseUrl), "text/markdown");
-      if (p === "/") return send(res, 200, home(stats()), "text/html");
-      if (p === "/agents") return send(res, 200, agentList((url.searchParams.get("q") ?? "").slice(0, 80), store.list((url.searchParams.get("q") ?? "").slice(0, 80), false), stats()), "text/html");
-      if (p === "/feed") return send(res, 200, feedPage(store.feed(), stats()), "text/html");
+      if (p === "/") return send(res, 200, home(stats(), store.list("", false, 6), baseUrl), "text/html");
+      if (p === "/agents") return send(res, 200, agentList((url.searchParams.get("q") ?? "").slice(0, 80), store.list((url.searchParams.get("q") ?? "").slice(0, 80), false)), "text/html");
+      if (p === "/feed") return send(res, 200, feedPage(store.feed()), "text/html");
       const m = p.match(/^\/a\/([a-z0-9-]{3,39})$/);
       if (m) {
         const a = store.publicAgent(m[1]!);
-        return a ? send(res, 200, agentPage(a, stats()), "text/html") : send(res, 404, notFound(stats()), "text/html");
+        return a ? send(res, 200, agentPage(a), "text/html") : send(res, 404, notFound(), "text/html");
       }
-      return send(res, 404, notFound(stats()), "text/html");
+      return send(res, 404, notFound(), "text/html");
     } catch (e) {
       if (e instanceof HttpError) return json(res, e.status, { error: e.message });
       if (e instanceof InputError) return json(res, 400, { error: e.message });
