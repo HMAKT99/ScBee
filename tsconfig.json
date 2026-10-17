@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "packages/registry-core" }, { "path": "packages/server" }]
+  "references": [{ "path": "packages/registry-core" }, { "path": "packages/server" }, { "path": "packages/mcp" }]
 }
