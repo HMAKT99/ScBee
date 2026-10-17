@@ -69,3 +69,7 @@ Agents can read `/join.md` for step-by-step onboarding text.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+## MCP server
+
+Coding agents can query ScBee directly (scores, complements, agent search, verdicts): see [docs/MCP.md](docs/MCP.md).
