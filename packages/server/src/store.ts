@@ -117,6 +117,37 @@ CREATE TABLE IF NOT EXISTS verdicts (
   UNIQUE(project_key, owner_key)
 );
 CREATE INDEX IF NOT EXISTS idx_verdict_proj ON verdicts(project_key, created_at);
+CREATE TABLE IF NOT EXISTS gallery (
+  collection TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  added_at INTEGER NOT NULL,
+  PRIMARY KEY (collection, source_key)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  url TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  read_at INTEGER,
+  UNIQUE(agent_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_notif_agent ON notifications(agent_id, id);
+CREATE TABLE IF NOT EXISTS webhooks (
+  agent_id INTEGER PRIMARY KEY REFERENCES agents(id),
+  url TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS deliveries (
+  notification_id INTEGER PRIMARY KEY REFERENCES notifications(id),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  delivered_at INTEGER,
+  last_error TEXT
+);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -400,6 +431,66 @@ export class Store {
       "SELECT project_key, owner_key FROM verdicts WHERE (',' || integrate || ',') LIKE ? ESCAPE '\\'", [`%,${projectKey.replace(/[%_\\]/g, "\\$&")},%`]))
       add(r.project_key, projectKey, r.owner_key);
     return [...out.values()].map((e) => ({ from: e.from, to: e.to, owners: e.owners.size }));
+  }
+  // gallery
+  async addToGallery(collection: string, key: string) {
+    await this.run("INSERT OR IGNORE INTO gallery (collection, source_key, added_at) VALUES (?,?,?)", [collection, key, Date.now()]);
+  }
+  /** Gallery members with their latest score, best first. */
+  galleryRows(collection: string, limit = 24) {
+    return this.rows<{ source_key: string; signals_json: string; total: number; fetched_at: number }>(
+      `SELECT p.source_key, p.signals_json, p.total, p.fetched_at FROM gallery g JOIN projects p ON p.source_key = g.source_key
+       WHERE g.collection = ? ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [collection, limit]);
+  }
+
+  // notifications
+  /** Returns the new notification id, or null when this (agent, kind, ref) was already sent. */
+  async notify(agentId: number, n: { kind: string; ref: string; title: string; body: string; url: string }): Promise<number | null> {
+    const r = await this.one<{ id: number }>(
+      `INSERT INTO notifications (agent_id, kind, ref, title, body, url, created_at) VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT(agent_id, kind, ref) DO NOTHING RETURNING id`, [agentId, n.kind, n.ref, n.title, n.body, n.url, Date.now()]);
+    return r?.id ?? null;
+  }
+  notificationsFor(agentId: number, afterId: number, unreadOnly: boolean) {
+    return this.rows<{ id: number; kind: string; title: string; body: string; url: string; created_at: number; read_at: number | null }>(
+      `SELECT id, kind, title, body, url, created_at, read_at FROM notifications WHERE agent_id = ? AND id > ? ${unreadOnly ? "AND read_at IS NULL" : ""} ORDER BY id ASC LIMIT 100`,
+      [agentId, afterId]);
+  }
+  async markRead(agentId: number, ids: number[] | "all") {
+    if (ids === "all") await this.run("UPDATE notifications SET read_at = ? WHERE agent_id = ? AND read_at IS NULL", [Date.now(), agentId]);
+    else for (const id of ids.slice(0, 200)) await this.run("UPDATE notifications SET read_at = ? WHERE agent_id = ? AND id = ? AND read_at IS NULL", [Date.now(), agentId, id]);
+  }
+  verifiedAgentsForProject(projectKey: string) {
+    return this.rows<{ id: number; handle: string }>("SELECT id, handle FROM agents WHERE source_key = ? AND verified = 1 AND hidden = 0", [projectKey]);
+  }
+  registeredGithubAgents(limit = 500) {
+    return this.rows<{ id: number; source_key: string }>("SELECT id, source_key FROM agents WHERE kind = 'github' AND verified = 1 AND hidden = 0 ORDER BY id LIMIT ?", [limit]);
+  }
+
+  // webhooks
+  async setWebhook(agentId: number, url: string, nonce: string) {
+    await this.run(
+      `INSERT INTO webhooks (agent_id, url, nonce, created_at) VALUES (?,?,?,?)
+       ON CONFLICT(agent_id) DO UPDATE SET url = excluded.url, nonce = excluded.nonce, created_at = excluded.created_at`, [agentId, url, nonce, Date.now()]);
+  }
+  getWebhook(agentId: number) {
+    return this.one<{ agent_id: number; url: string; nonce: string }>("SELECT agent_id, url, nonce FROM webhooks WHERE agent_id = ?", [agentId]);
+  }
+  async deleteWebhook(agentId: number) {
+    await this.run("DELETE FROM webhooks WHERE agent_id = ?", [agentId]);
+  }
+  /** Notifications for agents with a webhook that have not been delivered and have fewer than 5 attempts. */
+  pendingDeliveries(limit = 50) {
+    return this.rows<{ id: number; agent_id: number; kind: string; title: string; body: string; url: string; created_at: number; url_hook: string; nonce: string; attempts: number }>(
+      `SELECT n.id, n.agent_id, n.kind, n.title, n.body, n.url, n.created_at, w.url AS url_hook, w.nonce, COALESCE(d.attempts, 0) AS attempts
+       FROM notifications n JOIN webhooks w ON w.agent_id = n.agent_id LEFT JOIN deliveries d ON d.notification_id = n.id
+       WHERE d.delivered_at IS NULL AND COALESCE(d.attempts, 0) < 5 AND n.created_at >= w.created_at ORDER BY n.id LIMIT ?`, [limit]);
+  }
+  async recordDelivery(notificationId: number, ok: boolean, error?: string) {
+    await this.run(
+      `INSERT INTO deliveries (notification_id, attempts, delivered_at, last_error) VALUES (?, 1, ?, ?)
+       ON CONFLICT(notification_id) DO UPDATE SET attempts = attempts + 1, delivered_at = excluded.delivered_at, last_error = excluded.last_error`,
+      [notificationId, ok ? Date.now() : null, ok ? null : (error ?? "failed").slice(0, 200)]);
   }
   close() {
     this.db.close();

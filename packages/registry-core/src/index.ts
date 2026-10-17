@@ -11,3 +11,5 @@ export * from "./feed.js";
 export * from "./npm.js";
 export * from "./site.js";
 export * from "./graph.js";
+export * from "./notify.js";
+export * from "./gallery.js";

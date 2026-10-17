@@ -1,9 +1,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  InputError, ProjectError, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
+import { GALLERY_CSS, galleryPage } from "./gallery.js";
 import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
 import { renderCard } from "./card.js";
 import { CSS, JS, agentList, agentPage, feedPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
@@ -22,6 +23,10 @@ export interface AppOptions {
   githubToken?: string;
   /** Cached project scores are reused this long (default 6 hours). */
   scoreTtlMs?: number;
+  /** Enables /api/cron/* when set. Vercel Cron sends it as a Bearer token. */
+  cronSecret?: string;
+  /** Server-side key for deriving per-agent webhook secrets. Webhooks are disabled without it. */
+  webhookKey?: string;
 }
 
 class HttpError extends Error {
@@ -112,6 +117,16 @@ export function createApp(opts: AppOptions) {
     return { center, nodes: [...nodes.values()].filter((n) => keep.has(n.key) || n.key === key), edges };
   }
 
+  async function galleryData() {
+    return Promise.all(COLLECTIONS.map(async (c) => ({
+      ...c,
+      items: (await store.galleryRows(c.id)).map((r) => {
+        const sig = JSON.parse(r.signals_json) as Partial<ProjectSignals>;
+        return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, band: band(r.total).label, description: sig.description ?? "", stars: sig.stars ?? 0 };
+      }),
+    })));
+  }
+
   async function forecastFor(projectKey: string) {
     const verdicts = await store.verdictsFor(projectKey);
     const launchAt = (await store.launchAt(projectKey)) ?? Date.now();
@@ -121,8 +136,79 @@ export function createApp(opts: AppOptions) {
     return { forecast, verdicts };
   }
 
+  // ---- notifications -------------------------------------------------------------------------------------------
+  const webhookSecret = (agentId: number, nonce: string) => deriveSecret(opts.webhookKey ?? "", agentId, nonce);
+
+  /** Best-effort webhook delivery. Failures are recorded and retried by the cron tick (up to 5 attempts). */
+  async function deliver(n: { id: number; agent_id: number; kind: string; title: string; body: string; url: string; created_at: number }, hook: { url: string; nonce: string }) {
+    if (!opts.webhookKey) return;
+    const body = JSON.stringify({ id: n.id, kind: n.kind, title: n.title, body: n.body, url: n.url, created_at: n.created_at });
+    const ts = Date.now();
+    try {
+      const r = await safePostJson(hook.url, body, {
+        "x-scbee-timestamp": String(ts), "x-scbee-signature": signBody(webhookSecret(n.agent_id, hook.nonce), ts, body),
+      }, opts.fetchOpts);
+      await store.recordDelivery(n.id, r.status >= 200 && r.status < 300, `HTTP ${r.status}`);
+    } catch (e) {
+      await store.recordDelivery(n.id, false, e instanceof UnsafeUrlError ? e.message : "delivery failed");
+    }
+  }
+  async function emit(agentId: number, draft: NotificationDraft) {
+    const id = await store.notify(agentId, draft);
+    if (id === null) return;
+    const hook = await store.getWebhook(agentId);
+    if (hook) await deliver({ id, agent_id: agentId, kind: draft.kind, title: draft.title, body: draft.body, url: draft.url, created_at: Date.now() }, hook);
+  }
+  /** When a project is scored for the first time, tell registered owners of projects it connects to. */
+  async function afterFirstScore(key: string) {
+    const g = await constellation(key);
+    for (const e of g.edges) {
+      const other = e.to === key ? e.from : e.to;
+      if (other === key) continue;
+      for (const ag of await store.verifiedAgentsForProject(other)) await emit(ag.id, messages.composesWith(other, key, baseUrl));
+    }
+  }
+  /** Daily upkeep: forecast-ready notices for closed windows and webhook retries. */
+  async function tick() {
+    let forecasts = 0, retried = 0;
+    for (const ag of await store.registeredGithubAgents()) {
+      const launch = await store.launchAt(ag.source_key);
+      if (!launch || Date.now() < launch + LAUNCH_WINDOW_MS) continue;
+      const { forecast } = await forecastFor(ag.source_key);
+      await emit(ag.id, messages.forecastReady(ag.source_key, forecast.evaluations, baseUrl));
+      forecasts++;
+    }
+    for (const d of await store.pendingDeliveries()) {
+      await deliver({ id: d.id, agent_id: d.agent_id, kind: d.kind, title: d.title, body: d.body, url: d.url, created_at: d.created_at }, { url: d.url_hook, nonce: d.nonce });
+      retried++;
+    }
+    return { forecasts_checked: forecasts, deliveries_retried: retried };
+  }
+  async function refreshGallery(limit: number) {
+    const added: Record<string, number> = {};
+    for (const c of COLLECTIONS) {
+      added[c.id] = 0;
+      for (const { owner, repo } of await searchNewRepos(c, 30, limit, opts.fetchOpts, opts.githubToken)) {
+        try {
+          await projectScore(owner, repo, null);
+          await store.addToGallery(c.id, `github:${owner}/${repo}`);
+          added[c.id]!++;
+        } catch (e) {
+          if (e instanceof HttpError && e.status === 429) return added; // GitHub rate limit: stop and try next run
+        }
+      }
+    }
+    return added;
+  }
+  const cronAuth = (req: IncomingMessage) => {
+    if (!opts.cronSecret) throw new HttpError(404, "not found");
+    const given = Buffer.from(String(req.headers.authorization ?? "").replace(/^Bearer /, ""));
+    const want = Buffer.from(opts.cronSecret);
+    if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+  };
+
   /** Score a public GitHub repo: cached, rate limited per IP, falls back to a stale copy if GitHub is unavailable. */
-  async function projectScore(owner: string, repo: string, ip: string) {
+  async function projectScore(owner: string, repo: string, ip: string | null) {
     const src = parseSource(`${owner}/${repo}`);
     if (src.kind !== "github") throw new HttpError(400, "only GitHub repositories can be scored");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
@@ -135,12 +221,13 @@ export function createApp(opts: AppOptions) {
         result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee };
     };
     if (fresh) return view(cached);
-    await limit(`score:${ip}`, 30, 3600_000);
+    if (ip) await limit(`score:${ip}`, 30, 3600_000);
     try {
       const row = await store.bySource(src.key);
       const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts, opts.githubToken);
       const result = scoreProject(sig);
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
+      if (!cached) await afterFirstScore(src.key).catch(() => undefined);
       const [o, r] = (sig.fullName ?? "").split("/");
       return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row };
     } catch (e) {
@@ -254,6 +341,8 @@ export function createApp(opts: AppOptions) {
         would_recommend: v.would_recommend_to_human, friction: v.friction_points,
         integrate: v.would_integrate_with.filter((p) => p !== v.project), summary: v.summary,
       });
+      for (const ag of await store.verifiedAgentsForProject(v.project))
+        await emit(ag.id, { ...messages.verdictReceived(v.project, a.handle, v.tried, v.would_use, baseUrl), ref: `${v.project}:${a.owner_key}` }).catch(() => undefined);
       return json(res, 201, { ok: true, project: v.project.replace("github:", "github.com/") });
     }
     const vm = path.match(/^\/api\/projects\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/verdicts$/);
@@ -319,6 +408,45 @@ export function createApp(opts: AppOptions) {
       const g = await constellation(src.key);
       if (!g.center) throw new HttpError(404, "project not scored yet: open its page first");
       return json(res, 200, { center: g.center.key, nodes: g.nodes.map((n) => ({ key: n.key, name: n.name, score: n.score ?? null })), edges: g.edges });
+    }
+
+    if (method === "GET" && path === "/api/notifications") {
+      const a = await auth(req);
+      await limit(`nt:${a.id}`, 120, 60_000);
+      const after = Number(url.searchParams.get("after") ?? 0);
+      return json(res, 200, { notifications: await store.notificationsFor(a.id, Number.isFinite(after) && after >= 0 ? after : 0, url.searchParams.get("unread") === "1") });
+    }
+    if (method === "POST" && path === "/api/notifications/read") {
+      const a = await auth(req);
+      const b = await readJson(req);
+      const ids = Array.isArray(b.ids) ? b.ids.filter((x): x is number => Number.isInteger(x) && x > 0) : [];
+      await store.markRead(a.id, b.all === true ? "all" : ids);
+      return json(res, 200, { ok: true });
+    }
+    if (path === "/api/webhook" && (method === "POST" || method === "DELETE")) {
+      const a = await auth(req);
+      needVerified(a);
+      if (!opts.webhookKey) throw new HttpError(404, "webhooks are not enabled on this server");
+      await limit(`wh:${a.id}`, 5, 3600_000);
+      if (method === "DELETE") { await store.deleteWebhook(a.id); return json(res, 200, { ok: true }); }
+      const target = str((await readJson(req)).url, 500, "url");
+      try { await assertPublicUrl(target, opts.fetchOpts?.lookup); } catch (e) { throw new HttpError(400, e instanceof UnsafeUrlError ? e.message : "invalid webhook url"); }
+      const nonce = newNonce();
+      await store.setWebhook(a.id, target, nonce);
+      return json(res, 201, {
+        url: target, secret: webhookSecret(a.id, nonce),
+        note: "Shown once. Each delivery is signed: x-scbee-signature = sha256=HMAC(secret, `${x-scbee-timestamp}.${body}`). Reject old timestamps.",
+      });
+    }
+
+    if (path === "/api/cron/tick" && (method === "GET" || method === "POST")) { cronAuth(req); return json(res, 200, await tick()); }
+    if (path === "/api/cron/gallery" && (method === "GET" || method === "POST")) {
+      cronAuth(req);
+      return json(res, 200, { added: await refreshGallery(Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10) || 10, 1), 20)) });
+    }
+
+    if (method === "GET" && path === "/api/gallery") {
+      return json(res, 200, { collections: await galleryData() });
     }
 
     if (method === "GET" && path === "/api/stats") return json(res, 200, await stats());
@@ -419,7 +547,7 @@ export function createApp(opts: AppOptions) {
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
-      if (p === "/style.css") return send(res, 200, CSS + PROJECT_CSS, "text/css");
+      if (p === "/style.css") return send(res, 200, CSS + PROJECT_CSS + GALLERY_CSS, "text/css");
       const nm = p.match(/^\/npm\/((?:@[^/]+\/)?[^/]+)$/);
       if (nm) {
         const name = parseNpmInput(decodeURIComponent(nm[1]!));
@@ -478,6 +606,7 @@ export function createApp(opts: AppOptions) {
         }
       }
       if (p === "/app.js") return send(res, 200, JS, "text/javascript");
+      if (p === "/gallery") return send(res, 200, galleryPage(await galleryData()), "text/html");
       if (p === "/heartbeat.md") return send(res, 200, heartbeatMd(baseUrl), "text/markdown");
       if (p === "/join.md") return send(res, 200, joinMd(baseUrl), "text/markdown");
       if (p === "/") return send(res, 200, home(await stats(), await store.list("", false, 6), baseUrl), "text/html");

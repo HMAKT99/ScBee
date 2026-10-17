@@ -21,7 +21,7 @@ export interface RawResponse {
 
 export type Requester = (
   r: Resolved,
-  opts: { timeoutMs: number; maxBytes: number; headers?: Record<string, string>; truncate?: boolean },
+  opts: { timeoutMs: number; maxBytes: number; headers?: Record<string, string>; truncate?: boolean; method?: string; body?: string },
 ) => Promise<RawResponse>;
 
 const defaultLookup: Lookup = (host) => dnsLookup(host, { all: true, verbatim: true });
@@ -51,17 +51,17 @@ export async function assertPublicUrl(input: string | URL, lookup: Lookup = defa
   return { url, address: first.address, family: first.family === 6 ? 6 : 4 };
 }
 
-const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate }) =>
+const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate, method, body }) =>
   new Promise((resolve, reject) => {
     const req = httpsRequest(
       {
         host: r.address,
         family: r.family,
         port: 443,
-        method: "GET",
+        method: method ?? "GET",
         path: r.url.pathname + r.url.search,
         servername: r.url.hostname,
-        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)", ...headers },
+        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)", ...(body !== undefined ? { "content-length": String(Buffer.byteLength(body)) } : {}), ...headers },
         timeout: timeoutMs,
       },
       (res) => {
@@ -90,7 +90,7 @@ const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate
     );
     req.on("timeout", () => req.destroy(new UnsafeUrlError("request timed out")));
     req.on("error", reject);
-    req.end();
+    req.end(body);
   });
 
 export interface FetchOptions {
@@ -132,4 +132,17 @@ export async function safeFetchJson(url: string, opts?: FetchOptions): Promise<u
   } catch {
     return null;
   }
+}
+
+/**
+ * POST a JSON body to a public https URL (webhooks). Same SSRF protections as GETs: public addresses only,
+ * pinned to the validated IP, no redirects followed (a redirect is treated as failure).
+ */
+export async function safePostJson(
+  url: string, body: string, headers: Record<string, string>,
+  { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 3000 }: FetchOptions = {},
+): Promise<{ status: number }> {
+  const resolved = await assertPublicUrl(url, lookup);
+  const res = await requester(resolved, { timeoutMs, maxBytes: 16 * 1024, headers: { "content-type": "application/json", ...headers }, method: "POST", body });
+  return { status: res.status };
 }

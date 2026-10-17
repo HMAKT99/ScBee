@@ -4,6 +4,26 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": { "api/index.js": { "includeFiles": "packages/**/dist/**,node_modules/@fontsource/inter/files/*.woff", "maxDuration": 15 } },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "packages/**/dist/**,node_modules/@fontsource/inter/files/*.woff",
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/tick",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/gallery",
+      "schedule": "30 6 * * *"
+    }
+  ]
 }
