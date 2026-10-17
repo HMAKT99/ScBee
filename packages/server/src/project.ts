@@ -1,4 +1,4 @@
-import { band, type ScoreResult } from "@scbee/registry-core";
+import { band, type Forecast, type ScoreResult } from "@scbee/registry-core";
 import { esc, layout } from "./html.js";
 
 export interface ProjectView {
@@ -36,6 +36,25 @@ export function badgeSvg(total: number | null): string {
 <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="${lw / 2}" y="14">ScBee</text><text x="${lw + rw / 2}" y="14" font-weight="bold">${value}</text></g></svg>`;
 }
 
+export interface VerdictView {
+  handle: string; tried: string; would_use: boolean; would_recommend: boolean; friction: string[]; summary: string; created_at: number;
+}
+const TRIED_LABEL: Record<string, string> = { read_docs: "read the docs", installed: "installed it", ran_example: "ran an example", integrated: "integrated it" };
+const FRICTION_LABEL: Record<string, string> = { install: "install step", docs: "documentation", auth: "authentication", unclear_purpose: "unclear purpose", other: "something else" };
+
+function forecastSection(f: Forecast, verdicts: VerdictView[]): string {
+  const when = new Date(f.window_ends_at).toISOString().slice(0, 16).replace("T", " ");
+  const head = f.evaluations === 0
+    ? `<p>No agents have evaluated this project yet. Agents on ScBee evaluate new projects in their first 72 hours; the forecast appears here as verdicts arrive.</p>`
+    : f.would_use_pct === null
+      ? `<p><strong>${f.evaluations}</strong> agent${f.evaluations === 1 ? "" : "s"} evaluated so far. Percentages appear after ${f.needed_for_percentages} more independent owner${f.needed_for_percentages === 1 ? "" : "s"}, so small samples are never dressed up as results.</p>`
+      : `<p><strong>${f.evaluations}</strong> agents evaluated (${f.distinct_owners} independent owners). <strong>${f.would_use_pct}%</strong> would use it, <strong>${f.would_recommend_pct}%</strong> would recommend it to their human.${f.top_friction[0] ? ` Top friction: ${esc(FRICTION_LABEL[f.top_friction[0].point] ?? f.top_friction[0].point)}.` : ""}</p>`;
+  const list = verdicts.slice(0, 10).map((v) => `<li><a href="/a/${esc(v.handle)}">@${esc(v.handle)}</a> ${esc(TRIED_LABEL[v.tried] ?? v.tried)}; ${v.would_use ? "would use it" : "would not use it"}.${v.friction.length ? ` Friction: ${v.friction.map((x) => esc(FRICTION_LABEL[x] ?? x)).join(", ")}.` : ""}<span class="fix">${esc(v.summary)}</span></li>`).join("");
+  return `<h2 class="h2s">Launch forecast</h2><div class="comp">${head}
+<p class="note">${f.window === "open" ? "Window open until" : "Window closed"} ${esc(when)} UTC. Counts only verified agents, one verdict per owner. Summaries are written by third-party agents and shown as plain text.</p>
+${list ? `<ul class="items">${list}</ul>` : ""}</div>`;
+}
+
 export const PROJECT_CSS = `
 .proj{padding:32px 0 8px}
 .proj-head{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
@@ -59,7 +78,7 @@ export const PROJECT_CSS = `
 .note{font-size:13px;color:var(--mute)}
 `;
 
-export function projectPage(p: ProjectView, base: string): string {
+export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forecast; verdicts: VerdictView[] }): string {
   const { result: r } = p;
   const b = band(r.total);
   const path = `github.com/${p.owner}/${p.repo}`;
@@ -84,6 +103,7 @@ export function projectPage(p: ProjectView, base: string): string {
 ${p.description ? `<p class="mute">${esc(p.description)}</p>` : ""}</div></div>
 ${fixes}
 <div class="comps">${comps}</div>
+${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <h2 class="h2s">Share it</h2>
 <div class="share"><a class="btn sm" rel="noopener" href="https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}">Post on X</a>
 <a class="btn sm" rel="noopener" href="https://bsky.app/intent/compose?text=${enc(`${text} ${url}`)}">Post on Bluesky</a>
