@@ -19,7 +19,10 @@ export interface RawResponse {
   body: string;
 }
 
-export type Requester = (r: Resolved, opts: { timeoutMs: number; maxBytes: number }) => Promise<RawResponse>;
+export type Requester = (
+  r: Resolved,
+  opts: { timeoutMs: number; maxBytes: number; headers?: Record<string, string> },
+) => Promise<RawResponse>;
 
 const defaultLookup: Lookup = (host) => dnsLookup(host, { all: true, verbatim: true });
 
@@ -48,7 +51,7 @@ export async function assertPublicUrl(input: string | URL, lookup: Lookup = defa
   return { url, address: first.address, family: first.family === 6 ? 6 : 4 };
 }
 
-const defaultRequester: Requester = (r, { timeoutMs, maxBytes }) =>
+const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers }) =>
   new Promise((resolve, reject) => {
     const req = httpsRequest(
       {
@@ -58,7 +61,7 @@ const defaultRequester: Requester = (r, { timeoutMs, maxBytes }) =>
         method: "GET",
         path: r.url.pathname + r.url.search,
         servername: r.url.hostname,
-        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)" },
+        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)", ...headers },
         timeout: timeoutMs,
       },
       (res) => {
@@ -89,17 +92,20 @@ export interface FetchOptions {
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
+  /** Extra request headers (e.g. an API token). Sent only to the first hostname, never to a redirect target. */
+  headers?: Record<string, string>;
 }
 
 /** GET text from a public https URL. Redirects are followed manually and re-validated each hop. */
 export async function safeFetchText(
   url: string,
-  { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 5000, maxBytes = 64 * 1024, maxRedirects = 3 }: FetchOptions = {},
+  { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 5000, maxBytes = 64 * 1024, maxRedirects = 3, headers }: FetchOptions = {},
 ): Promise<{ status: number; body: string }> {
   let current = url;
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const resolved = await assertPublicUrl(current, lookup);
-    const res = await requester(resolved, { timeoutMs, maxBytes });
+    const sameHost = resolved.url.hostname === new URL(url).hostname;
+    const res = await requester(resolved, { timeoutMs, maxBytes, ...(headers && sameHost ? { headers } : {}) });
     if (res.status >= 300 && res.status < 400 && res.location) {
       current = new URL(res.location, resolved.url).toString();
       continue;
