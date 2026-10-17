@@ -91,13 +91,16 @@ export function scoreProject(s: ProjectSignals, now = Date.now()): ScoreResult {
   const months = ageDays === null ? null : Math.max(ageDays / 30, 1);
   const rate = months === null ? 0 : s.stars / months;
   const young = ageDays !== null && ageDays < 45;
+  const dl = s.npmDownloadsMonthly ?? 0;
+  const dlPoints = dl >= 10_000 ? 7 : dl >= 1_000 ? 5 : dl >= 100 ? 3 : dl >= 10 ? 1 : 0;
+  const starPoints = rate >= 20 ? 7 : rate >= 5 ? 5 : rate >= 1 ? 3 : 1;
+  const growthFix = "Share it where your users are: a launch post, a demo GIF, a directory listing.";
   const momentum: ScoreItem[] = [
     young
       ? { label: "Growth", points: 7, max: 7, reason: "Too new to measure growth, so it is not penalised." }
-      : rate >= 20 ? { label: "Growth", points: 7, max: 7, reason: `About ${rate.toFixed(0)} new stars a month.` }
-      : rate >= 5 ? { label: "Growth", points: 5, max: 7, reason: `About ${rate.toFixed(1)} new stars a month.` }
-      : rate >= 1 ? { label: "Growth", points: 3, max: 7, reason: `About ${rate.toFixed(1)} new stars a month.`, fix: "Share it where your users are: a launch post, a demo GIF, a directory listing." }
-      : { label: "Growth", points: 1, max: 7, reason: "Little star growth so far.", fix: "Share it where your users are: a launch post, a demo GIF, a directory listing." },
+      : dlPoints > starPoints
+        ? { label: "Growth", points: dlPoints, max: 7, reason: `About ${dl.toLocaleString("en-US")} npm downloads last month.`, ...(dlPoints < 7 ? { fix: growthFix } : {}) }
+        : { label: "Growth", points: starPoints, max: 7, reason: starPoints > 1 ? `About ${rate >= 20 ? rate.toFixed(0) : rate.toFixed(1)} new stars a month.` : "Little star growth so far.", ...(starPoints < 7 ? { fix: growthFix } : {}) },
     item("Fresh activity", sincePush !== null && sincePush <= 30, 3, "Pushed to in the last 30 days.", "No push in the last 30 days.", "Regular small updates signal an active project."),
   ];
 

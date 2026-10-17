@@ -8,3 +8,5 @@ export * from "./score.js";
 export * from "./github.js";
 export * from "./verdict.js";
 export * from "./feed.js";
+export * from "./npm.js";
+export * from "./site.js";

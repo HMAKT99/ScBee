@@ -31,6 +31,9 @@ export interface ProjectSignals {
   hasRelease: boolean;
   runtimeDeclared: boolean;
   hasAgentCard: boolean;
+  /** npm package for this repo, when its package.json names one that points back to the repo. */
+  npmPackage?: string;
+  npmDownloadsMonthly?: number;
   listedOnScbee: boolean;
   verifiedOnScbee: boolean;
   readme: ReadmeFacts;
