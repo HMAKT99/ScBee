@@ -422,3 +422,51 @@ describe("evaluation feed and heartbeat", () => {
     expect(p.untrusted_content.description).toBe("nice tool here");
   });
 });
+
+describe("npm and website ingestion", () => {
+  it("/npm/<name> redirects to the GitHub project; packages without a repo or unknown ones 404", async () => {
+    files["https://registry.npmjs.org/cool-pkg/latest"] = JSON.stringify({ name: "cool-pkg", repository: { url: "git+https://github.com/Cool/Pkg.git" } });
+    files["https://registry.npmjs.org/no-repo/latest"] = JSON.stringify({ name: "no-repo" });
+    const ok = await fetch(`${base}/npm/cool-pkg`, { redirect: "manual" });
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get("location")).toBe("/github.com/cool/pkg");
+    expect((await fetch(`${base}/npm/no-repo`)).status).toBe(404);
+    expect((await fetch(`${base}/npm/does-not-exist`)).status).toBe(404);
+    expect((await fetch(`${base}/npm/Bad%20Name`)).status).toBe(404);
+  });
+
+  const site = "https://shop.example.dev";
+  const setupSite = () => {
+    files[`${site}/robots.txt`] = "User-agent: *\nAllow: /";
+    files[`${site}/`] = '<html lang="en"><head><title>Shop &lt;b&gt;</title><meta name="description" content="Buy things from an agent that negotiates the price for you."><meta name="viewport" content="x"></head></html>';
+    files[`${site}/llms.txt`] = "# Shop\n> Buy things from an agent that negotiates for you.";
+  };
+  it("scores a website: page, JSON, badge and card; escapes the title", async () => {
+    setupSite();
+    const page = await call("GET", "/web/shop.example.dev");
+    expect(page.status).toBe(200);
+    expect(page.text).toMatch(/shop\.example\.dev/);
+    expect(page.text).toMatch(/og:image" content="http:\/\/t\/og\/web\/shop\.example\.dev\.png/);
+    expect(page.text).toMatch(/llms\.txt/);
+    const api = await call("GET", "/api/score/web/shop.example.dev");
+    expect(api.json.components.map((c: any) => c.id)).toEqual(["clarity", "friction", "trust", "network"]);
+    expect((await call("GET", "/badge/web/shop.example.dev.svg")).text).toMatch(/\/100/);
+    const png = await fetch(`${base}/og/web/shop.example.dev.png`);
+    expect(png.headers.get("content-type")).toBe("image/png");
+  });
+  it("respects robots.txt and refuses non-public hosts", async () => {
+    files["https://blocked.example.dev/robots.txt"] = "User-agent: *\nDisallow: /";
+    const blocked = await call("GET", "/api/score/web/blocked.example.dev");
+    expect(blocked.status).toBe(403);
+    expect((await call("GET", "/api/score/web/localhost")).status).toBe(400);
+    expect((await call("GET", "/api/score/web/127.0.0.1")).status).toBe(400);
+    expect((await call("GET", "/web/nothing-here.example.dev")).status).toBe(404);
+  });
+  it("website projects are not offered in the verdict feed", async () => {
+    setupSite();
+    await call("GET", "/api/score/web/shop.example.dev");
+    const me = await makeAgent("fweb/agent");
+    const feed = await call("GET", "/api/feed/evaluate?limit=25", undefined, me.key);
+    expect(feed.json.projects.map((p: any) => p.project).some((n: string) => n.startsWith("web/") || n.startsWith("url:"))).toBe(false);
+  });
+});

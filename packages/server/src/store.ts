@@ -376,7 +376,7 @@ export class Store {
                 (SELECT COUNT(*) FROM verdicts v WHERE v.project_key = a.source_key), a.created_at
          FROM agents a WHERE a.kind = 'github' AND a.hidden = 0 AND a.verified = 1
            AND a.source_key NOT IN (SELECT source_key FROM projects)
-       ) WHERE key NOT LIKE ? ESCAPE '\\'
+       ) WHERE key LIKE 'github:%' AND key NOT LIKE ? ESCAPE '\\'
          AND key NOT IN (SELECT project_key FROM verdicts WHERE owner_key = ?)
        ORDER BY seen DESC LIMIT ?`,
       [`github:${ownerName.replace(/[%_\\]/g, "\\$&")}/%`, ownerKey, limit]);

@@ -123,3 +123,12 @@ describe("fetchSiteSignals and scoreSite", () => {
     expect(e.status).toBe(404);
   });
 });
+
+describe("bot protection", () => {
+  it("reports a challenge page instead of scoring it as an empty site", async () => {
+    const files = { "https://walled.dev/robots.txt": "", "https://walled.dev/": "<html><body>Just a moment...</body></html>" };
+    const e = await fetchSiteSignals("walled.dev", { listed: false, verified: false }, mk(files)).catch((x) => x);
+    expect(e).toBeInstanceOf(SiteError);
+    expect(e.status).toBe(403);
+  });
+});

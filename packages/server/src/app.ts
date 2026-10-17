@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  InputError, ProjectError, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  InputError, ProjectError, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
@@ -71,6 +71,30 @@ const str = (v: unknown, max: number, name: string): string => {
 export function createApp(opts: AppOptions) {
   const { store, baseUrl } = opts;
   const stats = () => store.stats();
+
+  /** Score a public website or agent endpoint: same caching and limits as repos. */
+  async function siteScore(host: string, ip: string) {
+    const key = `url:https://${host}`;
+    const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
+    const cached = await store.getProject(key);
+    const view = (result: ScoreResult, fetchedAt: number, listed: boolean) => ({
+      owner: host, repo: "", title: host, path: `web/${host}`, description: null, stars: 0, fetchedAt, result, listed });
+    if (cached && cached.score_version === SITE_SCORE_VERSION && Date.now() - cached.fetched_at < ttl) {
+      return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, (JSON.parse(cached.signals_json) as SiteSignals).listedOnScbee);
+    }
+    await limit(`score:${ip}`, 30, 3600_000);
+    try {
+      const row = await store.bySource(key);
+      const sig = await fetchSiteSignals(host, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts);
+      const result = scoreSite(sig);
+      await store.saveProject(key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, 0);
+      return view(result, Date.now(), !!row);
+    } catch (e) {
+      if (cached && !(e instanceof SiteError && e.status !== 502)) return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, false);
+      if (e instanceof SiteError) throw new HttpError(e.status, e.message);
+      throw e;
+    }
+  }
 
   async function forecastFor(projectKey: string) {
     const verdicts = await store.verdictsFor(projectKey);
@@ -263,6 +287,15 @@ export function createApp(opts: AppOptions) {
       });
     }
 
+    const wsm = path.match(/^\/api\/score\/web\/([A-Za-z0-9.-]{4,253})$/);
+    if (method === "GET" && wsm) {
+      const host = parseHost(wsm[1]!);
+      if (!host) throw new HttpError(400, "enter a public hostname like example.com");
+      const v = await siteScore(host, ip);
+      return json(res, 200, { project: `web/${host}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
+        note: "A readiness score from public data and fixed rules. Not a prediction." });
+    }
+
     if (method === "GET" && path === "/api/stats") return json(res, 200, await stats());
     if (method === "GET" && path === "/api/feed") return json(res, 200, { items: await store.feed() });
 
@@ -362,6 +395,38 @@ export function createApp(opts: AppOptions) {
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
       if (p === "/style.css") return send(res, 200, CSS + PROJECT_CSS, "text/css");
+      const nm = p.match(/^\/npm\/((?:@[^/]+\/)?[^/]+)$/);
+      if (nm) {
+        const name = parseNpmInput(decodeURIComponent(nm[1]!));
+        if (!name) throw new HttpError(404, "not a valid npm package name");
+        await limit(`score:${clientIp(req)}`, 30, 3600_000);
+        const facts = await fetchNpmFacts(name, opts.fetchOpts);
+        if (!facts) throw new HttpError(404, "npm package not found");
+        if (!facts.repo) throw new HttpError(404, "this package has no public GitHub repository, so it cannot be scored yet");
+        res.writeHead(302, { ...SECURITY_HEADERS, location: `/github.com/${facts.repo.owner}/${facts.repo.repo}`, "cache-control": "public, max-age=3600" });
+        return void res.end();
+      }
+      const wm = p.match(/^\/(?:(badge|og)\/)?web\/([A-Za-z0-9.-]{4,253}?)(?:\.(svg|png))?\/?$/);
+      const wHost = wm ? parseHost(wm[2]!) : null;
+      if (wm && wHost) {
+        const kind = wm[1], ext = wm[3], ip = clientIp(req);
+        if (kind === "badge" && ext === "svg") {
+          let total: number | null = null;
+          try { total = (await siteScore(wHost, ip)).result.total; } catch { /* unknown badge */ }
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+          return void res.end(badgeSvg(total));
+        }
+        if (kind === "og" && ext === "png") {
+          const v = await siteScore(wHost, ip);
+          const png = await renderCard(wHost, "", v.result);
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+          return void res.end(png);
+        }
+        if (!kind && !ext) {
+          try { return send(res, 200, projectPage(await siteScore(wHost, ip), baseUrl), "text/html"); }
+          catch (e) { if (e instanceof HttpError) return send(res, e.status, notFound(e.message), "text/html"); throw e; }
+        }
+      }
       const pm = p.match(/^\/(?:(badge|og)\/)?github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.(svg|png))?\/?$/);
       if (pm) {
         const [, kind, owner, repo, ext] = pm as unknown as [string, string | undefined, string, string, string | undefined];

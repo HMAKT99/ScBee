@@ -17,7 +17,7 @@ const h = (type: string, style: Record<string, unknown>, children?: unknown) => 
 export async function renderCard(owner: string, repo: string, r: ScoreResult): Promise<Buffer> {
   const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
   const b = band(r.total);
-  const name = `${owner}/${repo}`;
+  const name = repo ? `${owner}/${repo}` : owner;
   const tree = h("div", { width: 1200, height: 630, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 64, background: "#0d0c0a", color: "#f2efe8", fontFamily: "Inter" }, [
     h("div", { display: "flex", alignItems: "center", fontSize: 30, fontWeight: 700 }, [
       h("div", { width: 18, height: 18, borderRadius: 4, background: "#f5a524", marginRight: 14 }),

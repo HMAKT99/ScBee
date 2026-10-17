@@ -95,17 +95,20 @@ export async function fetchSiteSignals(host: string, scbee: { listed: boolean; v
   try { await assertPublicUrl(origin, opts.lookup); } catch (e) {
     throw new SiteError(e instanceof UnsafeUrlError ? e.message : "could not check this site", 400);
   }
-  const get = async (path: string, maxBytes = 128 * 1024) => {
+  const get = async (path: string, maxBytes = 128 * 1024, truncate = false) => {
     try {
-      const r = await safeFetchText(origin + path, { ...opts, maxBytes });
+      const r = await safeFetchText(origin + path, { ...opts, maxBytes, truncate });
       return r.status === 200 ? r.body : null;
     } catch { return null; }
   };
   const robots = await get("/robots.txt", 64 * 1024);
   if (!robotsAllows(robots, "/")) throw new SiteError("this site's robots.txt asks automated checkers not to visit, so ScBee does not read it", 403);
-  const html = await get("/");
+  const html = await get("/", 96 * 1024, true);
   if (html === null) throw new SiteError("could not load the homepage over https", 404);
   const page = analyseHtml(html);
+  // A tiny page with no title or metadata is almost always a bot-protection challenge, not the real site.
+  if (html.length < 4000 && !page.title && !page.description)
+    throw new SiteError("this site's bot protection blocked the check, so ScBee cannot read it", 403);
   const json = async (path: string) => (await safeFetchJson(origin + path, opts).catch(() => null)) as unknown;
   const [card, llms, plugin, sec, ...mcp] = await Promise.all([
     json("/.well-known/agent-card.json"), get("/llms.txt", 64 * 1024), json("/.well-known/ai-plugin.json"), get("/.well-known/security.txt", 16 * 1024),
