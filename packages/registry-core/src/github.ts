@@ -1,4 +1,5 @@
 import { safeFetchJson, safeFetchText, UnsafeUrlError, type FetchOptions } from "./safeFetch.js";
+import { fetchNpmFacts } from "./npm.js";
 import { analyseReadme, type ProjectSignals } from "./signals.js";
 
 export class ProjectError extends Error {
@@ -71,9 +72,23 @@ export async function fetchGithubSignals(
   const readme = readmeEntry ? await text(encodeURIComponent(readmeEntry.name)) : null;
 
   let runtimeDeclared = names.has(".nvmrc") || names.has(".node-version") || names.has(".python-version") || names.has(".tool-versions") || names.has("go.mod") || names.has("cargo.toml") || names.has("dockerfile");
-  if (!runtimeDeclared && names.has("package.json")) {
+  let npmPackage: string | undefined;
+  let npmDownloadsMonthly: number | undefined;
+  if (names.has("package.json")) {
     const pj = await text("package.json");
-    try { runtimeDeclared = !!(JSON.parse(pj ?? "{}") as { engines?: unknown }).engines; } catch { /* ignore */ }
+    try {
+      const j = JSON.parse(pj ?? "{}") as { engines?: unknown; name?: unknown; private?: unknown };
+      runtimeDeclared = runtimeDeclared || !!j.engines;
+      if (typeof j.name === "string" && !j.private) {
+        // The same project: only count the package if it points back at this repo.
+        const facts = await fetchNpmFacts(j.name, opts);
+        if (facts?.repo?.owner === owner.toLowerCase() && facts.repo.repo === repo.toLowerCase()) {
+          npmPackage = facts.name;
+          npmDownloadsMonthly = facts.downloadsLastMonth;
+          runtimeDeclared = runtimeDeclared || facts.engines;
+        }
+      }
+    } catch { /* ignore unreadable package.json */ }
   }
   if (!runtimeDeclared && names.has("pyproject.toml")) runtimeDeclared = /requires-python/.test((await text("pyproject.toml")) ?? "");
 
@@ -97,6 +112,7 @@ export async function fetchGithubSignals(
     hasRelease: release != null && typeof release === "object" && "tag_name" in (release as object),
     runtimeDeclared,
     hasAgentCard,
+    ...(npmPackage ? { npmPackage, npmDownloadsMonthly } : {}),
     listedOnScbee: scbee.listed,
     verifiedOnScbee: scbee.verified,
     readme: analyseReadme(readme),

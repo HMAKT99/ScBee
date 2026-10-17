@@ -21,7 +21,7 @@ export interface RawResponse {
 
 export type Requester = (
   r: Resolved,
-  opts: { timeoutMs: number; maxBytes: number; headers?: Record<string, string> },
+  opts: { timeoutMs: number; maxBytes: number; headers?: Record<string, string>; truncate?: boolean },
 ) => Promise<RawResponse>;
 
 const defaultLookup: Lookup = (host) => dnsLookup(host, { all: true, verbatim: true });
@@ -51,7 +51,7 @@ export async function assertPublicUrl(input: string | URL, lookup: Lookup = defa
   return { url, address: first.address, family: first.family === 6 ? 6 : 4 };
 }
 
-const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers }) =>
+const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate }) =>
   new Promise((resolve, reject) => {
     const req = httpsRequest(
       {
@@ -70,6 +70,13 @@ const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers }) =>
         res.on("data", (c: Buffer) => {
           size += c.length;
           if (size > maxBytes) {
+            if (truncate) {
+              // Keep what we have (enough for a page head) and stop reading.
+              chunks.push(c.subarray(0, Math.max(0, c.length - (size - maxBytes))));
+              resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8") });
+              req.destroy();
+              return;
+            }
             req.destroy(new UnsafeUrlError("response too large"));
             return;
           }
@@ -94,18 +101,20 @@ export interface FetchOptions {
   maxRedirects?: number;
   /** Extra request headers (e.g. an API token). Sent only to the first hostname, never to a redirect target. */
   headers?: Record<string, string>;
+  /** Return the first maxBytes instead of failing when the response is larger (for reading page heads). */
+  truncate?: boolean;
 }
 
 /** GET text from a public https URL. Redirects are followed manually and re-validated each hop. */
 export async function safeFetchText(
   url: string,
-  { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 5000, maxBytes = 64 * 1024, maxRedirects = 3, headers }: FetchOptions = {},
+  { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 5000, maxBytes = 64 * 1024, maxRedirects = 3, headers, truncate }: FetchOptions = {},
 ): Promise<{ status: number; body: string }> {
   let current = url;
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const resolved = await assertPublicUrl(current, lookup);
     const sameHost = resolved.url.hostname === new URL(url).hostname;
-    const res = await requester(resolved, { timeoutMs, maxBytes, ...(headers && sameHost ? { headers } : {}) });
+    const res = await requester(resolved, { timeoutMs, maxBytes, ...(headers && sameHost ? { headers } : {}), ...(truncate ? { truncate } : {}) });
     if (res.status >= 300 && res.status < 400 && res.location) {
       current = new URL(res.location, resolved.url).toString();
       continue;

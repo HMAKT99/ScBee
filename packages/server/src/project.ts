@@ -4,6 +4,9 @@ import { esc, layout } from "./html.js";
 export interface ProjectView {
   owner: string;
   repo: string;
+  /** Overrides for non-GitHub projects (websites): display title and URL path, e.g. web/example.com */
+  title?: string;
+  path?: string;
   description: string | null;
   stars: number;
   fetchedAt: number;
@@ -81,14 +84,15 @@ export const PROJECT_CSS = `
 export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forecast; verdicts: VerdictView[] }): string {
   const { result: r } = p;
   const b = band(r.total);
-  const path = `github.com/${p.owner}/${p.repo}`;
+  const path = p.path ?? `github.com/${p.owner}/${p.repo}`;
+  const name = p.title ?? `${p.owner}/${p.repo}`;
   const url = `${base}/${path}`;
   const badgeMd = `[![ScBee](${base}/badge/${path}.svg)](${url})`;
   const lost = r.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ ...i, c: c.title })))
     .sort((a, z) => z.max - z.points - (a.max - a.points)).slice(0, 3);
-  const text = `${p.owner}/${p.repo} scores ${r.total}/100 for launch readiness on ScBee. What would yours score?`;
+  const text = `${name} scores ${r.total}/100 for launch readiness on ScBee. What would yours score?`;
   const enc = encodeURIComponent;
-  const head = `<meta property="og:title" content="${esc(`${p.owner}/${p.repo}: ${r.total}/100 launch readiness`)}">
+  const head = `<meta property="og:title" content="${esc(`${name}: ${r.total}/100 launch readiness`)}">
 <meta property="og:description" content="${esc(`${b.label}. See exactly what to fix before you launch.`)}">
 <meta property="og:image" content="${esc(`${base}/og/${path}.png`)}"><meta property="og:url" content="${esc(url)}">
 <meta name="twitter:card" content="summary_large_image">`;
@@ -99,7 +103,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
     ? `<div class="fixes"><h2>Biggest wins first</h2><ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points} ${esc(i.c)})</span></li>`).join("")}</ol></div>`
     : `<div class="fixes"><h2>Nothing major to fix</h2><p>Every check passes. Ship it.</p></div>`;
   const body = `<div class="page proj"><div class="proj-head">${ring(r.total, b.color)}<div>
-<h1>${esc(p.owner)}/${esc(p.repo)}</h1><span class="band">${esc(b.label)}</span>
+<h1>${esc(name)}</h1><span class="band">${esc(b.label)}</span>
 ${p.description ? `<p class="mute">${esc(p.description)}</p>` : ""}</div></div>
 ${fixes}
 <div class="comps">${comps}</div>
@@ -112,5 +116,5 @@ ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <div class="term"><code>${esc(badgeMd)}</code><button class="copy" data-copy="${esc(badgeMd)}">Copy</button></div>
 ${p.listed ? "" : `<p class="mt24"><a class="btn" href="/#register">Register this agent on ScBee</a></p>`}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div>`;
-  return layout(`${p.owner}/${p.repo} · ScBee`, body, false, head);
+  return layout(`${name} · ScBee`, body, false, head);
 }

@@ -112,9 +112,14 @@ if(f){f.addEventListener('submit',async(e)=>{
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{
   e.preventDefault();
-  const m=$('#repo').value.trim().match(/^(?:https?:\\/\\/)?(?:www\\.)?(?:github\\.com\\/)?([A-Za-z0-9-]{1,39})\\/([A-Za-z0-9._-]{1,100}?)(?:\\.git)?(?:[\\/?#].*)?$/);
-  if(!m){$('#repo').setCustomValidity('Enter owner/repo or a github.com URL');$('#repo').reportValidity();return}
-  location.href='/github.com/'+m[1]+'/'+m[2];
+  const v=$('#repo').value.trim();
+  const gh=v.match(/^(?:https?:\\/\\/)?(?:www\\.)?github\\.com\\/([A-Za-z0-9-]{1,39})\\/([A-Za-z0-9._-]{1,100}?)(?:\\.git)?(?:[\\/?#].*)?$/)||v.match(/^([A-Za-z0-9-]{1,39})\\/([A-Za-z0-9._-]{1,100})$/);
+  const npm=v.match(/^(?:https?:\\/\\/)?(?:www\\.)?npmjs\\.com\\/package\\/((?:@[^\\/]+\\/)?[^\\/?#]+)/i)||v.match(/^npm:(\\S+)$/i)||v.match(/^(@[a-z0-9~][a-z0-9._~-]*\\/[a-z0-9~][a-z0-9._~-]*)$/i)||v.match(/^([a-z0-9~][a-z0-9_~-]{1,100})$/i);
+  const web=v.match(/^(?:https?:\\/\\/)?((?:[a-z0-9-]+\\.)+[a-z]{2,})(?:[\\/?#].*)?$/i);
+  let to=null;
+  if(gh)to='/github.com/'+gh[1]+'/'+gh[2];else if(npm)to='/npm/'+npm[1];else if(web)to='/web/'+web[1].toLowerCase();
+  if(!to){$('#repo').setCustomValidity('Enter owner/repo, an npm package, or a website');$('#repo').reportValidity();return}
+  location.href=to;
 });$('#repo').addEventListener('input',()=>$('#repo').setCustomValidity(''))}
 const rep=$('#report');
 if(rep){rep.addEventListener('click',async()=>{
@@ -169,7 +174,7 @@ export function home(stats: Stats, latest: PublicAgent[], base: string) {
   <form class="reg" id="reg" autocomplete="off"><input id="src" type="text" placeholder="github.com/you/your-agent" required maxlength="300" aria-label="GitHub repo or agent URL"><button class="btn">Register your agent</button></form>
   <p class="note">Free and open source. Paste a GitHub repo or an agent URL. You prove it is yours with a file in your repo or on your domain. <a href="#how">How it works</a></p>
   <div id="result" role="status"></div>
-  <form class="reg score" id="score" autocomplete="off"><input id="repo" type="text" placeholder="Or score any public repo: owner/repo" required maxlength="300" aria-label="GitHub repo to score"><button class="btn ghost">Check launch readiness</button></form>
+  <form class="reg score" id="score" autocomplete="off"><input id="repo" type="text" placeholder="Or score a repo, npm package or site" required maxlength="300" aria-label="GitHub repo to score"><button class="btn ghost">Check launch readiness</button></form>
 </div></div>
 
 <section><div class="wrap center">
