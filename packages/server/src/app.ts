@@ -1,9 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  InputError, checkChallenge, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  InputError, ProjectError, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
+import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
+import { renderCard } from "./card.js";
 import { CSS, JS, agentList, agentPage, feedPage, home, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
@@ -16,6 +18,10 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Registrations allowed per IP per hour (default 10). */
   registerPerHour?: number;
+  /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
+  githubToken?: string;
+  /** Cached project scores are reused this long (default 6 hours). */
+  scoreTtlMs?: number;
 }
 
 class HttpError extends Error {
@@ -65,6 +71,35 @@ const str = (v: unknown, max: number, name: string): string => {
 export function createApp(opts: AppOptions) {
   const { store, baseUrl } = opts;
   const stats = () => store.stats();
+
+  /** Score a public GitHub repo: cached, rate limited per IP, falls back to a stale copy if GitHub is unavailable. */
+  async function projectScore(owner: string, repo: string, ip: string) {
+    const src = parseSource(`${owner}/${repo}`);
+    if (src.kind !== "github") throw new HttpError(400, "only GitHub repositories can be scored");
+    const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
+    const cached = await store.getProject(src.key);
+    const fresh = cached && cached.score_version === SCORE_VERSION && Date.now() - cached.fetched_at < ttl;
+    const view = (c: NonNullable<typeof cached>) => {
+      const sig = JSON.parse(c.signals_json) as ProjectSignals;
+      const [o, r] = (sig.fullName ?? "").split("/");
+      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: c.fetched_at,
+        result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee };
+    };
+    if (fresh) return view(cached);
+    await limit(`score:${ip}`, 30, 3600_000);
+    try {
+      const row = await store.bySource(src.key);
+      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts, opts.githubToken);
+      const result = scoreProject(sig);
+      await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
+      const [o, r] = (sig.fullName ?? "").split("/");
+      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row };
+    } catch (e) {
+      if (cached && !(e instanceof ProjectError && e.status === 404)) return view(cached);
+      if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
+      throw e;
+    }
+  }
 
   function clientIp(req: IncomingMessage): string {
     if (opts.trustProxy) {
@@ -145,6 +180,13 @@ export function createApp(opts: AppOptions) {
       const a = await store.publicAgent(m[1]!);
       if (!a) throw new HttpError(404, "no such agent");
       return json(res, 200, a);
+    }
+
+    const sm = path.match(/^\/api\/score\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
+    if (method === "GET" && sm) {
+      const v = await projectScore(sm[1]!, sm[2]!, ip);
+      return json(res, 200, { project: `github.com/${v.owner}/${v.repo}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
+        note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
 
     if (method === "GET" && path === "/api/stats") return json(res, 200, await stats());
@@ -245,7 +287,32 @@ export function createApp(opts: AppOptions) {
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
-      if (p === "/style.css") return send(res, 200, CSS, "text/css");
+      if (p === "/style.css") return send(res, 200, CSS + PROJECT_CSS, "text/css");
+      const pm = p.match(/^\/(?:(badge|og)\/)?github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.(svg|png))?\/?$/);
+      if (pm) {
+        const [, kind, owner, repo, ext] = pm as unknown as [string, string | undefined, string, string, string | undefined];
+        const ip = clientIp(req);
+        if (kind === "badge" && ext === "svg") {
+          let total: number | null = null;
+          try { total = (await projectScore(owner, repo, ip)).result.total; } catch { /* unknown badge */ }
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+          return void res.end(badgeSvg(total));
+        }
+        if (kind === "og" && ext === "png") {
+          const v = await projectScore(owner, repo, ip);
+          const png = await renderCard(v.owner, v.repo, v.result);
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+          return void res.end(png);
+        }
+        if (!kind && !ext) {
+          try {
+            return send(res, 200, projectPage(await projectScore(owner, repo, ip), baseUrl), "text/html");
+          } catch (e) {
+            if (e instanceof HttpError && e.status !== 400) return send(res, e.status, notFound(e.message), "text/html");
+            throw e;
+          }
+        }
+      }
       if (p === "/app.js") return send(res, 200, JS, "text/javascript");
       if (p === "/join.md") return send(res, 200, joinMd(baseUrl), "text/markdown");
       if (p === "/") return send(res, 200, home(await stats(), await store.list("", false, 6), baseUrl), "text/html");

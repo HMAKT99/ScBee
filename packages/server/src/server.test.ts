@@ -251,3 +251,63 @@ describe("rate limiting", () => {
     expect(last).toBe(429);
   });
 });
+
+describe("project score pages", () => {
+  const api = "https://api.github.com/repos/zed/widget";
+  const readme = "# Widget\n\nA small widget library for building dashboards quickly.\n\n![shot](s.png)\n\n## Install\n\n```\nnpm install widget\n```\n\n## Usage\n\n```js\nwidget();\n```\n";
+  const setup = () => {
+    files[api] = JSON.stringify({ description: "<script>alert(1)</script> widgets", topics: ["a", "b", "c"], license: { spdx_id: "MIT" }, stargazers_count: 1,
+      created_at: new Date(Date.now() - 86400000).toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = JSON.stringify([{ name: "README.md", type: "file" }, { name: "package.json", type: "file" }]);
+    files[`${api}/contents/.github`] = JSON.stringify([{ name: "workflows", type: "dir" }]);
+    files["https://raw.githubusercontent.com/zed/widget/HEAD/README.md"] = readme;
+    files["https://raw.githubusercontent.com/zed/widget/HEAD/package.json"] = JSON.stringify({ engines: { node: ">=20" } });
+  };
+
+  it("serves the URL-swap page with score, reasons, fixes and OG tags, and escapes untrusted text", async () => {
+    setup();
+    const res = await fetch(`${base}/github.com/zed/widget`);
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(html).toMatch(/zed\/widget/);
+    expect(html).toMatch(/og:image" content="http:\/\/t\/og\/github\.com\/zed\/widget\.png/);
+    expect(html).toMatch(/not a prediction/);
+    expect(html).not.toMatch(/<script>alert/);
+    expect(html).toMatch(/&lt;script&gt;alert/);
+    expect(res.headers.get("content-security-policy")).toMatch(/default-src 'none'/);
+  });
+
+  it("JSON API returns the breakdown and is cached (second call does not need GitHub)", async () => {
+    setup();
+    const a = await (await fetch(`${base}/api/score/github.com/zed/widget`)).json();
+    expect(a.total).toBeGreaterThanOrEqual(70);
+    expect(a.components).toHaveLength(5);
+    for (const k of Object.keys(files)) delete files[k];
+    const b = await (await fetch(`${base}/api/score/github.com/zed/widget`)).json();
+    expect(b.total).toBe(a.total);
+  });
+
+  it("badge is an SVG with the score; unknown repos give a grey 'unknown' badge", async () => {
+    setup();
+    const ok = await fetch(`${base}/badge/github.com/zed/widget.svg`);
+    expect(ok.headers.get("content-type")).toMatch(/svg/);
+    expect(await ok.text()).toMatch(/\/100/);
+    const miss = await (await fetch(`${base}/badge/github.com/nobody/nothing.svg`)).text();
+    expect(miss).toMatch(/unknown/);
+  });
+
+  it("share card is a PNG", async () => {
+    setup();
+    const res = await fetch(`${base}/og/github.com/zed/widget.png`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(buf.subarray(0, 4).toString("hex")).toBe("89504e47");
+    expect(buf.length).toBeGreaterThan(5000);
+  });
+
+  it("unknown or private repos return 404, and non-GitHub paths are not treated as repos", async () => {
+    expect((await fetch(`${base}/github.com/nobody/nothing`)).status).toBe(404);
+    expect((await fetch(`${base}/api/score/github.com/nobody/nothing`)).status).toBe(404);
+    expect((await fetch(`${base}/github.com/a`)).status).toBe(404);
+  });
+});

@@ -15,6 +15,8 @@ export interface ReadmeFacts {
 
 export interface ProjectSignals {
   source: string;
+  /** Canonical owner/repo casing from GitHub, for display. */
+  fullName?: string;
   description: string | null;
   topics: string[];
   license: string | null;

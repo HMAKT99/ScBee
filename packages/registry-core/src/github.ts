@@ -8,6 +8,7 @@ export class ProjectError extends Error {
 }
 
 interface GhRepo {
+  full_name?: string;
   description?: string | null;
   topics?: string[];
   license?: { spdx_id?: string | null } | null;
@@ -81,6 +82,7 @@ export async function fetchGithubSignals(
 
   return {
     source: `github:${owner}/${repo}`,
+    fullName: meta.full_name,
     description: meta.description ?? null,
     topics: meta.topics ?? [],
     license: meta.license?.spdx_id ?? null,
