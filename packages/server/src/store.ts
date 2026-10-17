@@ -101,6 +101,22 @@ CREATE TABLE IF NOT EXISTS score_history (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_hist_src ON score_history(source_key, created_at);
+CREATE TABLE IF NOT EXISTS verdicts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_key TEXT NOT NULL,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  owner_key TEXT NOT NULL,
+  tried TEXT NOT NULL,
+  would_use INTEGER NOT NULL,
+  would_recommend INTEGER NOT NULL,
+  friction TEXT NOT NULL DEFAULT '',
+  integrate TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(project_key, owner_key)
+);
+CREATE INDEX IF NOT EXISTS idx_verdict_proj ON verdicts(project_key, created_at);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -308,6 +324,45 @@ export class Store {
     const last = await this.one<{ created_at: number }>("SELECT created_at FROM score_history WHERE source_key = ? ORDER BY id DESC LIMIT 1", [key]);
     if (!last || now - last.created_at > 86_400_000)
       await this.run("INSERT INTO score_history (source_key, score_version, total, stars, created_at) VALUES (?,?,?,?,?)", [key, version, total, stars, now]);
+  }
+  /** One verdict per owner per project: a later verdict from the same owner replaces the earlier one. */
+  async upsertVerdict(v: {
+    project_key: string; agent_id: number; owner_key: string; tried: string; would_use: boolean; would_recommend: boolean;
+    friction: string[]; integrate: string[]; summary: string;
+  }) {
+    const now = Date.now();
+    await this.run(
+      `INSERT INTO verdicts (project_key, agent_id, owner_key, tried, would_use, would_recommend, friction, integrate, summary, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(project_key, owner_key) DO UPDATE SET agent_id = excluded.agent_id, tried = excluded.tried, would_use = excluded.would_use,
+         would_recommend = excluded.would_recommend, friction = excluded.friction, integrate = excluded.integrate,
+         summary = excluded.summary, updated_at = excluded.updated_at`,
+      [v.project_key, v.agent_id, v.owner_key, v.tried, v.would_use ? 1 : 0, v.would_recommend ? 1 : 0, v.friction.join(","), v.integrate.join(","), v.summary, now, now]);
+  }
+  /** Verdicts joined to their agents (hidden agents excluded), newest first. */
+  async verdictsFor(projectKey: string, limit = 100) {
+    const rows = await this.rows<{
+      handle: string; owner_key: string; agent_created_at: number; verified: number; tried: string; would_use: number; would_recommend: number;
+      friction: string; integrate: string; summary: string; created_at: number; updated_at: number;
+    }>(
+      `SELECT a.handle, v.owner_key, a.created_at AS agent_created_at, a.verified, v.tried, v.would_use, v.would_recommend,
+              v.friction, v.integrate, v.summary, v.created_at, v.updated_at
+       FROM verdicts v JOIN agents a ON a.id = v.agent_id WHERE v.project_key = ? AND a.hidden = 0 ORDER BY v.id DESC LIMIT ?`,
+      [projectKey, limit]);
+    return rows.map((r) => ({
+      ...r, verified: r.verified === 1, would_use: r.would_use === 1, would_recommend: r.would_recommend === 1,
+      friction: r.friction ? r.friction.split(",") : [], integrate: r.integrate ? r.integrate.split(",") : [],
+    }));
+  }
+  /** When this project first appeared on ScBee (first score, registration or verdict). Starts the 72-hour launch window. */
+  async launchAt(projectKey: string): Promise<number | null> {
+    const r = await this.one<{ t: number | null }>(
+      `SELECT MIN(t) AS t FROM (
+         SELECT MIN(created_at) AS t FROM score_history WHERE source_key = ?
+         UNION ALL SELECT MIN(created_at) FROM agents WHERE source_key = ?
+         UNION ALL SELECT MIN(created_at) FROM verdicts WHERE project_key = ?)`,
+      [projectKey, projectKey, projectKey]);
+    return r?.t ?? null;
   }
   close() {
     this.db.close();
