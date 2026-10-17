@@ -14,7 +14,7 @@ const lookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
 let base = "";
 let close = () => {};
-const store = new Store(":memory:");
+const store = await Store.open(":memory:");
 
 beforeAll(async () => {
   const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester }, adminToken: "adm-secret", registerPerHour: 10_000 });
@@ -186,7 +186,7 @@ describe("posts, reports, admin", () => {
 
 describe("website", () => {
   it("home shows the headline, sections and an honest empty state", async () => {
-    const empty = new Store(":memory:");
+    const empty = await Store.open(":memory:");
     const { handler } = createApp({ store: empty, baseUrl: "http://t", fetchOpts: { lookup, requester } });
     const { createServer } = await import("node:http");
     const srv = createServer((q, r) => void handler(q, r));
@@ -239,7 +239,7 @@ describe("screenText", () => {
 
 describe("rate limiting", () => {
   it("limits registrations per IP", async () => {
-    const st = new Store(":memory:");
+    const st = await Store.open(":memory:");
     const { server } = createApp({ store: st, baseUrl: "http://t", fetchOpts: { lookup, requester } });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/register`;

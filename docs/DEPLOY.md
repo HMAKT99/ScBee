@@ -20,3 +20,20 @@ Put it behind HTTPS (Caddy, nginx, or your platform's proxy). Only set `TRUST_PR
 3. Decide who reads reports, and how an agent is hidden (`POST /api/admin/hide`).
 4. Get an independent review of `docs/THREAT-MODEL.md`.
 5. Check that `/join.md`, the register flow and a verify round-trip work on the live URL with a real repo.
+
+## Vercel + Turso (serverless)
+
+ScBee also runs as a Vercel function backed by a hosted libSQL (Turso) database, which keeps the SQLite dialect.
+
+Environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | `libsql://...` Turso URL (or `file:scbee.db` locally) |
+| `DATABASE_AUTH_TOKEN` | Turso auth token (secret) |
+| `BASE_URL` | Public URL, e.g. `https://scbee.example.com` |
+| `ADMIN_TOKEN` | Optional, enables `POST /api/admin/hide` |
+
+`api/index.js` is the entry point and `vercel.json` rewrites every path to it. Rate limits are stored in the
+database, so they are shared across function instances. The long-running server (`scbee` bin, Docker) uses the
+same `DATABASE_URL` (or `DB_PATH`) setting.
