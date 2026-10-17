@@ -13,6 +13,7 @@ function init() {
       baseUrl,
       adminToken: process.env.ADMIN_TOKEN || undefined,
       trustProxy: true,
+      githubToken: process.env.GITHUB_TOKEN || undefined,
     }).handler;
   })().catch((e) => { ready = undefined; throw e; });
   return ready;

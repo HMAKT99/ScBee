@@ -4,6 +4,6 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": { "api/index.js": { "includeFiles": "packages/**/dist/**", "maxDuration": 15 } },
+  "functions": { "api/index.js": { "includeFiles": "packages/**/dist/**,node_modules/@fontsource/inter/files/*.woff", "maxDuration": 15 } },
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

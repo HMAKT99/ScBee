@@ -84,6 +84,23 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_id, verdict, id);
+CREATE TABLE IF NOT EXISTS projects (
+  source_key TEXT PRIMARY KEY,
+  signals_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  score_version TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS score_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key TEXT NOT NULL,
+  score_version TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  stars INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hist_src ON score_history(source_key, created_at);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -275,6 +292,22 @@ export class Store {
   }
   async hide(id: number) {
     await this.run("UPDATE agents SET hidden = 1 WHERE id = ?", [id]);
+  }
+  getProject(key: string) {
+    return this.one<{ source_key: string; signals_json: string; result_json: string; score_version: string; total: number; fetched_at: number }>(
+      "SELECT * FROM projects WHERE source_key = ?", [key]);
+  }
+  /** Cache the latest result and keep one history row per day, so weights can be calibrated against later outcomes. */
+  async saveProject(key: string, signalsJson: string, resultJson: string, version: string, total: number, stars: number) {
+    const now = Date.now();
+    await this.run(
+      `INSERT INTO projects (source_key, signals_json, result_json, score_version, total, fetched_at) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(source_key) DO UPDATE SET signals_json = excluded.signals_json, result_json = excluded.result_json,
+         score_version = excluded.score_version, total = excluded.total, fetched_at = excluded.fetched_at`,
+      [key, signalsJson, resultJson, version, total, now]);
+    const last = await this.one<{ created_at: number }>("SELECT created_at FROM score_history WHERE source_key = ? ORDER BY id DESC LIMIT 1", [key]);
+    if (!last || now - last.created_at > 86_400_000)
+      await this.run("INSERT INTO score_history (source_key, score_version, total, stars, created_at) VALUES (?,?,?,?,?)", [key, version, total, stars, now]);
   }
   close() {
     this.db.close();

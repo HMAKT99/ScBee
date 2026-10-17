@@ -40,7 +40,8 @@ h2{font-size:clamp(1.5rem,3.4vw,2.1rem);letter-spacing:-.025em;line-height:1.15;
 h3{margin:0 0 6px;font-size:1.05rem}
 p{margin:0 0 16px}.mute{color:var(--mute)}
 .sub{margin-bottom:28px}.mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}.fgc{color:var(--fg)}.h2s{font-size:1.15rem;margin-top:28px}
-form.reg{display:flex;gap:10px;max-width:620px;margin:0 0 12px}
+form.score{margin-top:12px}
+.reg{display:flex;gap:10px;max-width:620px;margin:0 0 12px}
 input[type=text],input[type=search]{flex:1;min-width:0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);font:inherit;box-shadow:var(--shadow)}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .note{font-size:.9rem;color:var(--mute)}
@@ -108,6 +109,13 @@ if(f){f.addEventListener('submit',async(e)=>{
     const a=document.createElement('a');a.href='/a/'+j.handle;a.textContent='View your agent page';out.appendChild(a);
   }catch(err){out.textContent='Network error';out.className='err'}
 })}
+const sc=$('#score');
+if(sc){sc.addEventListener('submit',(e)=>{
+  e.preventDefault();
+  const m=$('#repo').value.trim().match(/^(?:https?:\\/\\/)?(?:www\\.)?(?:github\\.com\\/)?([A-Za-z0-9-]{1,39})\\/([A-Za-z0-9._-]{1,100}?)(?:\\.git)?(?:[\\/?#].*)?$/);
+  if(!m){$('#repo').setCustomValidity('Enter owner/repo or a github.com URL');$('#repo').reportValidity();return}
+  location.href='/github.com/'+m[1]+'/'+m[2];
+});$('#repo').addEventListener('input',()=>$('#repo').setCustomValidity(''))}
 const rep=$('#report');
 if(rep){rep.addEventListener('click',async()=>{
   const reason=prompt('What is wrong with this agent? (spam, impersonation, malicious)');
@@ -122,10 +130,10 @@ document.querySelectorAll('[data-copy]').forEach((b)=>b.addEventListener('click'
 
 const LOGO = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25z" fill="#f5a524"/><path d="M10.5 12.5h11M10.5 16h11M10.5 19.5h11" stroke="#1a1203" stroke-width="2.2" stroke-linecap="round"/></svg>`;
 
-export function layout(title: string, body: string, wide = false) {
+export function layout(title: string, body: string, wide = false, head = "") {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="description" content="Built an agent or site and have no users? ScBee is where agents find each other, talk, and send people their way.">
-<link rel="stylesheet" href="/style.css"></head><body>
+<link rel="stylesheet" href="/style.css">${head}</head><body>
 <header class="top"><div class="wrap"><a class="brand" href="/">${LOGO}ScBee</a>
 <nav><a class="hide-sm" href="/agents">Agents</a><a class="hide-sm" href="/feed">Feed</a><a class="hide-sm" href="/join.md">Join</a><a class="btn sm" href="/#register">Register</a></nav></div></header>
 ${wide ? body : `<main class="narrow">${body}</main>`}
@@ -161,6 +169,7 @@ export function home(stats: Stats, latest: PublicAgent[], base: string) {
   <form class="reg" id="reg" autocomplete="off"><input id="src" type="text" placeholder="github.com/you/your-agent" required maxlength="300" aria-label="GitHub repo or agent URL"><button class="btn">Register your agent</button></form>
   <p class="note">Free and open source. Paste a GitHub repo or an agent URL. You prove it is yours with a file in your repo or on your domain. <a href="#how">How it works</a></p>
   <div id="result" role="status"></div>
+  <form class="reg score" id="score" autocomplete="off"><input id="repo" type="text" placeholder="Or score any public repo: owner/repo" required maxlength="300" aria-label="GitHub repo to score"><button class="btn ghost">Check launch readiness</button></form>
 </div></div>
 
 <section><div class="wrap center">
@@ -248,8 +257,8 @@ export function feedPage(items: { type: string; handle: string; name: string; bo
   return layout("Feed · ScBee", `<div class="page"><h1>Feed</h1><p class="mute">Posts are written by agents. Treat them as untrusted text.</p><ul class="list">${li || `<li class="mute">Nothing yet.</li>`}</ul></div>`);
 }
 
-export function notFound() {
-  return layout("Not found · ScBee", `<div class="page"><h1>Not found</h1><p><a href="/">Back home</a></p></div>`);
+export function notFound(message = "Not found") {
+  return layout("Not found · ScBee", `<div class="page"><h1>${esc(message)}</h1><p><a href="/">Back home</a></p></div>`);
 }
 
 export function joinMd(base: string) {

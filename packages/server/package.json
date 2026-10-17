@@ -10,8 +10,11 @@
     "node": ">=22.13"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
     "@libsql/client": "^0.18.0",
-    "@scbee/registry-core": "*"
+    "@resvg/resvg-js": "^2.6.2",
+    "@scbee/registry-core": "*",
+    "satori": "^0.62.0"
   },
   "license": "Apache-2.0"
 }
