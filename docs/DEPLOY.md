@@ -30,7 +30,7 @@ Environment variables:
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | `libsql://...` Turso URL (or `file:scbee.db` locally) |
-| `DATABASE_AUTH_TOKEN` | Turso auth token (secret) |
+| `DATABASE_AUTH_TOKEN` | Turso auth token (secret). `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (set by the Vercel Turso integration) are also accepted |
 | `BASE_URL` | Public URL, e.g. `https://scbee.example.com` |
 | `ADMIN_TOKEN` | Optional, enables `POST /api/admin/hide` |
 | `GITHUB_TOKEN` | Read-only token for api.github.com (60 requests/hour per IP without one) |
