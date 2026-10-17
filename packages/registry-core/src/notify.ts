@@ -1,0 +1,52 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+
+export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready";
+
+export interface NotificationDraft {
+  kind: NotificationKind;
+  /** De-duplication key: the same (agent, kind, ref) is never delivered twice. */
+  ref: string;
+  title: string;
+  body: string;
+  url: string;
+}
+
+const dot = (key: string) => key.replace(/^github:/, "github.com/");
+
+/**
+ * Messages are built only from fields we control (project names, handles, enum values, numbers).
+ * They never include text written by other agents or project authors.
+ */
+export const messages = {
+  verdictReceived: (project: string, handle: string, tried: string, wouldUse: boolean, base: string): NotificationDraft => ({
+    kind: "verdict_received", ref: "", title: `An agent evaluated ${dot(project)}`,
+    body: `@${handle} ${tried.replace("_", " ")} and ${wouldUse ? "would use it" : "would not use it"}. Open the project page to see the details.`,
+    url: `${base}/${dot(project)}`,
+  }),
+  composesWith: (mine: string, other: string, base: string): NotificationDraft => ({
+    kind: "composes_with", ref: `${mine}>${other}`, title: `${dot(other)} fits with ${dot(mine)}`,
+    body: `A newly scored project, ${dot(other)}, is connected to yours in the ScBee constellation. See why on its page.`,
+    url: `${base}/${dot(other)}`,
+  }),
+  forecastReady: (project: string, evaluations: number, base: string): NotificationDraft => ({
+    kind: "forecast_ready", ref: project, title: `Launch forecast ready for ${dot(project)}`,
+    body: `The 72-hour window closed with ${evaluations} agent evaluation${evaluations === 1 ? "" : "s"}.`,
+    url: `${base}/${dot(project)}`,
+  }),
+};
+
+/** Per-agent webhook secret, derived so only a nonce is stored: rotating = new nonce. */
+export const deriveSecret = (serverKey: string, agentId: number, nonce: string) =>
+  createHmac("sha256", serverKey).update(`wh:${agentId}:${nonce}`).digest("hex");
+export const newNonce = () => randomBytes(12).toString("hex");
+
+/** Signature header value: sha256=HMAC(secret, `${timestamp}.${body}`). Receivers should reject old timestamps. */
+export const signBody = (secret: string, timestamp: number, body: string) =>
+  `sha256=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
+
+export function verifySignature(secret: string, timestamp: number, body: string, header: string, now = Date.now(), toleranceMs = 5 * 60_000): boolean {
+  if (Math.abs(now - timestamp) > toleranceMs) return false;
+  const want = Buffer.from(signBody(secret, timestamp, body));
+  const got = Buffer.from(header);
+  return want.length === got.length && timingSafeEqual(want, got);
+}

@@ -1,12 +1,17 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Requester } from "@scbee/registry-core";
+import { deriveSecret, verifySignature } from "@scbee/registry-core";
 import { createApp } from "./app.js";
 import { Store } from "./store.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 
 const files: Record<string, string> = {};
-const requester: Requester = async (r) => {
+const posts: { url: string; body?: string; headers?: Record<string, string> }[] = [];
+let searchItems: unknown[] = [];
+const requester: Requester = async (r, o) => {
+  if (o?.method === "POST") { posts.push({ url: r.url.toString(), body: o.body, headers: o.headers }); return { status: 200, body: "" }; }
+  if (r.url.toString().startsWith("https://api.github.com/search/repositories")) return { status: 200, body: JSON.stringify({ items: searchItems }) };
   const body = files[r.url.toString()];
   return body === undefined ? { status: 404, body: "" } : { status: 200, body };
 };
@@ -17,7 +22,7 @@ let close = () => {};
 const store = await Store.open(":memory:");
 
 beforeAll(async () => {
-  const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester }, adminToken: "adm-secret", registerPerHour: 10_000 });
+  const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester }, adminToken: "adm-secret", registerPerHour: 10_000, cronSecret: "cron-secret", webhookKey: "wh-key" });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
@@ -515,5 +520,106 @@ describe("constellation", () => {
     const page = await call("GET", "/github.com/gl/lonely");
     expect(page.text).toMatch(/No connections found yet/);
     expect((await call("GET", "/api/graph/github.com/never/scored")).status).toBe(404);
+  });
+});
+
+
+describe("notifications, webhooks, cron and gallery", () => {
+  const verdict = (project: string, over: object = {}) => ({ project, tried: "ran_example", would_use: true, would_recommend_to_human: true, summary: "SECRET-SUMMARY-TEXT", ...over });
+  const cron = (path: string, token = "cron-secret") => call("POST", path, undefined, undefined, { authorization: `Bearer ${token}` });
+  const seedRepo = (owner: string, repo: string, o: { description?: string; topics?: string[] } = {}) => {
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    files[api] = JSON.stringify({ full_name: `${owner}/${repo}`, description: o.description ?? "", topics: o.topics ?? [], stargazers_count: 3, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+  };
+
+  it("owner of a registered project is notified of verdicts, once per evaluating owner, without third-party text", async () => {
+    const owner = await makeAgent("nown/proj");
+    const judge = await makeAgent("njudge/agent");
+    expect((await call("POST", "/api/verdicts", verdict("github.com/nown/proj"), judge.key)).status).toBe(201);
+    await call("POST", "/api/verdicts", verdict("github.com/nown/proj", { would_use: false }), judge.key); // same owner again
+    const n = await call("GET", "/api/notifications", undefined, owner.key);
+    expect(n.json.notifications).toHaveLength(1);
+    const first = n.json.notifications[0];
+    expect(first).toMatchObject({ kind: "verdict_received", read_at: null });
+    expect(first.body).toMatch(/@.*ran example/);
+    expect(JSON.stringify(n.json)).not.toMatch(/SECRET-SUMMARY-TEXT/);
+    expect((await call("GET", "/api/notifications?unread=1", undefined, judge.key)).json.notifications).toHaveLength(0); // not shown to others
+    await call("POST", "/api/notifications/read", { ids: [first.id] }, owner.key);
+    expect((await call("GET", "/api/notifications?unread=1", undefined, owner.key)).json.notifications).toHaveLength(0);
+    expect((await call("GET", "/api/notifications")).status).toBe(401);
+  });
+
+  it("delivers signed webhooks, refuses unsafe URLs, and can be removed", async () => {
+    const owner = await makeAgent("whown/proj");
+    expect((await call("POST", "/api/webhook", { url: "https://10.0.0.5/hook" }, owner.key)).status).toBe(400);
+    expect((await call("POST", "/api/webhook", { url: "http://hooks.example.test/in" }, owner.key)).status).toBe(400);
+    const set = await call("POST", "/api/webhook", { url: "https://hooks.example.test/in" }, owner.key);
+    expect(set.status).toBe(201);
+    expect(set.json.secret).toMatch(/^[a-f0-9]{64}$/);
+    posts.length = 0;
+    const judge = await makeAgent("whjudge/agent");
+    await call("POST", "/api/verdicts", verdict("github.com/whown/proj"), judge.key);
+    expect(posts).toHaveLength(1);
+    const p = posts[0]!;
+    expect(p.url).toBe("https://hooks.example.test/in");
+    expect(verifySignature(set.json.secret, Number(p.headers!["x-scbee-timestamp"]), p.body!, p.headers!["x-scbee-signature"]!)).toBe(true);
+    expect(JSON.parse(p.body!)).toMatchObject({ kind: "verdict_received" });
+    expect(p.body).not.toMatch(/SECRET-SUMMARY-TEXT/);
+    expect((await call("DELETE", "/api/webhook", undefined, owner.key)).status).toBe(200);
+    posts.length = 0;
+    const judge2 = await makeAgent("whjudge2/agent");
+    await call("POST", "/api/verdicts", verdict("github.com/whown/proj"), judge2.key);
+    expect(posts).toHaveLength(0);
+  });
+
+  it("notifies owners when a newly scored project connects to theirs", async () => {
+    const owner = await makeAgent("cwown/vec-store", { card: { name: "Vec", skills: [] } });
+    seedRepo("cwown", "vec-store", { description: "Vector store for embeddings", topics: ["vector", "embeddings"] });
+    expect((await call("GET", "/api/score/github.com/cwown/vec-store")).status).toBe(200);
+    seedRepo("cwnew", "scraper", { description: "A fast scraper", topics: ["scraper"] });
+    expect((await call("GET", "/api/score/github.com/cwnew/scraper")).status).toBe(200);
+    const n = await call("GET", "/api/notifications", undefined, owner.key);
+    expect(n.json.notifications.map((x: any) => x.kind)).toContain("composes_with");
+    const c = n.json.notifications.find((x: any) => x.kind === "composes_with");
+    expect(c.url).toBe("http://t/github.com/cwnew/scraper");
+  });
+
+  it("cron endpoints require the secret; tick sends forecast_ready once the window has closed", async () => {
+    expect((await call("POST", "/api/cron/tick")).status).toBe(403);
+    expect((await cron("/api/cron/tick", "wrong-secret")).status).toBe(403);
+    const owner = await makeAgent("fcown/proj");
+    expect((await cron("/api/cron/tick")).json.forecasts_checked).toBeGreaterThanOrEqual(0);
+    expect((await call("GET", "/api/notifications", undefined, owner.key)).json.notifications.filter((x: any) => x.kind === "forecast_ready")).toHaveLength(0);
+    await store.db.execute({ sql: "UPDATE agents SET created_at = ? WHERE id = (SELECT id FROM agents WHERE source_key = 'github:fcown/proj')", args: [Date.now() - 4 * 86_400_000] });
+    await cron("/api/cron/tick");
+    await cron("/api/cron/tick"); // idempotent
+    expect((await call("GET", "/api/notifications", undefined, owner.key)).json.notifications.filter((x: any) => x.kind === "forecast_ready")).toHaveLength(1);
+  });
+
+  it("gallery refresh scores new repos per collection and renders them", async () => {
+    seedRepo("galowner", "shiny", { description: "A <b>shiny</b> thing" });
+    searchItems = [{ full_name: "galowner/shiny" }];
+    const r = await cron("/api/cron/gallery?limit=5");
+    expect(r.status).toBe(200);
+    expect(r.json.added["mcp-servers"]).toBe(1);
+    const page = await call("GET", "/gallery");
+    expect(page.status).toBe(200);
+    expect(page.text).toMatch(/galowner\/shiny/);
+    expect(page.text).toMatch(/not an endorsement/);
+    expect(page.text).not.toMatch(/<b>shiny/);
+    const api = await call("GET", "/api/gallery");
+    expect(api.json.collections[0].items[0]).toMatchObject({ project: "github.com/galowner/shiny" });
+  });
+
+  it("gallery cron is disabled without a secret", async () => {
+    const st = await Store.open(":memory:");
+    const { handler } = createApp({ store: st, baseUrl: "http://t", fetchOpts: { lookup, requester } });
+    const res: any = { writeHead() {}, end() {} };
+    let status = 0;
+    res.writeHead = (s: number) => { status = s; };
+    await handler({ url: "/api/cron/tick", method: "POST", headers: {}, socket: {}, [Symbol.asyncIterator]: async function* () {} } as any, res);
+    expect(status).toBe(404);
+    st.close();
   });
 });

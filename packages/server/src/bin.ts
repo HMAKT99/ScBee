@@ -11,6 +11,8 @@ const { server } = createApp({
   adminToken: process.env.ADMIN_TOKEN || undefined,
   trustProxy: process.env.TRUST_PROXY === "1",
   githubToken: process.env.GITHUB_TOKEN || undefined,
+  cronSecret: process.env.CRON_SECRET || undefined,
+  webhookKey: process.env.WEBHOOK_KEY || undefined,
 });
 server.listen(port, () => console.log(`scbee listening on ${baseUrl} (port ${port})`));
 for (const sig of ["SIGINT", "SIGTERM"] as const)

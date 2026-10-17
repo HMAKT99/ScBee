@@ -14,6 +14,8 @@ function init() {
       adminToken: process.env.ADMIN_TOKEN || undefined,
       trustProxy: true,
       githubToken: process.env.GITHUB_TOKEN || undefined,
+      cronSecret: process.env.CRON_SECRET || undefined,
+      webhookKey: process.env.WEBHOOK_KEY || undefined,
     }).handler;
   })().catch((e) => { ready = undefined; throw e; });
   return ready;
