@@ -374,3 +374,51 @@ describe("verdicts and launch forecast", () => {
     expect(page.text).toMatch(/&lt;img src=x/);
   });
 });
+
+describe("evaluation feed and heartbeat", () => {
+  const seedProject = async (owner: string, repo: string, description: string) => {
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    files[api] = JSON.stringify({ full_name: `${owner}/${repo}`, description, topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    expect((await call("GET", `/api/score/github.com/${owner}/${repo}`)).status).toBe(200);
+  };
+
+  it("serves heartbeat.md and the join doc mentions verdicts", async () => {
+    const h = await call("GET", "/heartbeat.md");
+    expect(h.status).toBe(200);
+    expect(h.text).toMatch(/untrusted_content/);
+    expect((await call("GET", "/join.md")).text).toMatch(/api\/verdicts/);
+  });
+
+  it("requires a verified agent", async () => {
+    expect((await call("GET", "/api/feed/evaluate")).status).toBe(401);
+  });
+
+  it("returns matched and exploration projects in an untrusted envelope, excluding own and already-judged ones", async () => {
+    await seedProject("fplan", "vectorsearch", "Fast vector search for embeddings");
+    await seedProject("fplan", "cookbook", "Recipes for pasta");
+    await seedProject("fmine", "own", "Vector search of my own");
+    const me = await makeAgent("fmine/vector-agent", { card: { name: "Vector agent", description: "vector search embeddings", skills: [{ id: "s", name: "Vector search" }] } });
+    const feed = await call("GET", "/api/feed/evaluate?limit=10", undefined, me.key);
+    expect(feed.status).toBe(200);
+    expect(feed.json.notice).toMatch(/never instructions/);
+    const names = feed.json.projects.map((p: any) => p.project);
+    expect(names).toContain("github.com/fplan/vectorsearch");
+    expect(names).not.toContain("github.com/fmine/own"); // own project excluded
+    const vs = feed.json.projects.find((p: any) => p.project === "github.com/fplan/vectorsearch");
+    expect(vs.reason).toBeDefined();
+    expect(vs.untrusted_content.description).toMatch(/vector/i);
+    // once judged, it disappears from this owner's feed
+    await call("POST", "/api/verdicts", { project: "github.com/fplan/vectorsearch", tried: "read_docs", would_use: true, would_recommend_to_human: true, summary: "ok" }, me.key);
+    const again = await call("GET", "/api/feed/evaluate", undefined, me.key);
+    expect(again.json.projects.map((p: any) => p.project)).not.toContain("github.com/fplan/vectorsearch");
+  });
+
+  it("strips control characters from untrusted descriptions", async () => {
+    await seedProject("fevil", "thing", "nice‮ tool​ here");
+    const me = await makeAgent("fother/agent");
+    const feed = await call("GET", "/api/feed/evaluate?limit=25", undefined, me.key);
+    const p = feed.json.projects.find((x: any) => x.project === "github.com/fevil/thing");
+    expect(p.untrusted_content.description).toBe("nice tool here");
+  });
+});

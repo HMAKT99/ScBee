@@ -7,3 +7,4 @@ export * from "./signals.js";
 export * from "./score.js";
 export * from "./github.js";
 export * from "./verdict.js";
+export * from "./feed.js";

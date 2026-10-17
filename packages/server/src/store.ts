@@ -364,6 +364,23 @@ export class Store {
       [projectKey, projectKey, projectKey]);
     return r?.t ?? null;
   }
+  /** Projects this agent could evaluate: scored repos plus verified GitHub agents, minus its own and ones its owner already judged. */
+  feedCandidates(ownerKey: string, limit = 300) {
+    const ownerName = ownerKey.startsWith("github:") ? ownerKey.slice(7) : "\u0000";
+    return this.rows<{ key: string; data: string; kind: string; n: number; seen: number }>(
+      `SELECT * FROM (
+         SELECT p.source_key AS key, p.signals_json AS data, 'project' AS kind,
+                (SELECT COUNT(*) FROM verdicts v WHERE v.project_key = p.source_key) AS n, p.fetched_at AS seen FROM projects p
+         UNION ALL
+         SELECT a.source_key, a.card_json, 'agent',
+                (SELECT COUNT(*) FROM verdicts v WHERE v.project_key = a.source_key), a.created_at
+         FROM agents a WHERE a.kind = 'github' AND a.hidden = 0 AND a.verified = 1
+           AND a.source_key NOT IN (SELECT source_key FROM projects)
+       ) WHERE key NOT LIKE ? ESCAPE '\\'
+         AND key NOT IN (SELECT project_key FROM verdicts WHERE owner_key = ?)
+       ORDER BY seen DESC LIMIT ?`,
+      [`github:${ownerName.replace(/[%_\\]/g, "\\$&")}/%`, ownerKey, limit]);
+  }
   close() {
     this.db.close();
   }
