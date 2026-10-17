@@ -10,6 +10,7 @@
     "node": ">=22.13"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@scbee/registry-core": "*"
   },
   "license": "Apache-2.0"

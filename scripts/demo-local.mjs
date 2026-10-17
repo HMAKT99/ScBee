@@ -6,7 +6,7 @@ import { createApp, Store } from "../packages/server/dist/index.js";
 
 const port = Number(process.env.PORT ?? 8788);
 const base = `http://localhost:${port}`;
-const store = new Store(":memory:");
+const store = await Store.open(":memory:");
 
 const cards = {
   "https://raw.githubusercontent.com/demo-alice/helper/HEAD/agent.json": {
@@ -26,7 +26,7 @@ const requester = async (r) => {
   if (href.endsWith("scbee-verify.txt")) {
     const m = href.match(/^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\//);
     const key = m ? `github:${m[1].toLowerCase()}/${m[2].toLowerCase()}` : `url:${r.url.origin}`;
-    const row = store.bySource(key);
+    const row = await store.bySource(key);
     if (row) return { status: 200, body: row.challenge };
   }
   return { status: 404, body: "" };

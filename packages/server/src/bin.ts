@@ -4,7 +4,7 @@ import { Store } from "./store.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const baseUrl = (process.env.BASE_URL ?? `http://localhost:${port}`).replace(/\/$/, "");
-const store = new Store(process.env.DB_PATH ?? "scbee.db");
+const store = await Store.open(process.env.DATABASE_URL ?? process.env.DB_PATH ?? "scbee.db", process.env.DATABASE_AUTH_TOKEN);
 const { server } = createApp({
   store,
   baseUrl,
