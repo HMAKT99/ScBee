@@ -11,6 +11,8 @@ export interface ReadmeFacts {
   hasMedia: boolean;
   hasSummary: boolean;
   envVars: number;
+  /** Other projects the README refers to: github:owner/repo, npm:name, pypi:name (capped). Used for graph edges only. */
+  mentions: string[];
 }
 
 export interface ProjectSignals {
@@ -33,6 +35,8 @@ export interface ProjectSignals {
   hasAgentCard: boolean;
   /** npm package for this repo, when its package.json names one that points back to the repo. */
   npmPackage?: string;
+  /** Runtime dependencies from package.json as npm:name (capped). Used for graph edges only. */
+  dependencies?: string[];
   npmDownloadsMonthly?: number;
   listedOnScbee: boolean;
   verifiedOnScbee: boolean;
@@ -52,9 +56,21 @@ function visible(md: string): string {
     .replace(/[​-‏⁠﻿]/g, "");
 }
 
+const GH_LINK = /github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?=[\s)\]"'`>#?]|\.git\b|\.?$|\/)/g;
+const NPM_INSTALL = /\bnpm\s+(?:i|install|add)\s+(?:-[-\w]+\s+)*(@?[a-z0-9~][a-z0-9._~-]*(?:\/[a-z0-9._~-]+)?)/gi;
+const PIP_INSTALL = /\bpip3?\s+install\s+(?:-[-\w]+\s+)*([A-Za-z0-9][A-Za-z0-9._-]*)/gi;
+
+function mentionsOf(md: string): string[] {
+  const out = new Set<string>();
+  for (const m of md.matchAll(GH_LINK)) out.add(`github:${m[1]!.toLowerCase()}/${m[2]!.toLowerCase().replace(/\.git$/, "")}`);
+  for (const m of md.matchAll(NPM_INSTALL)) out.add(`npm:${m[1]!.toLowerCase()}`);
+  for (const m of md.matchAll(PIP_INSTALL)) out.add(`pypi:${m[1]!.toLowerCase()}`);
+  return [...out].slice(0, 40);
+}
+
 export function analyseReadme(raw: string | null): ReadmeFacts {
   if (raw === null || raw.trim().length === 0)
-    return { present: false, headings: 0, codeBlocks: 0, hasInstallCommand: false, installPosition: null, hasUsageExample: false, hasMedia: false, hasSummary: false, envVars: 0 };
+    return { present: false, headings: 0, codeBlocks: 0, hasInstallCommand: false, installPosition: null, hasUsageExample: false, hasMedia: false, hasSummary: false, envVars: 0, mentions: [] };
   const md = visible(raw);
   const blocks = [...md.matchAll(/```[^\n]*\n([\s\S]*?)```/g)];
   const inline = [...md.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!);
@@ -85,6 +101,7 @@ export function analyseReadme(raw: string | null): ReadmeFacts {
     hasUsageExample: blocks.length >= 2 || (USAGE_HEADING.test(md) && blocks.length >= 1),
     hasMedia: MEDIA.test(md),
     hasSummary: !!prose,
+    mentions: mentionsOf(md),
     envVars: new Set(codeText.join("\n").match(ENV) ?? []).size || new Set(md.match(ENV) ?? []).size,
   };
 }
