@@ -73,11 +73,13 @@ export async function fetchGithubSignals(
 
   let runtimeDeclared = names.has(".nvmrc") || names.has(".node-version") || names.has(".python-version") || names.has(".tool-versions") || names.has("go.mod") || names.has("cargo.toml") || names.has("dockerfile");
   let npmPackage: string | undefined;
+  let dependencies: string[] | undefined;
   let npmDownloadsMonthly: number | undefined;
   if (names.has("package.json")) {
     const pj = await text("package.json");
     try {
-      const j = JSON.parse(pj ?? "{}") as { engines?: unknown; name?: unknown; private?: unknown };
+      const j = JSON.parse(pj ?? "{}") as { engines?: unknown; name?: unknown; private?: unknown; dependencies?: Record<string, unknown>; peerDependencies?: Record<string, unknown> };
+      dependencies = Object.keys({ ...(j.dependencies ?? {}), ...(j.peerDependencies ?? {}) }).slice(0, 200).map((d) => `npm:${d.toLowerCase()}`);
       runtimeDeclared = runtimeDeclared || !!j.engines;
       if (typeof j.name === "string" && !j.private) {
         // The same project: only count the package if it points back at this repo.
@@ -113,6 +115,7 @@ export async function fetchGithubSignals(
     runtimeDeclared,
     hasAgentCard,
     ...(npmPackage ? { npmPackage, npmDownloadsMonthly } : {}),
+    ...(dependencies?.length ? { dependencies } : {}),
     listedOnScbee: scbee.listed,
     verifiedOnScbee: scbee.verified,
     readme: analyseReadme(readme),

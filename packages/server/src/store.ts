@@ -381,6 +381,26 @@ export class Store {
        ORDER BY seen DESC LIMIT ?`,
       [`github:${ownerName.replace(/[%_\\]/g, "\\$&")}/%`, ownerKey, limit]);
   }
+  /** Scored GitHub projects as raw signals JSON, newest first. */
+  graphRows(limit = 2000) {
+    return this.rows<{ source_key: string; signals_json: string; total: number }>(
+      "SELECT source_key, signals_json, total FROM projects WHERE source_key LIKE 'github:%' ORDER BY fetched_at DESC LIMIT ?", [limit]);
+  }
+  /** Distinct owners who said, in a verdict on one project, that they would integrate it with another. Both directions. */
+  async endorsementsFor(projectKey: string): Promise<{ from: string; to: string; owners: number }[]> {
+    const out = new Map<string, { from: string; to: string; owners: Set<string> }>();
+    const add = (from: string, to: string, owner: string) => {
+      const k = `${from}>${to}`;
+      (out.get(k) ?? out.set(k, { from, to, owners: new Set() }).get(k)!).owners.add(owner);
+    };
+    for (const r of await this.rows<{ project_key: string; owner_key: string; integrate: string }>(
+      "SELECT project_key, owner_key, integrate FROM verdicts WHERE project_key = ? AND integrate != ''", [projectKey]))
+      for (const t of r.integrate.split(",")) add(r.project_key, t, r.owner_key);
+    for (const r of await this.rows<{ project_key: string; owner_key: string }>(
+      "SELECT project_key, owner_key FROM verdicts WHERE (',' || integrate || ',') LIKE ? ESCAPE '\\'", [`%,${projectKey.replace(/[%_\\]/g, "\\$&")},%`]))
+      add(r.project_key, projectKey, r.owner_key);
+    return [...out.values()].map((e) => ({ from: e.from, to: e.to, owners: e.owners.size }));
+  }
   close() {
     this.db.close();
   }

@@ -109,6 +109,26 @@ if(f){f.addEventListener('submit',async(e)=>{
     const a=document.createElement('a');a.href='/a/'+j.handle;a.textContent='View your agent page';out.appendChild(a);
   }catch(err){out.textContent='Network error';out.className='err'}
 })}
+const gx=$('#galaxy');
+if(gx&&gx.getContext){try{
+  const g=JSON.parse(gx.dataset.graph);const c=gx.getContext('2d');const W=gx.width,H=gx.height;
+  const COL={DEPENDS_ON:'#7aa2ff',COMPOSES_WITH:'#f5a524',ALTERNATIVE_TO:'#8b8b8b',ENDORSED_BY:'#4cc27a'};
+  const by=Object.fromEntries(g.nodes.map((n)=>[n.k,n]));
+  const others=g.edges.map((e)=>({e,n:by[e.t===g.center?e.f:e.t]})).filter((x)=>x.n);
+  const pos={};pos[g.center]={x:W/2,y:H/2};
+  others.forEach((o,i)=>{const a=(i/others.length)*Math.PI*2-Math.PI/2;const r=(1-o.e.w*0.45)*Math.min(W,H)*0.42;pos[o.n.k]={x:W/2+Math.cos(a)*r*1.35,y:H/2+Math.sin(a)*r}});
+  const stars=Array.from({length:60},(_,i)=>({x:(i*97%W),y:(i*61%H),r:(i%3)*0.4+0.4}));
+  const draw=(t)=>{c.clearRect(0,0,W,H);c.fillStyle='rgba(255,255,255,.35)';
+    stars.forEach((s)=>{c.globalAlpha=0.35+0.3*Math.sin(t/900+s.x);c.beginPath();c.arc(s.x,s.y,s.r,0,7);c.fill()});c.globalAlpha=1;
+    others.forEach((o)=>{const p=pos[o.n.k],q=pos[g.center];c.strokeStyle=COL[o.e.y]||'#888';c.globalAlpha=0.35+0.5*o.e.w;c.lineWidth=1+2*o.e.w;c.beginPath();c.moveTo(q.x,q.y);c.lineTo(p.x,p.y);c.stroke()});c.globalAlpha=1;
+    c.font='13px system-ui,sans-serif';c.textAlign='center';
+    const dot=(k,rad,col)=>{const p=pos[k];c.fillStyle=col;c.beginPath();c.arc(p.x,p.y,rad,0,7);c.fill();c.fillStyle='#f2efe8';c.fillText(by[k].n,p.x,p.y+rad+15)};
+    others.forEach((o)=>dot(o.n.k,6,COL[o.e.y]||'#888'));dot(g.center,11,'#f5a524')};
+  draw(0);
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const loop=(t)=>{draw(t);requestAnimationFrame(loop)};requestAnimationFrame(loop)}
+  gx.addEventListener('click',(ev)=>{const r=gx.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
+    for(const o of others){const p=pos[o.n.k];if(Math.hypot(p.x-x,p.y-y)<16){location.href='/'+o.n.k.replace('github:','github.com/');return}}});
+}catch(e){}}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{
   e.preventDefault();

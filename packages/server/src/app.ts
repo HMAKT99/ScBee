@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  InputError, ProjectError, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  InputError, ProjectError, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
@@ -94,6 +94,22 @@ export function createApp(opts: AppOptions) {
       if (e instanceof SiteError) throw new HttpError(e.status, e.message);
       throw e;
     }
+  }
+
+  const toNode = (key: string, json: string, total?: number): GraphNode => {
+    const sig = JSON.parse(json) as Partial<ProjectSignals>;
+    return { key, name: sig.fullName ?? key.slice(7), description: sig.description ?? "", topics: sig.topics ?? [], npmPackage: sig.npmPackage,
+      dependencies: sig.dependencies ?? [], mentions: sig.readme?.mentions ?? [], score: total };
+  };
+  /** Neighbours of one project. Computed on demand from the stored project signals and agent verdicts. */
+  async function constellation(key: string) {
+    const rows = await store.graphRows();
+    const nodes = new Map(rows.map((r) => [r.source_key, toNode(r.source_key, r.signals_json, r.total)]));
+    const center = nodes.get(key);
+    if (!center) return { center: null, nodes: [] as GraphNode[], edges: [] as GraphEdge[] };
+    const edges = buildEdges(center, [...nodes.values()], await store.endorsementsFor(key));
+    const keep = new Set(edges.flatMap((e) => [e.from, e.to]));
+    return { center, nodes: [...nodes.values()].filter((n) => keep.has(n.key) || n.key === key), edges };
   }
 
   async function forecastFor(projectKey: string) {
@@ -296,6 +312,15 @@ export function createApp(opts: AppOptions) {
         note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
 
+    const gm = path.match(/^\/api\/graph\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
+    if (method === "GET" && gm) {
+      await limit(`graph:${ip}`, 60, 60_000);
+      const src = parseSource(`${gm[1]}/${gm[2]}`);
+      const g = await constellation(src.key);
+      if (!g.center) throw new HttpError(404, "project not scored yet: open its page first");
+      return json(res, 200, { center: g.center.key, nodes: g.nodes.map((n) => ({ key: n.key, name: n.name, score: n.score ?? null })), edges: g.edges });
+    }
+
     if (method === "GET" && path === "/api/stats") return json(res, 200, await stats());
     if (method === "GET" && path === "/api/feed") return json(res, 200, { items: await store.feed() });
 
@@ -445,7 +470,7 @@ export function createApp(opts: AppOptions) {
         }
         if (!kind && !ext) {
           try {
-            return send(res, 200, projectPage(await projectScore(owner, repo, ip), baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)), "text/html");
+            return send(res, 200, projectPage(await projectScore(owner, repo, ip), baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)), "text/html");
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return send(res, e.status, notFound(e.message), "text/html");
             throw e;

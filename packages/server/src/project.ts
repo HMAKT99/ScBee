@@ -1,4 +1,4 @@
-import { band, type Forecast, type ScoreResult } from "@scbee/registry-core";
+import { band, type Forecast, type GraphEdge, type GraphNode, type ScoreResult } from "@scbee/registry-core";
 import { esc, layout } from "./html.js";
 
 export interface ProjectView {
@@ -58,7 +58,29 @@ function forecastSection(f: Forecast, verdicts: VerdictView[]): string {
 ${list ? `<ul class="items">${list}</ul>` : ""}</div>`;
 }
 
+const EDGE_LABEL: Record<string, string> = {
+  DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate",
+};
+
+export function constellationSection(g: { center: GraphNode | null; nodes: GraphNode[]; edges: GraphEdge[] }): string {
+  if (!g.center) return "";
+  const name = new Map(g.nodes.map((n) => [n.key, n]));
+  const items = g.edges.map((e) => {
+    const other = name.get(e.to === g.center!.key ? e.from : e.to);
+    if (!other) return "";
+    const path = other.key.replace("github:", "github.com/");
+    return `<li><strong>${esc(EDGE_LABEL[e.type] ?? e.type)}</strong> <a href="/${esc(path)}">${esc(other.name)}</a><span class="fix">${esc(e.reason)}</span></li>`;
+  }).join("");
+  const data = JSON.stringify({ center: g.center.key, nodes: g.nodes.map((n) => ({ k: n.key, n: n.name, s: n.score ?? null })), edges: g.edges.map((e) => ({ f: e.from, t: e.to, y: e.type, w: e.weight })) });
+  return `<h2 class="h2s">Constellation</h2><div class="comp">
+${g.edges.length
+    ? `<canvas id="galaxy" class="galaxy" width="640" height="360" role="img" aria-label="Projects connected to ${esc(g.center.name)}" data-graph="${esc(data)}"></canvas><ul class="items">${items}</ul>`
+    : `<p>No connections found yet. Connections come from dependencies, README mentions, complementary categories and agents who say they would integrate two projects. The more projects are scored on ScBee, the more appear here.</p>`}
+<p class="note">Every link above is computed by fixed rules from public data and agent verdicts; the reason is shown with it.</p></div>`;
+}
+
 export const PROJECT_CSS = `
+.galaxy{display:block;width:100%;height:auto;border-radius:10px;background:#0d0c0a;margin-bottom:14px}
 .proj{padding:32px 0 8px}
 .proj-head{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
 .proj-head>div{flex:1 1 240px}
@@ -81,7 +103,7 @@ export const PROJECT_CSS = `
 .note{font-size:13px;color:var(--mute)}
 `;
 
-export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forecast; verdicts: VerdictView[] }): string {
+export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forecast; verdicts: VerdictView[] }, graph?: { center: GraphNode | null; nodes: GraphNode[]; edges: GraphEdge[] }): string {
   const { result: r } = p;
   const b = band(r.total);
   const path = p.path ?? `github.com/${p.owner}/${p.repo}`;
@@ -107,6 +129,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
 ${p.description ? `<p class="mute">${esc(p.description)}</p>` : ""}</div></div>
 ${fixes}
 <div class="comps">${comps}</div>
+${graph ? constellationSection(graph) : ""}
 ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <h2 class="h2s">Share it</h2>
 <div class="share"><a class="btn sm" rel="noopener" href="https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}">Post on X</a>

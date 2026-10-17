@@ -470,3 +470,50 @@ describe("npm and website ingestion", () => {
     expect(feed.json.projects.map((p: any) => p.project).some((n: string) => n.startsWith("web/") || n.startsWith("url:"))).toBe(false);
   });
 });
+
+describe("constellation", () => {
+  const seed = async (owner: string, repo: string, o: { description?: string; topics?: string[]; readme?: string; pkg?: object }) => {
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    files[api] = JSON.stringify({ full_name: `${owner}/${repo}`, description: o.description ?? "", topics: o.topics ?? [], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = JSON.stringify([...(o.readme ? [{ name: "README.md", type: "file" }] : []), ...(o.pkg ? [{ name: "package.json", type: "file" }] : [])]);
+    if (o.readme) files[`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/README.md`] = o.readme;
+    if (o.pkg) files[`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/package.json`] = JSON.stringify(o.pkg);
+    expect((await call("GET", `/api/score/github.com/${owner}/${repo}`)).status).toBe(200);
+  };
+
+  it("links projects by dependency, README mention and complementary category, with reasons", async () => {
+    await seed("gx", "scraper-lib", { description: "A fast web scraper", topics: ["scraper"] });
+    await seed("gx", "vec-store", { description: "Vector store for embeddings", topics: ["vector", "embeddings"] });
+    await seed("gx", "uses-both", { description: "Glue", readme: "# Glue\n\nBuilt on https://github.com/gx/scraper-lib today.\n" });
+    const g = await call("GET", "/api/graph/github.com/gx/scraper-lib");
+    expect(g.status).toBe(200);
+    expect(g.json.center).toBe("github:gx/scraper-lib");
+    const byTo = Object.fromEntries(g.json.edges.map((e: any) => [e.to, e]));
+    expect(byTo["github:gx/vec-store"]).toMatchObject({ type: "COMPOSES_WITH" });
+    expect(byTo["github:gx/vec-store"].reason).toMatch(/scraping.*vector search/);
+    expect(byTo["github:gx/uses-both"].reason).toMatch(/README mentions/);
+    const page = await call("GET", "/github.com/gx/scraper-lib");
+    expect(page.text).toMatch(/Constellation/);
+    expect(page.text).toMatch(/data-graph=/);
+    expect(page.text).toMatch(/Works well with/);
+  });
+
+  it("agent verdicts create ENDORSED_BY edges", async () => {
+    await seed("ge", "alpha", { description: "Alpha thing" });
+    await seed("ge", "beta", { description: "Beta thing" });
+    const a = await makeAgent("gev1/agent");
+    const b = await makeAgent("gev2/agent");
+    for (const x of [a, b])
+      expect((await call("POST", "/api/verdicts", { project: "github.com/ge/alpha", tried: "integrated", would_use: true, would_recommend_to_human: true, would_integrate_with: ["github.com/ge/beta"], summary: "Pairs well." }, x.key)).status).toBe(201);
+    const g = await call("GET", "/api/graph/github.com/ge/beta");
+    const e = g.json.edges.find((x: any) => x.type === "ENDORSED_BY");
+    expect(e.reason).toMatch(/2 independent agent owners/);
+  });
+
+  it("empty state, unknown project, and escaping", async () => {
+    await seed("gl", "lonely", { description: "<b>x</b> nothing related" });
+    const page = await call("GET", "/github.com/gl/lonely");
+    expect(page.text).toMatch(/No connections found yet/);
+    expect((await call("GET", "/api/graph/github.com/never/scored")).status).toBe(404);
+  });
+});
