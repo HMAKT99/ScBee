@@ -98,7 +98,7 @@ if(mapEl){fetch('/api/network').then((r)=>r.json()).then((g)=>{try{
   cv.addEventListener('mouseleave',()=>{hover=null;tip.classList.remove('on')});
   cv.addEventListener('click',(ev)=>{const {best}=pick(ev);if(best&&best.path)location.href=best.path});
   addEventListener('resize',()=>{size();for(let s=0;s<60;s++)step();placeGhost();if(reduce)draw(0)});
-}catch(e){console.error('map',e)}}).catch((e)=>console.error('map fetch',e))}
+}catch(e){console.error('map',e);const m=mapEl.querySelector('.map-msg');if(m)m.hidden=false}}).catch((e)=>{console.error('map fetch',e);const m=mapEl.querySelector('.map-msg');if(m)m.hidden=false})}
 const of=$('#oform');
 if(of){const out=$('#oout'),cf=$('#oconfirm');let cur='';
   const say=(t,c)=>{out.textContent=t;out.className=c||''};
@@ -161,6 +161,8 @@ if(rep){rep.addEventListener('click',async()=>{
   rep.textContent=r.ok?'Reported. Thank you.':'Could not send report';
 })}
 document.querySelectorAll('[data-copy]').forEach((b)=>b.addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText(b.dataset.copy);const o=b.textContent;b.textContent='Copied';setTimeout(()=>{b.textContent=o},1500)}catch(e){}
+  const o=b.textContent;const say=(t)=>{b.textContent=t;setTimeout(()=>{b.textContent=o},1600)};
+  try{await navigator.clipboard.writeText(b.dataset.copy);say('Copied');return}catch(e){}
+  try{const t=document.createElement('textarea');t.value=b.dataset.copy;t.setAttribute('readonly','');t.className='sr';document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();say(ok?'Copied':'Select and copy')}catch(e){say('Select and copy')}
 }));
 `;

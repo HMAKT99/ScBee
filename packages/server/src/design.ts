@@ -16,9 +16,10 @@ export const CSS = `
   --max:1240px;--gut:clamp(20px,4vw,48px);
 }
 *{box-sizing:border-box}
+:root{color-scheme:light}
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-wrap:break-word}
 ::selection{background:var(--amber);color:var(--ink)}
 a{color:inherit;text-decoration-line:underline;text-decoration-color:var(--amber);text-decoration-thickness:2px;text-underline-offset:4px}
 a:hover{text-decoration-color:var(--ink)}
@@ -44,12 +45,27 @@ img,svg,canvas{max-width:100%}
 .hide-sm{}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:2px}
 
+/* accessibility helpers */
+.skip{position:absolute;left:12px;top:-60px;z-index:50;background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:999px;text-decoration:none;font:500 14px var(--sans);transition:top .15s}
+.skip:focus{top:12px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;list-style:none}
+/* long user text must never widen the page */
+.rows>li>*,.post>*,.comp>*,.gapgrid>*,.numerals>*,.split>*,.hero-grid>*,.agent-head>*,.score-head>*,.sec-head>*,.heroside>*{min-width:0}
+.rows .nm,.rows .tg,.post h3,.post p,.items li,.tagline,.desc,.lead,.use code,.agent-head h1,.h-l{overflow-wrap:anywhere}
 /* header */
 header.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid var(--hair2)}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font:420 24px/1 var(--serif);letter-spacing:-.03em}
 .brand svg{width:26px;height:26px}
 header nav{display:flex;align-items:center;gap:26px}
+.menu{display:none;position:relative}
+.menu summary{list-style:none;cursor:pointer;font:400 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--hair);border-radius:999px;padding:7px 14px;color:var(--ink)}
+.menu summary::-webkit-details-marker{display:none}
+.menu[open] summary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.menu-panel{position:absolute;right:0;top:calc(100% + 10px);width:min(260px,calc(100vw - 2 * var(--gut)));background:var(--paper);border:1px solid var(--ink);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:2px;z-index:30}
+.menu-panel a{padding:11px 12px;text-decoration:none;font-size:16px;border-radius:4px}
+.menu-panel a:hover{background:var(--paper2)}
+.menu-panel .btn{margin-top:6px;justify-content:center;color:var(--paper)!important}
 header nav a.nl{font:400 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;text-decoration:none;color:var(--ink2)}
 header nav a.nl:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--amber)}
 .view{display:inline-flex;border:1px solid var(--hair);border-radius:999px;padding:3px;font:400 11px var(--mono);letter-spacing:.08em;text-transform:uppercase}
@@ -78,6 +94,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 .paste{display:flex;align-items:center;gap:8px;border-bottom:1.5px solid var(--ink);margin:36px 0 10px;max-width:640px}
 .paste input{flex:1;min-width:0;background:transparent;border:0;outline:0;font:400 clamp(18px,2vw,24px)/1.3 var(--sans);padding:14px 0;color:var(--ink)}
 .paste input::placeholder{color:var(--mute)}
+.paste:focus-within{border-bottom-color:var(--amber);box-shadow:0 1.5px 0 var(--amber)}
 .paste button{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;border:0;background:var(--ink);color:var(--paper);font-size:20px;cursor:pointer;transition:background .15s,transform .15s}
 .paste button:hover{background:var(--amber);color:var(--ink);transform:translateX(2px)}
 .paste-note{font:400 12px/1.6 var(--mono);color:var(--mute);max-width:640px}
@@ -106,6 +123,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 .map canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .map .cap{position:absolute;left:14px;top:12px;right:14px;display:flex;justify-content:space-between;pointer-events:none}
 .map .legend{position:absolute;left:14px;bottom:12px;right:14px;display:flex;flex-wrap:wrap;gap:6px 16px;font:400 10.5px var(--mono);letter-spacing:.04em;color:var(--ink2);pointer-events:none}
+.map .map-msg{position:absolute;left:24px;right:24px;top:45%;text-align:center;font:400 13px/1.5 var(--mono);color:var(--ink2);margin:0}
 .map .tip{position:absolute;z-index:3;max-width:240px;background:var(--ink);color:var(--paper);padding:10px 12px;border-radius:4px;font:400 12px/1.45 var(--sans);pointer-events:none;opacity:0;transition:opacity .12s}
 .map .tip b{display:block;font:500 13px var(--sans)}
 .map .tip.on{opacity:1}
@@ -241,7 +259,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 /* footer */
 .foot{border-top:1px solid var(--hair2);padding:56px 0 28px;overflow:hidden}
 .foot-grid{display:grid;grid-template-columns:minmax(0,5fr) repeat(3,minmax(0,2fr));gap:32px}
-.foot h4{font:400 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:0 0 12px}
+.foot .fh{font:400 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:0 0 12px}
 .foot a{display:block;text-decoration:none;padding:3px 0;font-size:14.5px;color:var(--ink2)}
 .foot a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--amber)}
 .foot .say{font:380 clamp(22px,2.6vw,34px)/1.15 var(--serif);letter-spacing:-.02em;max-width:14em}
@@ -266,6 +284,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 }
 @media (max-width:720px){
   .hide-sm{display:none!important}
+  .menu{display:block}
   header nav{gap:14px}
   .brand{font-size:21px}
   .score-head{grid-template-columns:1fr}

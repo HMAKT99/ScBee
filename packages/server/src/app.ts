@@ -9,8 +9,8 @@ import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, s
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { badgeSvg, projectPage } from "./project.js";
-import { renderCard } from "./card.js";
-import { CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
+import { LOGO_SVG, renderCard, renderIcon, renderSiteCard } from "./card.js";
+import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
 
@@ -51,18 +51,43 @@ class HttpError extends Error {
 
 const SECURITY_HEADERS = {
   "content-security-policy":
-    "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
   "permissions-policy": "interest-cohort=()",
 };
 
-function rawSend(res: ServerResponse, status: number, body: string, type: string) {
-  res.writeHead(status, { ...SECURITY_HEADERS, "content-type": `${type}; charset=utf-8`, "cache-control": "no-store", vary: "Accept" });
+/** Public, anonymous read responses may be cached briefly at the edge; everything else is never cached. */
+const EDGE_CACHE = "public, s-maxage=20, stale-while-revalidate=120";
+const PAGE_CACHE = "public, s-maxage=30, stale-while-revalidate=300";
+
+function rawSend(res: ServerResponse, status: number, body: string, type: string, cache = "no-store", extra: Record<string, string> = {}) {
+  res.writeHead(status, { ...SECURITY_HEADERS, "content-type": `${type}; charset=utf-8`, "cache-control": status === 200 ? cache : "no-store", vary: "Accept", ...extra });
   res.end(body);
 }
-const json = (res: ServerResponse, status: number, obj: unknown) => rawSend(res, status, JSON.stringify(obj), "application/json");
+const json = (res: ServerResponse, status: number, obj: unknown) => {
+  // Set by api() for anonymous GET endpoints only (never for anything that needs a key).
+  const pub = res.getHeader("x-edge-cache");
+  if (pub) res.removeHeader("x-edge-cache");
+  return rawSend(res, status, JSON.stringify(obj), "application/json", pub ? EDGE_CACHE : "no-store");
+};
+
+/** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
+const PUBLIC_GET = /^\/api\/(stats|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+
+/** Turn what a person typed into the score box into a page. Mirrors the script on the home page, for visitors without JavaScript. */
+export function goTarget(raw: string): string | null {
+  const v = raw.trim();
+  if (!v || v.length > 300) return null;
+  const gh = v.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:[/?#].*)?$/) ?? v.match(/^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
+  if (gh) return `/github.com/${gh[1]}/${gh[2]}`;
+  const npm = v.match(/^(?:https?:\/\/)?(?:www\.)?npmjs\.com\/package\/((?:@[^/]+\/)?[^/?#]+)/i)?.[1] ?? v.match(/^npm:(\S+)$/i)?.[1]
+    ?? v.match(/^(@[a-z0-9~][a-z0-9._~-]*\/[a-z0-9~][a-z0-9._~-]*)$/i)?.[1] ?? v.match(/^([a-z0-9~][a-z0-9_~-]{1,100})$/i)?.[1];
+  if (npm) return `/npm/${npm.toLowerCase()}`;
+  const web = v.match(/^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/?#].*)?$/i)?.[1];
+  return web ? `/web/${web.toLowerCase()}` : null;
+}
 
 async function readJson(req: IncomingMessage, max = 16 * 1024): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -338,6 +363,14 @@ export function createApp(opts: AppOptions) {
     const method = req.method ?? "GET";
     const path = url.pathname;
     const ip = clientIp(req);
+    // Browser-based agents on other sites may call the API. There are no cookies, so an Authorization header is the only credential,
+    // and it must be sent on purpose. x-admin-token is intentionally not in the allowed headers.
+    res.setHeader("access-control-allow-origin", "*");
+    if (method === "OPTIONS") {
+      res.writeHead(204, { ...SECURITY_HEADERS, "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS", "access-control-allow-headers": "authorization, content-type", "access-control-max-age": "86400" });
+      return void res.end();
+    }
+    if (method === "GET" && PUBLIC_GET.test(path)) res.setHeader("x-edge-cache", "1");
 
     if (method === "POST" && path === "/api/register") {
       await limit(`reg:${ip}`, opts.registerPerHour ?? 10, 3600_000);
@@ -763,6 +796,7 @@ export function createApp(opts: AppOptions) {
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
+      if (p.length > 1 && p.endsWith("/")) { res.writeHead(301, { ...SECURITY_HEADERS, location: p.replace(/\/+$/, "") + url.search, "cache-control": "public, max-age=3600" }); return void res.end(); }
       // ---- two audiences, one site: HTML for people, Markdown for agents (?format=md or Accept: text/markdown),
       // and ?view=agent shows that Markdown to a person. Every HTML page carries the Human/Agent switch.
       const accept = String(req.headers.accept ?? "");
@@ -771,17 +805,45 @@ export function createApp(opts: AppOptions) {
       const variant = (set: Record<string, string | null>) => { const u = new URL(url); for (const [k, v] of Object.entries(set)) { if (v === null) u.searchParams.delete(k); else u.searchParams.set(k, v); } return u.pathname + u.search; };
       const viewSwitch = `<div class="view" role="group" aria-label="View as"><a class="${agentMode ? "" : "on"}" href="${esc(variant({ view: null, format: null }))}">Human</a><a class="${agentMode ? "on" : ""}" href="${esc(variant({ view: "agent", format: null }))}">Agent</a></div>`;
       const mdHref = esc(variant({ format: "md", view: null }));
-      const send = (r: ServerResponse, status: number, body: string, type: string) =>
-        rawSend(r, status, type === "text/html" ? body.replace("%%VIEW%%", () => viewSwitch).replace(/%%MD%%/g, () => mdHref) : body, type);
+      const canon = baseUrl + p;
+      const send = (r: ServerResponse, status: number, body: string, type: string, cache?: string) => {
+        const html = type === "text/html";
+        const text = html ? body.replace("%%VIEW%%", () => viewSwitch).replace(/%%MD%%/g, () => mdHref).replace(/%%CANON%%/g, () => esc(canon)).replace(/%%BASE%%/g, () => esc(baseUrl)) : body;
+        // Machine-readable documents (Markdown, text, JSON) may be read from any origin; pages for people are cached briefly at the edge.
+        return rawSend(r, status, text, type, cache ?? (html || type === "text/markdown" ? PAGE_CACHE : "no-store"), html ? {} : { "access-control-allow-origin": "*" });
+      };
       /** Send a page: HTML for people, or its Markdown twin for agents. */
       const page = (status: number, html: string, md?: string) => {
         const title = (html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "ScBee").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
         const text = md ?? genericMd(title, baseUrl, url.pathname, "This page is interactive. Use the API, or see the human page.");
         if (wantMd) return send(res, status, text, "text/markdown");
-        if (agentMode) return send(res, status, layout("Agent view · ScBee", agentShell(text)), "text/html");
+        if (agentMode) return send(res, status, layout("Agent view · ScBee", agentShell(text), { head: '<meta name="robots" content="noindex">' }), "text/html");
         return send(res, status, html, "text/html");
       };
-      if (p === "/style.css") return send(res, 200, CSS, "text/css");
+      // Versioned by content hash in the page, so they can be cached for a year and still update on every deploy.
+      const longCache = url.searchParams.get("v") === ASSET_V ? "public, max-age=31536000, immutable" : "public, max-age=300";
+      if (p === "/style.css") return send(res, 200, CSS, "text/css", longCache);
+      if (p === "/favicon.svg") return send(res, 200, LOGO_SVG, "image/svg+xml", "public, max-age=86400");
+      if (p === "/favicon.ico" || p === "/apple-touch-icon.png") {
+        const png = await renderIcon(p === "/favicon.ico" ? 48 : 180);
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });
+        return void res.end(png);
+      }
+      if (p === "/og/site.png") {
+        const png = await renderSiteCard();
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });
+        return void res.end(png);
+      }
+      if (p === "/site.webmanifest")
+        return send(res, 200, JSON.stringify({ name: "ScBee", short_name: "ScBee", description: "Where agents find each other, and send users their way.", start_url: "/", display: "browser", background_color: "#ffffff", theme_color: "#ffffff", icons: [{ src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] }), "application/manifest+json", "public, max-age=86400");
+      if (p === "/.well-known/security.txt")
+        return send(res, 200, `Contact: https://github.com/HMAKT99/ScBee/security/advisories/new\nExpires: ${new Date(Date.now() + 330 * 86_400_000).toISOString()}\nPreferred-Languages: en\nCanonical: ${baseUrl}/.well-known/security.txt\nPolicy: https://github.com/HMAKT99/ScBee/blob/main/SECURITY.md\n`, "text/plain", "public, max-age=86400");
+      if (p === "/go") {
+        const to = goTarget(url.searchParams.get("q") ?? "");
+        if (!to) return page(400, notFound("Enter owner/repo, an npm package, or a website"));
+        res.writeHead(302, { ...SECURITY_HEADERS, location: to, "cache-control": "no-store" });
+        return void res.end();
+      }
       const nm = p.match(/^\/npm\/((?:@[^/]+\/)?[^/]+)$/);
       if (nm) {
         const name = parseNpmInput(decodeURIComponent(nm[1]!));
@@ -843,7 +905,7 @@ export function createApp(opts: AppOptions) {
           }
         }
       }
-      if (p === "/app.js") return send(res, 200, JS, "text/javascript");
+      if (p === "/app.js") return send(res, 200, JS, "text/javascript", longCache);
       if (p === "/board") {
         const k = url.searchParams.get("kind") ?? "";
         const kind = ["launch", "offer", "wanted"].includes(k) ? k : "";

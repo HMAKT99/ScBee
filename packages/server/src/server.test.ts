@@ -624,7 +624,7 @@ describe("notifications, webhooks, cron and gallery", () => {
   it("gallery cron is disabled without a secret", async () => {
     const st = await Store.open(":memory:");
     const { handler } = createApp({ store: st, baseUrl: "http://t", fetchOpts: { lookup, requester } });
-    const res: any = { writeHead() {}, end() {} };
+    const res: any = { writeHead() {}, end() {}, setHeader() {}, getHeader() { return undefined; }, removeHeader() {} };
     let status = 0;
     res.writeHead = (s: number) => { status = s; };
     await handler({ url: "/api/cron/tick", method: "POST", headers: {}, socket: {}, [Symbol.asyncIterator]: async function* () {} } as any, res);
@@ -1170,5 +1170,165 @@ describe("hero caption and the illustrated agent", () => {
     expect(stats.verified_agents + stats.unverified_agents).toBe(net.nodes.filter((n: any) => n.kind === "agent").length);
     const md = (await call("GET", "/?format=md")).text;
     expect(md).not.toMatch(/You\?|illustration/i);
+  });
+});
+
+describe("site polish", () => {
+  const raw = (path: string, init: RequestInit = {}) => fetch(base + path, { redirect: "manual", ...init });
+  const bodyOf = async (path: string) => (await call("GET", path)).text;
+
+  it("every page carries share metadata, a canonical link and icons; score pages keep their own card", async () => {
+    for (const p of ["/", "/agents", "/board", "/gallery", "/privacy"]) {
+      const h = await bodyOf(p);
+      expect(h, p).toContain('<meta property="og:image" content="http://t/og/site.png">');
+      expect(h, p).toContain('<meta name="twitter:card" content="summary_large_image">');
+      expect(h, p).toContain(`<link rel="canonical" href="http://t${p === "/" ? "/" : p}">`);
+      expect(h, p).toContain(`<meta property="og:url" content="http://t${p === "/" ? "/" : p}">`);
+      expect(h, p).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
+      expect(h, p).toContain('<link rel="manifest" href="/site.webmanifest">');
+      expect(h, p).toContain('<meta name="color-scheme" content="light">');
+      expect((h.match(/property="og:title"/g) ?? []).length, p).toBe(1);
+    }
+    const a = await makeAgent("polish/agent");
+    expect(await bodyOf(`/a/${a.handle}`)).toContain('<meta property="og:image" content="http://t/og/site.png">');
+    files["https://api.github.com/repos/polish/score"] = JSON.stringify({ full_name: "polish/score", description: "d", topics: [], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files["https://api.github.com/repos/polish/score/contents"] = "[]";
+    const sp = await bodyOf("/github.com/polish/score");
+    expect(sp).toContain("/og/github.com/polish/score.png");
+    expect(sp).not.toContain("/og/site.png");
+    expect((sp.match(/property="og:title"/g) ?? []).length).toBe(1);
+  });
+
+  it("the Markdown and agent-view variants point search engines at the real page", async () => {
+    const v = await bodyOf("/board?kind=offer&view=agent");
+    expect(v).toContain('<link rel="canonical" href="http://t/board">');
+    expect(v).toContain('<meta name="robots" content="noindex">');
+    expect((await bodyOf("/board")).includes('name="robots"')).toBe(false);
+  });
+
+  it("serves a favicon, touch icon, site card, manifest and security.txt", async () => {
+    const png = async (p: string) => { const r = await raw(p); const b = Buffer.from(await r.arrayBuffer()); return { r, sig: b.subarray(0, 4).toString("hex"), n: b.length }; };
+    for (const p of ["/favicon.ico", "/apple-touch-icon.png", "/og/site.png"]) { const x = await png(p); expect(x.r.status, p).toBe(200); expect(x.sig, p).toBe("89504e47"); expect(x.n, p).toBeGreaterThan(300); expect(x.r.headers.get("cache-control"), p).toMatch(/max-age=86400/); }
+    const svg = await raw("/favicon.svg");
+    expect(svg.headers.get("content-type")).toMatch(/svg/);
+    expect(await svg.text()).toContain("<svg");
+    const m = await (await raw("/site.webmanifest")).json();
+    expect(m).toMatchObject({ name: "ScBee", start_url: "/", theme_color: "#ffffff" });
+    expect(m.icons[0].src).toBe("/apple-touch-icon.png");
+    const sec = await (await raw("/.well-known/security.txt")).text();
+    expect(sec).toMatch(/^Contact: https:\/\/github\.com\/HMAKT99\/ScBee\/security\/advisories\/new$/m);
+    expect(sec).toMatch(/^Canonical: http:\/\/t\/\.well-known\/security\.txt$/m);
+    const exp = Date.parse(sec.match(/^Expires: (.+)$/m)![1]!);
+    expect(exp).toBeGreaterThan(Date.now());
+    expect(exp).toBeLessThan(Date.now() + 366 * 86_400_000);
+  });
+
+  it("caches static files for a year when versioned, caches public reads briefly, and never caches anything that needs a key", async () => {
+    const home = await bodyOf("/");
+    const v = home.match(/\/style\.css\?v=([a-f0-9]{8})/)![1]!;
+    expect(home).toContain(`/app.js?v=${v}`);
+    expect((await raw(`/style.css?v=${v}`)).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect((await raw(`/app.js?v=${v}`)).headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect((await raw("/style.css")).headers.get("cache-control")).toBe("public, max-age=300");
+    expect((await raw("/style.css?v=deadbeef")).headers.get("cache-control")).toBe("public, max-age=300");
+    expect((await raw("/")).headers.get("cache-control")).toMatch(/s-maxage=30/);
+    expect((await raw("/api/stats")).headers.get("cache-control")).toMatch(/s-maxage=20/);
+    expect((await raw("/api/agents")).headers.get("cache-control")).toMatch(/s-maxage=20/);
+    expect((await raw("/api/network")).headers.get("cache-control")).toMatch(/s-maxage=20/);
+    // key-protected and private endpoints stay uncached, as do errors
+    for (const p of ["/api/notifications", "/api/inbox", "/api/feed/evaluate", "/api/agent/me", "/api/connections"]) expect((await raw(p)).headers.get("cache-control"), p).toBe("no-store");
+    expect((await raw("/nope")).headers.get("cache-control")).toBe("no-store");
+    expect((await raw("/api/agents/does-not-exist")).headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("lets browser-based agents read the API and the agent documents from any origin, without opening up the admin header", async () => {
+    expect((await raw("/api/stats", { headers: { origin: "https://example.com" } })).headers.get("access-control-allow-origin")).toBe("*");
+    const pre = await raw("/api/promos", { method: "OPTIONS", headers: { origin: "https://example.com", "access-control-request-method": "POST" } });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-methods")).toMatch(/POST/);
+    expect(pre.headers.get("access-control-allow-headers")).toBe("authorization, content-type");
+    expect(pre.headers.get("access-control-allow-headers")).not.toMatch(/admin/i);
+    for (const p of ["/llms.txt", "/join.md", "/heartbeat.md", "/.well-known/agent-card.json", "/?format=md"]) expect((await raw(p)).headers.get("access-control-allow-origin"), p).toBe("*");
+    expect((await raw("/")).headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("redirects trailing slashes and keeps the query", async () => {
+    for (const [from, to] of [["/agents/", "/agents"], ["/board/?kind=offer", "/board?kind=offer"], ["/gallery/", "/gallery"], ["/a/xyz/", "/a/xyz"]]) {
+      const r = await raw(from);
+      expect(r.status, from).toBe(301);
+      expect(r.headers.get("location"), from).toBe(to);
+    }
+    expect((await raw("/")).status).toBe(200);
+  });
+
+  it("the score box works without JavaScript through /go", async () => {
+    const cases: [string, string][] = [
+      ["owner/repo", "/github.com/owner/repo"], ["https://github.com/Owner/Repo.git", "/github.com/Owner/Repo"], ["github.com/o/r/tree/main", "/github.com/o/r"],
+      ["left-pad", "/npm/left-pad"], ["@scope/pkg", "/npm/@scope/pkg"], ["npm:Some-Pkg", "/npm/some-pkg"], ["https://www.npmjs.com/package/left-pad", "/npm/left-pad"],
+      ["example.com", "/web/example.com"], ["https://Sub.Example.co.uk/page", "/web/sub.example.co.uk"],
+    ];
+    for (const [q, to] of cases) {
+      const r = await raw(`/go?q=${encodeURIComponent(q)}`);
+      expect(r.status, q).toBe(302);
+      expect(r.headers.get("location"), q).toBe(to);
+    }
+    for (const q of ["", "a b c", "http://", "x".repeat(400)]) expect((await raw(`/go?q=${encodeURIComponent(q)}`)).status, q).toBe(400);
+    const bad = await bodyOf("/go?q=%20");
+    expect(bad).toContain("Enter owner/repo, an npm package, or a website");
+    const home = await bodyOf("/");
+    expect(home).toMatch(/<form class="paste" id="score" action="\/go" method="get"[^>]*><input id="repo" name="q"/);
+    expect(home).toMatch(/<form class="altform" id="reg" action="\/join\.md" method="get"/);
+  });
+
+  it("structure: skip link, mobile menu without JavaScript, footer headings that do not skip levels, a text alternative for the map", async () => {
+    await makeAgent("polish2/agent", { card: { name: "Polish Two", tagline: "Does polish", skills: [] } });
+    const h = await bodyOf("/");
+    expect(h).toContain('<a class="skip" href="#main">Skip to content</a>');
+    expect(h).toMatch(/<details class="menu"><summary aria-label="Open the menu">Menu<\/summary><div class="menu-panel">.*Agents.*Board.*Gallery.*Join.*Register/s);
+    expect(h).not.toMatch(/<h4/);
+    expect(h).toContain('<p class="fh">Product</p>');
+    expect(h).toMatch(/<ul class="sr" aria-label="Agents on the map">.*Polish Two/s);
+    expect(h).toContain('<p class="map-msg" hidden>');
+  });
+
+  it("the CSP allows the manifest and nothing else new, and the board page keeps heading order", async () => {
+    const csp = (await raw("/")).headers.get("content-security-policy")!;
+    expect(csp).toContain("manifest-src 'self'");
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|\*/);
+    const a = await makeAgent("headord/agent");
+    await call("POST", "/api/promos", { kind: "offer", title: "Heading order offer", body: "An offer used to check heading order on the board page." }, a.key);
+    const board = await bodyOf("/board");
+    expect(board).toMatch(/<h1[^>]*>/);
+    expect(board).toContain("<h2>Heading order offer</h2>");
+    expect(board).not.toMatch(/<h3>Heading order offer/);
+    // several posts on the home page and an agent page: one h1, no invalid heading levels
+    const b = await makeAgent("headord2/agent");
+    for (let i = 0; i < 3; i++) await call("POST", "/api/promos", { kind: "offer", title: `Ordering post ${i}`, body: "Another offer used to check heading levels on other pages." }, b.key);
+    for (const p of ["/", `/a/${b.handle}`]) {
+      const h = await bodyOf(p);
+      expect((h.match(/<h1[ >]/g) ?? []).length, p).toBe(1);
+      expect(h, p).not.toMatch(/<h0|<h[7-9]/);
+    }
+  });
+
+  it("the script copes with a blocked clipboard and a failed map, and the stylesheet has the focus and overflow rules", async () => {
+    const js = await bodyOf("/app.js");
+    expect(js).toContain("execCommand('copy')");
+    expect(js).toContain("Select and copy");
+    expect(js).toMatch(/map-msg'\);if\(m\)m\.hidden=false/);
+    const css = await bodyOf("/style.css");
+    expect(css).toContain(".paste:focus-within");
+    expect(css).toMatch(/overflow-wrap:break-word/);
+    expect(css).toMatch(/\.menu\{display:none/);
+    expect(css).toMatch(/color-scheme:light/);
+  });
+
+  it("error pages explain what to check", async () => {
+    const e = await call("GET", "/github.com/nobody-zz/not-real-zz");
+    expect(e.status).toBe(404);
+    expect(e.text).toContain("We couldn't show that.");
+    expect(e.text).toContain("Check the spelling");
+    expect((await call("GET", "/nope")).text).toContain("That page is not here.");
   });
 });
