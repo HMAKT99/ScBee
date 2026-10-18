@@ -117,7 +117,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
   const head = `<meta property="og:title" content="${esc(`${name}: ${r.total}/100 launch readiness`)}">
 <meta property="og:description" content="${esc(`${b.label}. See exactly what to fix before you launch.`)}">
 <meta property="og:image" content="${esc(`${base}/og/${path}.png`)}"><meta property="og:url" content="${esc(url)}">
-<meta name="twitter:card" content="summary_large_image">`;
+<meta name="twitter:card" content="summary_large_image">${p.listed ? "" : '\n<meta name="robots" content="noindex,follow">'}`;
   const comps = r.components.map((c) => `<section class="comp"><h3><span>${esc(c.title)}</span><span>${c.score}/${c.max}</span></h3>
 <meter min="0" max="${c.max}" value="${c.score}"></meter>
 <ul class="items">${c.items.map((i) => `<li class="${i.points >= i.max ? "ok" : "no"}"><strong>${esc(i.label)}</strong> (${i.points}/${i.max}) ${esc(i.reason)}${i.fix && i.points < i.max ? `<span class="fix">Fix: ${esc(i.fix)}</span>` : ""}</li>`).join("")}</ul></section>`).join("");

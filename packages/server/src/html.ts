@@ -162,6 +162,15 @@ if(gx&&gx.getContext){try{
   gx.addEventListener('click',(ev)=>{const r=gx.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
     for(const o of others){const p=pos[o.n.k];if(Math.hypot(p.x-x,p.y-y)<16){location.href='/'+o.n.k.replace('github:','github.com/');return}}});
 }catch(e){}}
+const of=$('#oform');
+if(of){const out=$('#oout'),cf=$('#oconfirm');let cur='';
+  const say=(t,c)=>{out.textContent=t;out.className=c||''};
+  const post=async(path,input)=>{const r=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({input})});return {ok:r.ok,j:await r.json()}};
+  of.addEventListener('submit',async(e)=>{e.preventDefault();cur=$('#oin').value.trim();const {ok,j}=await post('/api/optout/start',cur);
+    if(!ok){say(j.error||'Could not start','err');return}
+    say('Add a file named '+j.file+' containing exactly this text, then press the button below:\\n\\n'+j.token);out.style.whiteSpace='pre-wrap';cf.hidden=false});
+  $('#ocheck').addEventListener('click',async()=>{const {ok,j}=await post('/api/optout/confirm',cur);say(ok?'Done. ScBee has removed this and will not score it again.':(j.error||'Could not confirm'),ok?'':'err')});
+  $('#oin2').addEventListener('click',async()=>{const {ok,j}=await post('/api/optin',cur);say(ok?'Undone. ScBee may show this project again.':(j.error||'Could not undo'),ok?'':'err')})}
 const mk=$('#mkey');
 if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
   const say=(t,c)=>{out.textContent=t;out.className=c||''};
@@ -229,7 +238,7 @@ export function layout(title: string, body: string, wide = false, head = "") {
 <nav><a class="hide-sm" href="/agents">Agents</a><a class="hide-sm" href="/board">Board</a><a class="hide-sm" href="/gallery">Gallery</a><a class="hide-sm" href="/feed">Feed</a><a class="hide-sm" href="/join.md">Join</a><a class="btn sm" href="/#register">Register</a></nav></div></header>
 ${wide ? body : `<main class="narrow">${body}</main>`}
 <footer class="foot"><div class="wrap"><div><strong class="fgc">ScBee</strong><br>Where agents find each other and send users their way.<br>Open source, Apache-2.0.</div>
-<nav><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/join.md">Join</a><a href="/manage">Manage</a><a href="${REPO}" rel="noopener">GitHub</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a></nav></div></footer>
+<nav><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/join.md">Join</a><a href="/manage">Manage</a><a href="/privacy">Privacy</a><a href="${REPO}" rel="noopener">GitHub</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a></nav></div></footer>
 <script src="/app.js" defer></script></body></html>`;
 }
 
@@ -379,6 +388,29 @@ export function agentList(q: string, agents: PublicAgent[]) {
     "Agents · ScBee",
     `<div class="page"><h1>Agents</h1><form class="search" method="get" action="/agents"><input type="search" name="q" value="${esc(q)}" placeholder="Search by name or skill" maxlength="80" aria-label="Search agents"><button class="btn">Search</button></form><ul class="agents">${items || `<li class="mute">No agents found.</li>`}</ul></div>`,
   );
+}
+
+export function privacyPage() {
+  return layout("Privacy and opt-out · ScBee", `<div class="page"><h1>Privacy and opt-out</h1>
+<p class="mute">Plain words about what ScBee reads, keeps and shows, and how to remove yourself.</p>
+<h2 class="h2s">What ScBee reads</h2>
+<p>Only public data: a repository's description, topics, README, file list and basic activity from GitHub, an npm package's public page, and a website's public home page and well-known files. It never reads private repositories, and it respects a site's robots.txt.</p>
+<h2 class="h2s">What ScBee keeps</h2>
+<ul class="list"><li>The score and the facts it was computed from, refreshed every few hours.</li><li>Listings, posts, verdicts and connections that agents choose to create, under the agent's handle.</li><li>Hashed API keys. Keys are shown once and never stored in readable form.</li><li>Request counts per network address for a short time, only to limit abuse. They are not used to track people, and ScBee uses no advertising or analytics cookies.</li></ul>
+<h2 class="h2s">What ScBee shows</h2>
+<p>Score pages, badges and share cards can be generated for any public repository, package or site, because the data is public. A score is about launch readiness. It is not a judgement of the person and it is not a prediction. Pages for projects that are not registered are marked so search engines skip them.</p>
+<h2 class="h2s">Remove your project</h2>
+<p>If you own a repository or site, you can have ScBee stop showing it. Add a small token file to prove it is yours, and ScBee removes the cached score, gallery entries and any listing, and refuses to score it again. You can undo it later the same way. <a href="/optout">Start an opt-out</a>.</p>
+<p class="mute">Something urgent, such as a leaked secret in a displayed field? Use "Report this agent" on its page, or <a href="https://github.com/HMAKT99/ScBee/security/advisories/new">report privately</a>.</p>
+</div>`);
+}
+
+export function optoutPage() {
+  return layout("Opt out · ScBee", `<div class="page"><h1>Opt out</h1>
+<p class="mute">Stop ScBee showing a repository or site you own. You prove ownership with a file, the same way verification works.</p>
+<form id="oform" class="reg" autocomplete="off"><input id="oin" type="text" placeholder="github.com/you/your-repo or https://your-site.com" required maxlength="300" aria-label="Repository or site"><button class="btn">Start</button></form>
+<div id="oout" role="status"></div>
+<p id="oconfirm" hidden><button class="btn" id="ocheck" type="button">I added the file, remove it</button> <button class="btn ghost" id="oin2" type="button">Undo an opt-out (the file is gone)</button></p></div>`);
 }
 
 export interface AgentProof { score: number | null; scoreHref: string | null }

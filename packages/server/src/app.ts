@@ -1,13 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { GALLERY_CSS, galleryPage } from "./gallery.js";
+import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
 import { renderCard } from "./card.js";
-import { CSS, JS, agentList, agentPage, boardPage, feedPage, managePage, home, heartbeatMd, joinMd, notFound } from "./html.js";
+import { CSS, JS, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
 
@@ -28,6 +29,8 @@ export interface AppOptions {
   registerPerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
   githubToken?: string;
+  /** ScBee's own GitHub App (a separate identity with its own 5,000/hour limit). Public data only; never a personal token. */
+  githubApp?: { appId: string; installationId: string; privateKey: string };
   /** Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). */
   githubHourlyBudget?: number;
   /** Cached project scores are reused this long (default 6 hours). */
@@ -89,6 +92,7 @@ export function createApp(opts: AppOptions) {
   /** Score a public website or agent endpoint: same caching and limits as repos. */
   async function siteScore(host: string, ip: string) {
     const key = `url:https://${host}`;
+    if (await store.isOptedOut(key)) throw new HttpError(410, "removed at the owner's request");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
     const cached = await store.getProject(key);
     const view = (result: ScoreResult, fetchedAt: number, listed: boolean) => ({
@@ -149,7 +153,7 @@ export function createApp(opts: AppOptions) {
    * Every call to api.github.com goes through one shared hourly budget and a circuit breaker, so ScBee stays a
    * quiet, polite client no matter how many visitors there are. Raw file fetches are not API calls and are not counted.
    */
-  const ghBudget = opts.githubHourlyBudget ?? (opts.githubToken ? 4000 : 45);
+  const ghBudget = opts.githubHourlyBudget ?? (opts.githubToken || opts.githubApp ? 4000 : 45);
   const baseRequester = opts.fetchOpts?.requester ?? defaultRequester;
   const ghOpts: FetchOptions = {
     ...opts.fetchOpts,
@@ -163,12 +167,31 @@ export function createApp(opts: AppOptions) {
     },
   };
 
+  /** Token for api.github.com: a configured token, else a cached or freshly minted GitHub App installation token, else none. */
+  async function ghToken(): Promise<string | undefined> {
+    if (opts.githubToken) return opts.githubToken;
+    const app = opts.githubApp;
+    if (!app) return undefined;
+    if (await store.breakerOpen("github-app")) return undefined;
+    const cached = await store.getKv("gh:installation-token");
+    if (cached) return cached;
+    try {
+      const t = await fetchInstallationToken(app.appId, app.privateKey, app.installationId, opts.fetchOpts);
+      await store.setKv("gh:installation-token", t.token, t.expiresAt - 5 * 60_000);
+      return t.token;
+    } catch (e) {
+      console.error("github app token failed:", e instanceof Error ? e.message : "unknown"); // message only; never the key or token
+      await store.tripBreaker("github-app", 5 * 60_000);
+      return undefined;
+    }
+  }
+
   /** Card for a GitHub project: its own agent.json when it has one, otherwise a draft from public repo facts. */
   async function cardFor(input: string) {
     const r = await resolveAgent(input, opts.fetchOpts);
     if (r.cardFound || r.source.kind !== "github") return r;
     try {
-      const sig = await fetchDraftSignals(r.source.owner, r.source.repo, ghOpts, opts.githubToken);
+      const sig = await fetchDraftSignals(r.source.owner, r.source.repo, ghOpts, await ghToken());
       return { ...r, card: draftCard(sig, sig.fullName?.split("/")[1] ?? r.source.repo) };
     } catch (e) {
       if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
@@ -228,7 +251,7 @@ export function createApp(opts: AppOptions) {
     const added: Record<string, number> = {};
     for (const c of COLLECTIONS) {
       added[c.id] = 0;
-      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, opts.githubToken)) {
+      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, await ghToken())) {
         try {
           await projectScore(owner, repo, null);
           await store.addToGallery(c.id, `github:${owner}/${repo}`);
@@ -251,6 +274,7 @@ export function createApp(opts: AppOptions) {
   async function projectScore(owner: string, repo: string, ip: string | null) {
     const src = parseSource(`${owner}/${repo}`);
     if (src.kind !== "github") throw new HttpError(400, "only GitHub repositories can be scored");
+    if (await store.isOptedOut(src.key)) throw new HttpError(410, "removed at the owner's request");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
     const cached = await store.getProject(src.key);
     const fresh = cached && cached.score_version === SCORE_VERSION && Date.now() - cached.fetched_at < ttl;
@@ -264,7 +288,7 @@ export function createApp(opts: AppOptions) {
     if (ip) await limit(`score:${ip}`, 30, 3600_000);
     try {
       const row = await store.bySource(src.key);
-      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, opts.githubToken);
+      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, await ghToken());
       const result = scoreProject(sig);
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
       if (!cached) await afterFirstScore(src.key).catch(() => undefined);
@@ -307,6 +331,7 @@ export function createApp(opts: AppOptions) {
       const b = await readJson(req);
       const input = str(b.input, 300, "input");
       const refHandle = typeof b.ref === "string" && isValidHandle(b.ref) ? await store.byHandle(b.ref) : undefined;
+      if (await store.isOptedOut(parseSource(input).key)) throw new HttpError(403, "the owner of this project asked ScBee not to list it");
       const r = await cardFor(input);
       if (await store.bySource(r.source.key)) throw new HttpError(409, "this agent is already registered; use POST /api/recover to get a new key");
       const key = newApiKey();
@@ -448,6 +473,44 @@ export function createApp(opts: AppOptions) {
       const g = await constellation(src.key);
       if (!g.center) throw new HttpError(404, "project not scored yet: open its page first");
       return json(res, 200, { center: g.center.key, nodes: g.nodes.map((n) => ({ key: n.key, name: n.name, score: n.score ?? null })), edges: g.edges });
+    }
+
+    if (method === "POST" && (path === "/api/optout/start" || path === "/api/optout/confirm" || path === "/api/optin")) {
+      await limit(`optout:${ip}`, 20, 3600_000);
+      const src = parseSource(str((await readJson(req)).input, 300, "input"));
+      if (path === "/api/optout/start") {
+        if (await store.isOptedOut(src.key)) throw new HttpError(409, "already opted out");
+        const token = newOptoutToken();
+        await store.startOptout(src.key, token);
+        return json(res, 201, { file: optoutFilePath(src), token, next: "Put the token in that file, then call POST /api/optout/confirm with the same input." });
+      }
+      const row = await store.getOptout(src.key);
+      if (path === "/api/optout/confirm") {
+        if (!row || row.confirmed_at) throw new HttpError(404, "start an opt-out first");
+        const body = await readOptoutFile(src, opts.fetchOpts);
+        if (body === null || body === "missing" || !body.includes(row.token))
+          throw new HttpError(422, `token not found in ${optoutFilePath(src)}. Check the file is on the default branch and contains exactly the token. GitHub can take a few minutes to serve a new file, so wait and try again.`);
+        await store.confirmOptout(src.key);
+        return json(res, 200, { opted_out: true });
+      }
+      // opt back in: only when the file is verifiably gone
+      if (!row?.confirmed_at) throw new HttpError(404, "this project is not opted out");
+      const now = await readOptoutFile(src, opts.fetchOpts);
+      if (now === null) throw new HttpError(422, "could not check the file right now; try again shortly");
+      if (now !== "missing") throw new HttpError(422, `remove ${optoutFilePath(src)} first, then try again`);
+      await store.clearOptout(src.key);
+      return json(res, 200, { opted_out: false });
+    }
+    if (method === "POST" && path === "/api/admin/optout") {
+      const tok = opts.adminToken;
+      if (!tok) throw new HttpError(404, "not found");
+      const given = Buffer.from(String(req.headers["x-admin-token"] ?? ""));
+      const want = Buffer.from(tok);
+      if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+      const src = parseSource(str((await readJson(req)).input, 300, "input"));
+      await store.startOptout(src.key, newOptoutToken());
+      await store.confirmOptout(src.key);
+      return json(res, 200, { opted_out: src.key });
     }
 
     if (method === "POST" && path === "/api/promos") {
@@ -733,6 +796,16 @@ export function createApp(opts: AppOptions) {
         const kind = ["launch", "offer", "wanted"].includes(k) ? k : "";
         const q = (url.searchParams.get("q") ?? "").slice(0, 80);
         return send(res, 200, boardPage(await store.listPromos({ kind: kind || undefined, q }), kind, q), "text/html");
+      }
+      if (p === "/privacy") return send(res, 200, privacyPage(), "text/html");
+      if (p === "/optout") return send(res, 200, optoutPage(), "text/html");
+      if (p === "/robots.txt") return send(res, 200, robotsTxt(baseUrl), "text/plain");
+      if (p === "/llms.txt") return send(res, 200, llmsTxt(baseUrl), "text/plain");
+      if (p === "/.well-known/agent-card.json") return send(res, 200, JSON.stringify(scbeeCard(baseUrl), null, 2), "application/json");
+      if (p === "/sitemap.xml") {
+        const handles = (await store.list("", false, 1000)).map((x) => x.handle);
+        const gallery = (await galleryData()).flatMap((c) => c.items.map((i) => i.project));
+        return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)]), "application/xml");
       }
       if (p === "/manage") return send(res, 200, managePage(), "text/html");
       if (p === "/gallery") return send(res, 200, galleryPage(await galleryData()), "text/html");
