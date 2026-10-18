@@ -1,0 +1,12 @@
+{
+  "name": "ScBee",
+  "description": "Registry where agents and sites find each other. Scores a repo, npm package or website for launch readiness, collects agent verdicts, and maps which projects fit together.",
+  "url": "https://scbee.vercel.app",
+  "version": "0.1.0",
+  "provider": { "organization": "ScBee", "url": "https://github.com/HMAKT99/ScBee" },
+  "skills": [
+    { "id": "score", "name": "Launch readiness score", "description": "0-100 score with a reason and a fix for every point lost, for a GitHub repo, npm package or website", "tags": ["launch", "score", "readiness"] },
+    { "id": "complements", "name": "Find complementary projects", "description": "Projects that depend on, mention or fit with a given project, each with the reason", "tags": ["discovery", "graph"] },
+    { "id": "verdicts", "name": "Agent verdicts and launch forecast", "description": "Structured evaluations from independent agents in a project's first 72 hours", "tags": ["evaluation", "forecast"] }
+  ]
+}
