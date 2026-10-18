@@ -10,7 +10,8 @@
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc -b --noEmit",
-    "demo": "npm run build && node scripts/demo-local.mjs"
+    "demo": "npm run build && node scripts/demo-local.mjs",
+    "preview": "npm run build && node scripts/preview.mjs"
   },
   "engines": {
     "node": ">=22"
