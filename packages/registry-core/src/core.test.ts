@@ -131,3 +131,22 @@ describe("resolveAgent / checkChallenge", () => {
     expect(await checkChallenge(src, "tok123", { lookup, requester: serve({}) })).toBe(false);
   });
 });
+
+import { newOptoutToken, optoutFilePath, optoutUrl, readOptoutFile } from "./resolve.js";
+
+describe("opt-out proof", () => {
+  const lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+  it("uses its own file, separate from verification", () => {
+    expect(optoutUrl(parseSource("github.com/O/R"))).toBe("https://raw.githubusercontent.com/o/r/HEAD/scbee-optout.txt");
+    expect(optoutUrl(parseSource("https://Example.com/x"))).toBe("https://example.com/.well-known/scbee-optout.txt");
+    expect(optoutFilePath(parseSource("o/r"))).toBe("scbee-optout.txt (repo root)");
+    expect(newOptoutToken()).toMatch(/^scbee-optout-[a-f0-9]{32}$/);
+  });
+  it("reads the file, tells a clean 404 from an unknown failure", async () => {
+    const mk = (status: number, body = "") => ({ lookup, requester: async () => ({ status, body }) });
+    expect(await readOptoutFile(parseSource("o/r"), mk(200, "tok"))).toBe("tok");
+    expect(await readOptoutFile(parseSource("o/r"), mk(404))).toBe("missing");
+    expect(await readOptoutFile(parseSource("o/r"), mk(500))).toBeNull();
+    expect(await readOptoutFile(parseSource("o/r"), { lookup, requester: async () => { throw new Error("boom"); } })).toBeNull();
+  });
+});

@@ -62,6 +62,29 @@ export function verifyFilePath(src: Source): string {
   return src.kind === "github" ? "scbee-verify.txt (repo root)" : "/.well-known/scbee-verify.txt";
 }
 
+/** Where an opt-out token file must be placed (same proof of control as verification, different file). */
+export function optoutUrl(src: Source): string {
+  return src.kind === "github"
+    ? `https://raw.githubusercontent.com/${src.owner}/${src.repo}/HEAD/scbee-optout.txt`
+    : `${src.origin}/.well-known/scbee-optout.txt`;
+}
+export const optoutFilePath = (src: Source) => (src.kind === "github" ? "scbee-optout.txt (repo root)" : "/.well-known/scbee-optout.txt");
+
+export function newOptoutToken(): string {
+  return `scbee-optout-${randomBytes(16).toString("hex")}`;
+}
+
+/** Fetch the opt-out file. Returns its text, "missing" for a clean 404, or null when we could not tell. */
+export async function readOptoutFile(src: Source, opts?: FetchOptions): Promise<string | "missing" | null> {
+  try {
+    const { status, body } = await safeFetchText(optoutUrl(src), opts);
+    if (status === 200) return body;
+    return status === 404 ? "missing" : null;
+  } catch {
+    return null;
+  }
+}
+
 export function newChallenge(): string {
   return `scbee-verify-${randomBytes(16).toString("hex")}`;
 }

@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Requester } from "@scbee/registry-core";
+import { parseCard, type Requester } from "@scbee/registry-core";
 import { deriveSecret, verifySignature } from "@scbee/registry-core";
 import { createApp } from "./app.js";
 import { Store } from "./store.js";
@@ -957,5 +957,95 @@ describe("GitHub App identity", () => {
     expect(calls.filter((c) => c.url.startsWith("https://api.github.com/repos/")).every((c) => c.auth === undefined)).toBe(true);
     expect(await st.breakerOpen("github-app")).toBe(true);
     server.close(); st.close();
+  });
+});
+
+describe("opt-out, privacy and machine-readable front doors", () => {
+  const optFile = (o: string, r: string) => `https://raw.githubusercontent.com/${o}/${r}/HEAD/scbee-optout.txt`;
+  const seedScore = (o: string, r: string) => {
+    const api = `https://api.github.com/repos/${o}/${r}`;
+    files[api] = JSON.stringify({ full_name: `${o}/${r}`, description: "A thing people may want removed", topics: ["scraper"], stargazers_count: 1, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+  };
+
+  it("an owner can remove a project by proving control; it is then refused everywhere, and can be restored", async () => {
+    seedScore("optown", "proj");
+    expect((await call("GET", "/api/score/github.com/optown/proj")).status).toBe(200);
+    expect((await call("POST", "/api/optout/confirm", { input: "github.com/optown/proj" })).status).toBe(404); // must start first
+    const start = await call("POST", "/api/optout/start", { input: "github.com/optown/proj" });
+    expect(start.status).toBe(201);
+    expect(start.json).toMatchObject({ file: "scbee-optout.txt (repo root)" });
+    const early = await call("POST", "/api/optout/confirm", { input: "github.com/optown/proj" });
+    expect(early.status).toBe(422);
+    expect(early.json.error).toMatch(/few minutes/);
+    files[optFile("optown", "proj")] = "wrong token";
+    expect((await call("POST", "/api/optout/confirm", { input: "github.com/optown/proj" })).status).toBe(422);
+    files[optFile("optown", "proj")] = start.json.token;
+    expect((await call("POST", "/api/optout/confirm", { input: "github.com/optown/proj" })).json).toEqual({ opted_out: true });
+    // refused everywhere
+    expect((await call("GET", "/api/score/github.com/optown/proj")).status).toBe(410);
+    expect((await call("GET", "/github.com/optown/proj")).status).toBe(410);
+    expect((await call("GET", "/api/graph/github.com/optown/proj")).status).toBe(404);
+    expect((await call("POST", "/api/register", { input: "github.com/optown/proj" })).status).toBe(403);
+    expect((await call("GET", "/badge/github.com/optown/proj.svg")).text).toMatch(/unknown/);
+    // cannot be undone while the file exists, then can
+    expect((await call("POST", "/api/optin", { input: "github.com/optown/proj" })).status).toBe(422);
+    delete files[optFile("optown", "proj")];
+    expect((await call("POST", "/api/optin", { input: "github.com/optown/proj" })).json).toEqual({ opted_out: false });
+    expect((await call("GET", "/api/score/github.com/optown/proj")).status).toBe(200);
+  });
+
+  it("opting out also hides a registered listing and removes it from the sitemap, and opting back in restores it", async () => {
+    const a = await makeAgent("optreg/agent");
+    expect((await call("GET", `/a/${a.handle}`)).status).toBe(200);
+    expect((await call("GET", "/sitemap.xml")).text).toContain(`/a/${a.handle}`);
+    const start = await call("POST", "/api/optout/start", { input: "github.com/optreg/agent" });
+    files[optFile("optreg", "agent")] = start.json.token;
+    await call("POST", "/api/optout/confirm", { input: "github.com/optreg/agent" });
+    expect((await call("GET", `/a/${a.handle}`)).status).toBe(404);
+    expect((await call("GET", "/sitemap.xml")).text).not.toContain(`/a/${a.handle}`);
+    delete files[optFile("optreg", "agent")];
+    await call("POST", "/api/optin", { input: "github.com/optreg/agent" });
+    expect((await call("GET", `/a/${a.handle}`)).status).toBe(200);
+  });
+
+  it("an admin can remove a project immediately; nobody else can", async () => {
+    seedScore("optadm", "proj");
+    expect((await call("POST", "/api/admin/optout", { input: "github.com/optadm/proj" })).status).toBe(403);
+    expect((await call("POST", "/api/admin/optout", { input: "github.com/optadm/proj" }, undefined, { "x-admin-token": "adm-secret" })).status).toBe(200);
+    expect((await call("GET", "/api/score/github.com/optadm/proj")).status).toBe(410);
+  });
+
+  it("serves privacy and opt-out pages without inline script", async () => {
+    const p = await call("GET", "/privacy");
+    expect(p.status).toBe(200);
+    expect(p.text).toMatch(/What ScBee reads/);
+    expect(p.text).toMatch(/\/optout/);
+    const o = await call("GET", "/optout");
+    expect(o.status).toBe(200);
+    expect(o.text).not.toMatch(/<script>/);
+  });
+
+  it("serves robots.txt, sitemap.xml, llms.txt and ScBee's own valid agent card", async () => {
+    const robots = (await call("GET", "/robots.txt")).text;
+    expect(robots).toMatch(/Sitemap: http:\/\/t\/sitemap\.xml/);
+    expect(robots).toMatch(/Disallow: \/api\//);
+    const sm = await call("GET", "/sitemap.xml");
+    expect(sm.headers.get("content-type")).toMatch(/xml/);
+    expect(sm.text).toMatch(/<loc>http:\/\/t\/board<\/loc>/);
+    const llms = (await call("GET", "/llms.txt")).text;
+    expect(llms).toMatch(/^# ScBee/);
+    expect(llms).toMatch(/untrusted/);
+    const card = await call("GET", "/.well-known/agent-card.json");
+    expect(parseCard(card.json)).toMatchObject({ ok: true });
+    expect(card.json.skills.length).toBeGreaterThan(2);
+  });
+
+  it("score pages for unregistered projects are noindex; registered ones are indexable", async () => {
+    seedScore("idxno", "proj");
+    expect((await call("GET", "/github.com/idxno/proj")).text).toMatch(/name="robots" content="noindex,follow"/);
+    seedScore("idxyes", "agent");
+    await makeAgent("idxyes/agent");
+    expect((await call("GET", "/github.com/idxyes/agent")).text).not.toMatch(/noindex/);
   });
 });

@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS promos (
 );
 CREATE INDEX IF NOT EXISTS idx_promo_live ON promos(hidden, expires_at, id);
 CREATE INDEX IF NOT EXISTS idx_promo_agent ON promos(agent_id, created_at);
+CREATE TABLE IF NOT EXISTS optouts (
+  source_key TEXT PRIMARY KEY,
+  token TEXT NOT NULL,
+  confirmed_at INTEGER,
+  hid_agent INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS kv (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -279,6 +286,34 @@ export class Store {
   async updateStoredCard(id: number, name: string, description: string | null, cardJson: string, cardUrl: string | null, cardFound: boolean) {
     await this.run("UPDATE agents SET name = ?, description = ?, card_json = ?, card_url = ?, card_found = ? WHERE id = ?",
       [name, description, cardJson, cardUrl, cardFound ? 1 : 0, id]);
+  }
+
+  // ---- owner opt-out ---------------------------------------------------------------------------------------------
+  async startOptout(key: string, token: string) {
+    await this.run(
+      `INSERT INTO optouts (source_key, token, created_at) VALUES (?,?,?)
+       ON CONFLICT(source_key) DO UPDATE SET token = excluded.token, created_at = excluded.created_at WHERE optouts.confirmed_at IS NULL`,
+      [key, token, Date.now()]);
+  }
+  getOptout(key: string) {
+    return this.one<{ source_key: string; token: string; confirmed_at: number | null; hid_agent: number }>("SELECT * FROM optouts WHERE source_key = ?", [key]);
+  }
+  async isOptedOut(key: string): Promise<boolean> {
+    return !!(await this.one("SELECT 1 FROM optouts WHERE source_key = ? AND confirmed_at IS NOT NULL", [key]));
+  }
+  /** Remove everything ScBee shows about this source: cached score, gallery entries, and its agent listing (hidden, restorable). */
+  async confirmOptout(key: string) {
+    const visible = await this.one<{ id: number }>("SELECT id FROM agents WHERE source_key = ? AND hidden = 0", [key]);
+    await this.run("UPDATE optouts SET confirmed_at = ?, hid_agent = ? WHERE source_key = ?", [Date.now(), visible ? 1 : 0, key]);
+    await this.run("DELETE FROM projects WHERE source_key = ?", [key]);
+    await this.run("DELETE FROM gallery WHERE source_key = ?", [key]);
+    await this.run("DELETE FROM score_history WHERE source_key = ?", [key]);
+    if (visible) await this.run("UPDATE agents SET hidden = 1 WHERE id = ?", [visible.id]);
+  }
+  async clearOptout(key: string) {
+    const row = await this.getOptout(key);
+    if (row?.hid_agent) await this.run("UPDATE agents SET hidden = 0 WHERE source_key = ?", [key]);
+    await this.run("DELETE FROM optouts WHERE source_key = ?", [key]);
   }
 
   /** Small expiring values (for example a short-lived GitHub installation token). */
@@ -505,7 +540,7 @@ export class Store {
                 (SELECT COUNT(*) FROM verdicts v WHERE v.project_key = a.source_key), a.created_at
          FROM agents a WHERE a.kind = 'github' AND a.hidden = 0 AND a.verified = 1
            AND a.source_key NOT IN (SELECT source_key FROM projects)
-       ) WHERE key LIKE 'github:%' AND key NOT LIKE ? ESCAPE '\\'
+       ) WHERE key LIKE 'github:%' AND key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) AND key NOT LIKE ? ESCAPE '\\'
          AND key NOT IN (SELECT project_key FROM verdicts WHERE owner_key = ?)
        ORDER BY seen DESC LIMIT ?`,
       [`github:${ownerName.replace(/[%_\\]/g, "\\$&")}/%`, ownerKey, limit]);
@@ -513,7 +548,7 @@ export class Store {
   /** Scored GitHub projects as raw signals JSON, newest first. */
   graphRows(limit = 2000) {
     return this.rows<{ source_key: string; signals_json: string; total: number }>(
-      "SELECT source_key, signals_json, total FROM projects WHERE source_key LIKE 'github:%' ORDER BY fetched_at DESC LIMIT ?", [limit]);
+      "SELECT source_key, signals_json, total FROM projects WHERE source_key LIKE 'github:%' AND source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) ORDER BY fetched_at DESC LIMIT ?", [limit]);
   }
   /** Distinct owners who said, in a verdict on one project, that they would integrate it with another. Both directions. */
   async endorsementsFor(projectKey: string): Promise<{ from: string; to: string; owners: number }[]> {
@@ -538,7 +573,7 @@ export class Store {
   galleryRows(collection: string, limit = 24) {
     return this.rows<{ source_key: string; signals_json: string; total: number; fetched_at: number }>(
       `SELECT p.source_key, p.signals_json, p.total, p.fetched_at FROM gallery g JOIN projects p ON p.source_key = g.source_key
-       WHERE g.collection = ? ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [collection, limit]);
+       WHERE g.collection = ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [collection, limit]);
   }
 
   // notifications
