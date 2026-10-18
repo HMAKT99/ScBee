@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/@fontsource/inter/files/inter-latin-{400,700,800}-normal.woff",
+      "includeFiles": "node_modules/@fontsource*/{inter,fraunces,jetbrains-mono}/files/*-latin-[0-9w]*",
       "maxDuration": 15
     }
   },

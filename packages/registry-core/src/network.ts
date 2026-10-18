@@ -1,5 +1,38 @@
 /** Honest network measures: counted from real connections only. Nothing here is estimated or projected. */
 
+import { terms } from "./feed.js";
+
+export interface NetNode { id: string; kind: "agent" | "project"; text: string }
+export interface OverlapEdge { a: string; b: string; w: number; why: string[] }
+
+/**
+ * Edges for the living map: two nodes are linked when what they do overlaps (shared words in their listings).
+ * This is similarity, not a connection anyone agreed to, and the map labels it that way. Deterministic.
+ * Each node keeps at most `perNode` strongest links; two projects are never linked to each other.
+ */
+export function overlapEdges(nodes: NetNode[], { minShared = 2, perNode = 3 }: { minShared?: number; perNode?: number } = {}): OverlapEdge[] {
+  const bag = new Map(nodes.map((n) => [n.id, terms(n.text)]));
+  const all: OverlapEdge[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i]!, b = nodes[j]!;
+      if (a.kind === "project" && b.kind === "project") continue;
+      const shared = [...bag.get(a.id)!].filter((t) => bag.get(b.id)!.has(t)).sort();
+      if (shared.length >= minShared) all.push({ a: a.id, b: b.id, w: shared.length, why: shared.slice(0, 3) });
+    }
+  }
+  all.sort((x, y) => y.w - x.w || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+  const deg = new Map<string, number>();
+  const keep: OverlapEdge[] = [];
+  for (const e of all) {
+    if ((deg.get(e.a) ?? 0) >= perNode || (deg.get(e.b) ?? 0) >= perNode) continue;
+    deg.set(e.a, (deg.get(e.a) ?? 0) + 1);
+    deg.set(e.b, (deg.get(e.b) ?? 0) + 1);
+    keep.push(e);
+  }
+  return keep;
+}
+
 /** A measured average is only shown once there are at least this many accepted connections. */
 export const MIN_CONNECTIONS_FOR_DEGREES = 5;
 

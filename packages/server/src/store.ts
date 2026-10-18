@@ -316,6 +316,28 @@ export class Store {
     await this.run("DELETE FROM optouts WHERE source_key = ?", [key]);
   }
 
+  /** Everything the living map needs: visible agents (with their effective listing), accepted connections between them, and a few scored projects. */
+  async networkSnapshot(maxAgents = 60, maxProjects = 30) {
+    const rows = await this.rows<AgentRow & { profile_json: string | null }>(
+      `SELECT a.*, pr.profile_json AS profile_json FROM agents a LEFT JOIN profiles pr ON pr.agent_id = a.id
+       WHERE a.hidden = 0 ORDER BY a.verified DESC, a.id DESC LIMIT ?`, [maxAgents]);
+    const agents = rows.map((r) => {
+      const { card } = this.effectiveCard(r, r.profile_json);
+      const text = [card.name, card.description ?? "", card.tagline ?? "", ...(card.tags ?? []), ...(card.skills ?? []).flatMap((x) => [x.name, x.description ?? ""])].join(" ");
+      return { id: r.id, handle: r.handle, name: card.name, tagline: card.tagline ?? null, verified: r.verified === 1, source: r.source_key, text };
+    });
+    const ids = new Set(agents.map((a) => a.id));
+    const links = (await this.rows<{ from_id: number; to_id: number }>("SELECT from_id, to_id FROM connections WHERE status = 'accepted'"))
+      .filter((l) => ids.has(l.from_id) && ids.has(l.to_id));
+    const known = new Set(agents.map((a) => a.source));
+    const projects = (await this.graphRows(maxProjects + agents.length)).filter((p) => !known.has(p.source_key)).slice(0, maxProjects).map((p) => {
+      let sig: { description?: string | null; topics?: string[]; fullName?: string } = {};
+      try { sig = JSON.parse(p.signals_json); } catch { /* keep empty */ }
+      return { source: p.source_key, name: sig.fullName ?? p.source_key.slice(7), score: p.total, text: `${sig.description ?? ""} ${(sig.topics ?? []).join(" ")}` };
+    });
+    return { agents, links, projects };
+  }
+
   /** Small expiring values (for example a short-lived GitHub installation token). */
   async getKv(key: string): Promise<string | null> {
     const r = await this.one<{ value: string; expires_at: number }>("SELECT value, expires_at FROM kv WHERE key = ?", [key]);
