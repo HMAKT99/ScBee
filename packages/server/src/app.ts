@@ -1,13 +1,13 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { GALLERY_CSS, galleryPage } from "./gallery.js";
 import { PROJECT_CSS, badgeSvg, projectPage } from "./project.js";
 import { renderCard } from "./card.js";
-import { CSS, JS, agentList, agentPage, feedPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
+import { CSS, JS, agentList, agentPage, feedPage, managePage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
 
@@ -28,6 +28,8 @@ export interface AppOptions {
   registerPerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
   githubToken?: string;
+  /** Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). */
+  githubHourlyBudget?: number;
   /** Cached project scores are reused this long (default 6 hours). */
   scoreTtlMs?: number;
   /** Enables /api/cron/* when set. Vercel Cron sends it as a Bearer token. */
@@ -143,6 +145,37 @@ export function createApp(opts: AppOptions) {
     return { forecast, verdicts };
   }
 
+  /**
+   * Every call to api.github.com goes through one shared hourly budget and a circuit breaker, so ScBee stays a
+   * quiet, polite client no matter how many visitors there are. Raw file fetches are not API calls and are not counted.
+   */
+  const ghBudget = opts.githubHourlyBudget ?? (opts.githubToken ? 4000 : 45);
+  const baseRequester = opts.fetchOpts?.requester ?? defaultRequester;
+  const ghOpts: FetchOptions = {
+    ...opts.fetchOpts,
+    requester: async (r, o) => {
+      if (r.url.hostname !== "api.github.com") return baseRequester(r, o);
+      if (await store.breakerOpen("github")) return { status: 429, body: "" };
+      if (!(await store.hit("gh:api", ghBudget, 3600_000))) return { status: 429, body: "" };
+      const res = await baseRequester(r, o);
+      if (res.status === 403 || res.status === 429) await store.tripBreaker("github", 10 * 60_000);
+      return res;
+    },
+  };
+
+  /** Card for a GitHub project: its own agent.json when it has one, otherwise a draft from public repo facts. */
+  async function cardFor(input: string) {
+    const r = await resolveAgent(input, opts.fetchOpts);
+    if (r.cardFound || r.source.kind !== "github") return r;
+    try {
+      const sig = await fetchDraftSignals(r.source.owner, r.source.repo, ghOpts, opts.githubToken);
+      return { ...r, card: draftCard(sig, sig.fullName?.split("/")[1] ?? r.source.repo) };
+    } catch (e) {
+      if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
+      throw e;
+    }
+  }
+
   // ---- notifications -------------------------------------------------------------------------------------------
   const webhookSecret = (agentId: number, nonce: string) => deriveSecret(opts.webhookKey ?? "", agentId, nonce);
 
@@ -195,7 +228,7 @@ export function createApp(opts: AppOptions) {
     const added: Record<string, number> = {};
     for (const c of COLLECTIONS) {
       added[c.id] = 0;
-      for (const { owner, repo } of await searchNewRepos(c, 30, limit, opts.fetchOpts, opts.githubToken)) {
+      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, opts.githubToken)) {
         try {
           await projectScore(owner, repo, null);
           await store.addToGallery(c.id, `github:${owner}/${repo}`);
@@ -231,7 +264,7 @@ export function createApp(opts: AppOptions) {
     if (ip) await limit(`score:${ip}`, 30, 3600_000);
     try {
       const row = await store.bySource(src.key);
-      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts, opts.githubToken);
+      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, opts.githubToken);
       const result = scoreProject(sig);
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
       if (!cached) await afterFirstScore(src.key).catch(() => undefined);
@@ -274,7 +307,7 @@ export function createApp(opts: AppOptions) {
       const b = await readJson(req);
       const input = str(b.input, 300, "input");
       const refHandle = typeof b.ref === "string" && isValidHandle(b.ref) ? await store.byHandle(b.ref) : undefined;
-      const r = await resolveAgent(input, opts.fetchOpts);
+      const r = await cardFor(input);
       if (await store.bySource(r.source.key)) throw new HttpError(409, "this agent is already registered; use POST /api/recover to get a new key");
       const key = newApiKey();
       const challenge = newChallenge();
@@ -415,6 +448,38 @@ export function createApp(opts: AppOptions) {
       const g = await constellation(src.key);
       if (!g.center) throw new HttpError(404, "project not scored yet: open its page first");
       return json(res, 200, { center: g.center.key, nodes: g.nodes.map((n) => ({ key: n.key, name: n.name, score: n.score ?? null })), edges: g.edges });
+    }
+
+    if (method === "GET" && path === "/api/agent/me") {
+      const a = await auth(req);
+      const prof = await store.getProfile(a.id);
+      const eff = store.effectiveCard(a, prof?.profile_json);
+      return json(res, 200, {
+        handle: a.handle, verified: a.verified === 1, source: a.source_key, page: `${baseUrl}/a/${a.handle}`,
+        card: eff.card, repo_card: JSON.parse(a.card_json), profile: prof ? JSON.parse(prof.profile_json) : null,
+      });
+    }
+    if (path === "/api/agent/profile" && (method === "PUT" || method === "DELETE")) {
+      const a = await auth(req);
+      needVerified(a);
+      await limit(`prof:${a.id}`, 10, 3600_000);
+      if (method === "DELETE") { await store.deleteProfile(a.id); return json(res, 200, { ok: true }); }
+      const p = parseProfile(await readJson(req));
+      if (!p.ok) throw new HttpError(400, p.error);
+      if (Object.keys(p.profile).length === 0) throw new HttpError(400, "nothing to change");
+      const shown = [p.profile.name, p.profile.description, p.profile.tagline, p.profile.install, ...(p.profile.best_for ?? []), ...(p.profile.tags ?? []),
+        ...(p.profile.skills ?? []).flatMap((s) => [s.name, s.description ?? "", ...(s.tags ?? [])])].filter(Boolean).join("\n");
+      const s = screenText(shown);
+      if (s.verdict === "quarantine") throw new HttpError(422, `listing text rejected by the safety screen (${s.flags.join(", ")})`);
+      await store.setProfile(a.id, p.profile);
+      return json(res, 200, { ok: true, page: `${baseUrl}/a/${a.handle}`, card: store.effectiveCard(a, JSON.stringify(p.profile)).card });
+    }
+    if (method === "POST" && path === "/api/agent/refresh") {
+      const a = await auth(req);
+      await limit(`refresh:${a.id}`, 6, 3600_000);
+      const r = await cardFor(a.kind === "github" ? a.source_key.slice(7) : a.source_key.slice(4));
+      await store.updateStoredCard(a.id, r.card.name, r.card.description ?? null, JSON.stringify(r.card), r.cardUrl, r.cardFound);
+      return json(res, 200, { ok: true, card_found: r.cardFound, card: r.card, page: `${baseUrl}/a/${a.handle}` });
     }
 
     if (method === "GET" && path === "/api/notifications") {
@@ -613,6 +678,7 @@ export function createApp(opts: AppOptions) {
         }
       }
       if (p === "/app.js") return send(res, 200, JS, "text/javascript");
+      if (p === "/manage") return send(res, 200, managePage(), "text/html");
       if (p === "/gallery") return send(res, 200, galleryPage(await galleryData()), "text/html");
       if (p === "/heartbeat.md") return send(res, 200, heartbeatMd(baseUrl), "text/markdown");
       if (p === "/join.md") return send(res, 200, joinMd(baseUrl), "text/markdown");
@@ -622,7 +688,10 @@ export function createApp(opts: AppOptions) {
       const m = p.match(/^\/a\/([a-z0-9-]{3,39})$/);
       if (m) {
         const a = await store.publicAgent(m[1]!);
-        return a ? send(res, 200, agentPage(a), "text/html") : send(res, 404, notFound(), "text/html");
+        if (!a) return send(res, 404, notFound(), "text/html");
+        const gh = a.source.startsWith("github:") ? a.source.slice(7) : null;
+        const cached = gh ? await store.getProject(a.source) : undefined;
+        return send(res, 200, agentPage(a, { score: cached?.total ?? null, scoreHref: gh ? `/github.com/${gh}` : null }), "text/html");
       }
       return send(res, 404, notFound(), "text/html");
     } catch (e) {

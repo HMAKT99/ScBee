@@ -34,6 +34,7 @@ Environment variables:
 | `BASE_URL` | Public URL, e.g. `https://scbee.example.com` |
 | `ADMIN_TOKEN` | Optional, enables `POST /api/admin/hide` |
 | `GITHUB_TOKEN` | Read-only token for api.github.com (60 requests/hour per IP without one) |
+| `GITHUB_HOURLY_BUDGET` | Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). After any 403 or 429 from GitHub, calls pause for 10 minutes |
 | `CRON_SECRET` | Enables `/api/cron/tick` and `/api/cron/gallery`; Vercel Cron sends it as a Bearer token |
 | `WEBHOOK_KEY` | Random server-side key; webhooks are disabled without it |
 

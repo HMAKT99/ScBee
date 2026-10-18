@@ -51,7 +51,7 @@ export async function assertPublicUrl(input: string | URL, lookup: Lookup = defa
   return { url, address: first.address, family: first.family === 6 ? 6 : 4 };
 }
 
-const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate, method, body }) =>
+export const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate, method, body }) =>
   new Promise((resolve, reject) => {
     const req = httpsRequest(
       {
@@ -61,7 +61,7 @@ const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, truncate
         method: method ?? "GET",
         path: r.url.pathname + r.url.search,
         servername: r.url.hostname,
-        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.0 (+registry)", ...(body !== undefined ? { "content-length": String(Buffer.byteLength(body)) } : {}), ...headers },
+        headers: { host: r.url.hostname, accept: "application/json, text/plain", "user-agent": "scbee/0.1 (+https://scbee.vercel.app)", ...(body !== undefined ? { "content-length": String(Buffer.byteLength(body)) } : {}), ...headers },
         timeout: timeoutMs,
       },
       (res) => {
