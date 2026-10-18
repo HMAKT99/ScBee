@@ -4,9 +4,10 @@ import { createApp, Store } from "../packages/server/dist/index.js";
 let ready;
 function init() {
   ready ??= (async () => {
-    const url = process.env.DATABASE_URL;
+    // DATABASE_* are ScBee's names; TURSO_* are what the Vercel Turso integration provides.
+    const url = process.env.DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    const store = await Store.open(url, process.env.DATABASE_AUTH_TOKEN);
+    const store = await Store.open(url, process.env.DATABASE_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN);
     const baseUrl = (process.env.BASE_URL ?? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL ?? "localhost"}`).replace(/\/$/, "");
     return createApp({
       store,

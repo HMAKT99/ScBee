@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "packages/**/dist/**,node_modules/@fontsource/inter/files/*.woff",
+      "includeFiles": "node_modules/@fontsource/inter/files/inter-latin-{400,700,800}-normal.woff",
       "maxDuration": 15
     }
   },
