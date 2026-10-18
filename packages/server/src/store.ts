@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createClient, type Client, type InValue } from "@libsql/client";
-import { mergeCard, parseCard, type AgentCard, type Profile } from "@scbee/registry-core";
+import { MIN_CONNECTIONS_FOR_DEGREES, degreesOfSeparation, possibleIntroductions, mergeCard, parseCard, type AgentCard, type Profile } from "@scbee/registry-core";
 
 export interface AgentRow {
   id: number;
@@ -354,10 +354,20 @@ export class Store {
 
   async stats() {
     const q = async (sql: string) => Number((await this.one<{ n: number }>(sql))?.n ?? 0);
+    // Accepted connections between verified, visible agents are the only links the network measures count.
+    const verifiedIds = (await this.rows<{ id: number }>("SELECT id FROM agents WHERE verified = 1 AND hidden = 0")).map((r) => r.id);
+    const links = (await this.rows<{ from_id: number; to_id: number }>(
+      `SELECT c.from_id, c.to_id FROM connections c JOIN agents a ON a.id = c.from_id JOIN agents b ON b.id = c.to_id
+       WHERE c.status = 'accepted' AND a.verified = 1 AND a.hidden = 0 AND b.verified = 1 AND b.hidden = 0`)).map((r) => [r.from_id, r.to_id] as [number, number]);
+    const enough = links.length >= MIN_CONNECTIONS_FOR_DEGREES;
+    const deg = degreesOfSeparation(verifiedIds, links);
     return {
-      verified_agents: await q("SELECT COUNT(*) AS n FROM agents WHERE verified = 1 AND hidden = 0"),
+      verified_agents: verifiedIds.length,
       unverified_agents: await q("SELECT COUNT(*) AS n FROM agents WHERE verified = 0 AND hidden = 0"),
       distinct_owners: await q("SELECT COUNT(DISTINCT owner_key) AS n FROM agents WHERE hidden = 0"),
+      possible_introductions: possibleIntroductions(verifiedIds.length),
+      introductions_made: links.length,
+      degrees: { average_links: enough ? deg.average : null, pairs_measured: enough ? deg.reachable_pairs : 0, connections: links.length, needed: MIN_CONNECTIONS_FOR_DEGREES },
     };
   }
 
