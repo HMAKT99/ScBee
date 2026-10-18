@@ -14,7 +14,7 @@ const loadFonts = (): Font[] =>
 
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, ...(children !== undefined ? { children } : {}) } });
 
-const PAPER = "#f6f3eb", INK = "#12120f", MUTE = "#77746a", AMBER = "#f2a20f";
+const PAPER = "#ffffff", INK = "#0d0d0d", MUTE = "#737373", AMBER = "#f2a20f";
 
 /** 1200x630 share card as PNG (X and LinkedIn do not render SVG cards). Same identity as the site: paper, ink, one amber signal. */
 export async function renderCard(owner: string, repo: string, r: ScoreResult): Promise<Buffer> {

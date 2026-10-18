@@ -31,8 +31,8 @@ if(gx&&gx.getContext){try{
   const draw=(t)=>{c.clearRect(0,0,W,H);
     others.forEach((o)=>{const p=pos[o.n.k],q=pos[g.center];c.strokeStyle=COL[o.e.y]||'#9a968a';c.globalAlpha=0.35+0.5*o.e.w;c.lineWidth=1+2*o.e.w;c.beginPath();c.moveTo(q.x,q.y);c.lineTo(p.x,p.y);c.stroke()});c.globalAlpha=1;
     c.font='13px Inter,system-ui,sans-serif';c.textAlign='center';
-    const dot=(k,rad,col)=>{const p=pos[k];c.fillStyle=col;c.beginPath();c.arc(p.x,p.y,rad,0,7);c.fill();c.fillStyle='#12120f';c.fillText(by[k].n,p.x,p.y+rad+15)};
-    others.forEach((o)=>dot(o.n.k,6,COL[o.e.y]||'#9a968a'));dot(g.center,11,'#12120f')};
+    const dot=(k,rad,col)=>{const p=pos[k];c.fillStyle=col;c.beginPath();c.arc(p.x,p.y,rad,0,7);c.fill();c.fillStyle='#0d0d0d';c.fillText(by[k].n,p.x,p.y+rad+15)};
+    others.forEach((o)=>dot(o.n.k,6,COL[o.e.y]||'#9a968a'));dot(g.center,11,'#0d0d0d')};
   draw(0);
   gx.addEventListener('click',(ev)=>{const r=gx.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
     for(const o of others){const p=pos[o.n.k];if(Math.hypot(p.x-x,p.y-y)<16){location.href='/'+o.n.k.replace('github:','github.com/');return}}});
@@ -66,10 +66,10 @@ if(mapEl){fetch('/api/network').then((r)=>r.json()).then((g)=>{try{
       if(n.kind==='agent'){
         if(n.verified&&!reduce){ctx.beginPath();ctx.arc(x,y,9+((t/900+n.ph)%3),0,7);ctx.strokeStyle='rgba(242,162,15,'+(0.5-((t/900+n.ph)%3)/6)+')';ctx.lineWidth=1.2;ctx.stroke()}
         ctx.beginPath();ctx.arc(x,y,on?8:6,0,7);
-        if(n.verified){ctx.fillStyle='#12120f';ctx.fill();ctx.beginPath();ctx.arc(x,y,on?11:9,0,7);ctx.strokeStyle='#f2a20f';ctx.lineWidth=1.6;ctx.stroke()}
-        else{ctx.fillStyle='#f6f3eb';ctx.fill();ctx.strokeStyle='#12120f';ctx.lineWidth=1.4;ctx.stroke()}
-        if(W>300){ctx.font='500 12px Inter,system-ui,sans-serif';ctx.fillStyle='#12120f';ctx.textAlign='center';ctx.fillText(n.name.length>18?n.name.slice(0,17)+'…':n.name,x,y+24)}
-      }else{ctx.beginPath();ctx.arc(x,y,on?5:3.2,0,7);ctx.fillStyle='#f6f3eb';ctx.fill();ctx.strokeStyle='#77746a';ctx.lineWidth=1.2;ctx.stroke()}}};
+        if(n.verified){ctx.fillStyle='#0d0d0d';ctx.fill();ctx.beginPath();ctx.arc(x,y,on?11:9,0,7);ctx.strokeStyle='#f2a20f';ctx.lineWidth=1.6;ctx.stroke()}
+        else{ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#0d0d0d';ctx.lineWidth=1.4;ctx.stroke()}
+        if(W>300){ctx.font='500 12px Inter,system-ui,sans-serif';ctx.fillStyle='#0d0d0d';ctx.textAlign='center';ctx.fillText(n.name.length>18?n.name.slice(0,17)+'…':n.name,x,y+24)}
+      }else{ctx.beginPath();ctx.arc(x,y,on?5:3.2,0,7);ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#737373';ctx.lineWidth=1.2;ctx.stroke()}}};
   const loop=(t)=>{draw(t);requestAnimationFrame(loop)};
   if(reduce)draw(0);else requestAnimationFrame(loop);
   const pick=(ev)=>{const r=cv.getBoundingClientRect();const x=ev.clientX-r.left,y=ev.clientY-r.top;let best=null,bd=18;

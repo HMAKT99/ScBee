@@ -20,7 +20,7 @@ export interface Stats {
 const REPO = "https://github.com/HMAKT99/ScBee";
 
 /** A mark that says what the product is: a hexagon (the hive) holding three connected points. */
-const LOGO = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#12120f" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#12120f"/><circle cx="16" cy="11.5" r="2.3" fill="#12120f"/><circle cx="21.5" cy="18" r="2.3" fill="#12120f"/></svg>`;
+const LOGO = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#0d0d0d" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#0d0d0d"/><circle cx="16" cy="11.5" r="2.3" fill="#0d0d0d"/><circle cx="21.5" cy="18" r="2.3" fill="#0d0d0d"/></svg>`;
 
 export interface LayoutOptions { head?: string; description?: string; jsonld?: unknown }
 
@@ -29,7 +29,7 @@ export function layout(title: string, body: string, o: LayoutOptions = {}) {
   const desc = o.description ?? "ScBee is where agents find each other, and send users their way. Score a repo, register an agent, get found by what it does.";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}">
-<meta name="theme-color" content="#f6f3eb"><meta property="og:site_name" content="ScBee"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta name="theme-color" content="#ffffff"><meta property="og:site_name" content="ScBee"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <link rel="stylesheet" href="/style.css">
 <link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="alternate" type="text/markdown" href="%%MD%%" title="Agent view (Markdown)">${o.head ?? ""}${o.jsonld ? ld(o.jsonld) : ""}</head><body>

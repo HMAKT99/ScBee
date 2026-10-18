@@ -9,9 +9,9 @@ export const CSS = `
 @font-face{font-family:"Inter";src:url(/fonts/inter.woff2) format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
 @font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
 :root{
-  --paper:#f6f3eb;--paper2:#efebe0;--ink:#12120f;--ink2:#3b3a34;--mute:#77746a;--hair:rgba(18,18,15,.18);--hair2:rgba(18,18,15,.09);
+  --paper:#ffffff;--paper2:#f5f5f4;--ink:#0d0d0d;--ink2:#3d3d3d;--mute:#737373;--hair:rgba(13,13,13,.16);--hair2:rgba(13,13,13,.08);
   --amber:#f2a20f;--amber-ink:#8a5a00;--ok:#1e7a46;--bad:#b8402a;
-  --term:#14130f;--term-ink:#f1ead8;--term-mute:#9a9482;--term-line:rgba(241,234,216,.16);
+  --term:#0f0f10;--term-ink:#ececec;--term-mute:#8f8f8f;--term-line:rgba(236,236,236,.16);
   --serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --max:1240px;--gut:clamp(20px,4vw,48px);
 }
@@ -45,7 +45,7 @@ img,svg,canvas{max-width:100%}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:2px}
 
 /* header */
-header.top{position:sticky;top:0;z-index:20;background:rgba(246,243,235,.88);backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid var(--hair2)}
+header.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid var(--hair2)}
 header.top .wrap{display:flex;align-items:center;justify-content:space-between;height:68px;gap:20px}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font:420 24px/1 var(--serif);letter-spacing:-.03em}
 .brand svg{width:26px;height:26px}
@@ -68,7 +68,7 @@ header nav a.nl:hover{color:var(--ink);text-decoration:underline;text-decoration
 .sec-head h2{font-size:clamp(32px,4.6vw,64px)}
 .sec-head .lead{grid-column:2;max-width:42em;margin:12px 0 0}
 .lead{font-size:clamp(17px,1.5vw,20px);line-height:1.55;color:var(--ink2)}
-em{font-style:italic;font-family:var(--serif);color:var(--amber-ink)}
+em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 
 /* hero */
 .hero{padding:clamp(40px,6vw,88px) 0 clamp(40px,6vw,80px)}
@@ -94,7 +94,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--amber-ink)}
 
 /* living map */
 .map{position:relative;border:1px solid var(--hair);border-radius:6px;background:
-  radial-gradient(circle at 1px 1px,rgba(18,18,15,.12) 1px,transparent 0) 0 0/22px 22px,var(--paper2);aspect-ratio:1/1.08;overflow:hidden}
+  radial-gradient(circle at 1px 1px,rgba(13,13,13,.13) 1px,transparent 0) 0 0/22px 22px,var(--paper2);aspect-ratio:1/1.08;overflow:hidden}
 .map canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .map .cap{position:absolute;left:14px;top:12px;right:14px;display:flex;justify-content:space-between;pointer-events:none}
 .map .legend{position:absolute;left:14px;bottom:12px;right:14px;display:flex;flex-wrap:wrap;gap:6px 16px;font:400 10.5px var(--mono);letter-spacing:.04em;color:var(--ink2);pointer-events:none}
@@ -215,10 +215,10 @@ em{font-style:italic;font-family:var(--serif);color:var(--amber-ink)}
 .invert{background:var(--term);color:var(--term-ink)}
 .invert .label,.invert .mute{color:var(--term-mute)}
 .invert h2{color:var(--term-ink)}
-.invert .lead{color:#cfc7b3}
-.invert em{color:var(--amber)}
-.invert .use{background:rgba(241,234,216,.06);border:1px solid var(--term-line)}
-.codebox{background:rgba(241,234,216,.05);border:1px solid var(--term-line);border-radius:6px;padding:22px 24px;font:400 13px/1.75 var(--mono);color:var(--term-ink);overflow:auto;white-space:pre-wrap}
+.invert .lead{color:#c9c9c9}
+.invert em{color:var(--term-ink)}
+.invert .use{background:rgba(236,236,236,.06);border:1px solid var(--term-line)}
+.codebox{background:rgba(236,236,236,.05);border:1px solid var(--term-line);border-radius:6px;padding:22px 24px;font:400 13px/1.75 var(--mono);color:var(--term-ink);overflow:auto;white-space:pre-wrap}
 .codebox .c{color:var(--term-mute)}.codebox .k{color:var(--amber)}
 
 /* footer */
