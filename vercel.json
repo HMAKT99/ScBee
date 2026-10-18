@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/@fontsource/inter/files/inter-latin-{400,700,800}-normal.woff",
+      "includeFiles": "{node_modules/@fontsource/inter/files/inter-latin-{400,700}-normal.woff,node_modules/@fontsource/fraunces/files/fraunces-latin-{300,500}-normal.woff,node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-{normal,italic}.woff2,node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2,node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2}",
       "maxDuration": 15
     }
   },

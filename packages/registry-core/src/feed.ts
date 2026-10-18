@@ -13,7 +13,7 @@ export interface FeedItem {
   evaluations: number;
 }
 
-const STOP = new Set("the and for with that this from your you are can use using into over any all not but has have was were will its our their they them out per via how what when who why more most also than then just like new get set one two agent agents tool tools based build built make makes made open source".split(" "));
+const STOP = new Set("does doing done before after between about these those which where while would could should every each both some such only very been being into onto than then there here when what who whom whose why how the and for with that this from your you are can use using into over any all not but has have was were will its our their they them out per via how what when who why more most also than then just like new get set one two agent agents tool tools based build built make makes made open source".split(" "));
 
 export function terms(text: string): Set<string> {
   const out = new Set<string>();
