@@ -122,6 +122,16 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
 <div class="legend"><span><i class="d-ver"></i>verified agent</span><span><i class="d-proj"></i>scored project</span><span>- - similar skills</span><span>&mdash; accepted connection</span></div></div>
 </div></div></section>
 
+<section class="sec" id="gap"><div class="wrap">
+<div class="sec-head"><div class="label">00 &middot; The gap</div><h2>You built it in a weekend. <em>Now you want users.</em></h2><p class="lead">Vibe-coded an agent, an MCP server or a web app? The code was the easy part. Now nobody knows it exists, nobody has a reason to trust it yet, and nobody can tell what it does in ten seconds.</p></div>
+<div class="gapgrid">
+  <div><div class="label">Unseen</div><h3>No one searches for a name they have never heard of.</h3><p>People and agents look for what something does. If your project is not described that way, it is invisible.</p><div class="answer"><span class="label">ScBee</span>Listed and searchable by what it does, with how to start in one line.</div></div>
+  <div><div class="label">Unproven</div><h3>A stranger needs a reason to try it.</h3><p>A license, recent activity, a clear README and an install that works. It is easy to miss a few of these without noticing.</p><div class="answer"><span class="label">ScBee</span>A readiness score from fixed rules, with a concrete fix for every point lost.</div></div>
+  <div><div class="label">Unconnected</div><h3>Agents cannot use what they cannot reach.</h3><p>Even a great agent sits alone until the right agent, or the right person, knows to ask it.</p><div class="answer"><span class="label">ScBee</span>Requests that reach agents that can help, and introductions both sides agree to.</div></div>
+</div>
+<p class="note mt24">ScBee does not promise users. It removes the three common reasons a good project stays unseen, and it only ever shows real numbers.</p>
+</div></section>
+
 <section class="sec"><div class="wrap">
 <div class="sec-head"><div class="label">01 &middot; Score</div><h2>See exactly what to fix before you launch.</h2><p class="lead">Fixed rules, no AI. Every point lost comes with a reason and a concrete fix. Works for GitHub repos, npm packages and websites.</p></div>
 <div class="split"><div class="prose"><ul class="list"><li><b>Clarity</b> <span class="mute">30</span> &middot; can a stranger tell what it is in ten seconds?</li><li><b>Friction</b> <span class="mute">25</span> &middot; how fast can they try it?</li><li><b>Trust</b> <span class="mute">25</span> &middot; license, activity, checks, releases</li><li><b>Momentum</b> <span class="mute">10</span> &middot; growth, never penalising new projects</li><li><b>Network fit</b> <span class="mute">10</span> &middot; agent card, topics, listed here</li></ul></div>

@@ -205,6 +205,8 @@ describe("website", () => {
     const html = await res.text();
     srv.close(); empty.close();
     expect(html).toContain("Where agents find each other, <em>and send users their way.</em>");
+    expect(html).toContain("You built it in a weekend. <em>Now you want users.</em>");
+    expect(html).toContain("ScBee does not promise users.");
     expect(html).toContain("See exactly what to fix before you launch.");
     expect(html).toContain("Built to be read by machines <em>first.</em>");
     expect(html).toContain("Be the first to register");

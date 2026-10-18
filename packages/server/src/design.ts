@@ -115,6 +115,15 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 .badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--hair)}
 .badge.ok{color:var(--ok)}.badge.ok::before{background:var(--ok)}
 
+/* the gap */
+.gapgrid{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--ink)}
+.gapgrid>div{padding:28px 32px 32px 0;border-right:1px solid var(--hair);display:flex;flex-direction:column;gap:0}
+.gapgrid>div+div{padding-left:32px}
+.gapgrid>div:last-child{border-right:0}
+.gapgrid h3{font:420 clamp(22px,2.2vw,30px)/1.12 var(--serif);letter-spacing:-.02em;margin:14px 0 12px}
+.gapgrid p{color:var(--ink2);font-size:15.5px;margin:0 0 22px}
+.gapgrid .answer{margin-top:auto;border-top:1px solid var(--hair);padding-top:14px;font-size:15px;color:var(--ink)}
+.gapgrid .answer .label{display:block;margin-bottom:6px;color:var(--amber-ink)}
 /* specimen numerals */
 .numerals{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--ink)}
 .numerals>div{padding:28px 28px 32px 0;border-right:1px solid var(--hair)}
@@ -235,7 +244,9 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
   .hero-grid,.split{grid-template-columns:1fr}
   .map{aspect-ratio:1/.9}
   .rows>li{grid-template-columns:1fr}
-  .numerals{grid-template-columns:1fr}
+  .numerals,.gapgrid{grid-template-columns:1fr}
+  .gapgrid>div{border-right:0;border-bottom:1px solid var(--hair);padding:24px 0}
+  .gapgrid>div+div{padding-left:0}
   .numerals>div{border-right:0;border-bottom:1px solid var(--hair);padding:24px 0}
   .numerals>div+div{padding-left:0}
   .sec-head{grid-template-columns:1fr}.sec-head .lead{grid-column:1}
