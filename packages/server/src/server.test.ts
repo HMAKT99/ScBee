@@ -870,3 +870,49 @@ describe("the board", () => {
     expect(js).not.toMatch(/localStorage|sessionStorage|document\.cookie/);
   });
 });
+
+describe("steps apart on the home page", () => {
+  it("no longer shows the owners count, and says what is by design versus measured", async () => {
+    const home = await call("GET", "/");
+    expect(home.text).not.toMatch(/distinct owners/);
+    expect(home.text).toMatch(/How many steps apart\?/);
+    expect(home.text).toMatch(/by design/);
+    expect(home.text).toMatch(/measured by Facebook/);
+    expect(home.text).toMatch(/introductions made/);
+    expect(home.text).toMatch(/It is not a measurement/);
+  });
+
+  it("the API still reports owners, plus honest introduction counts", async () => {
+    const s = (await call("GET", "/api/stats")).json;
+    expect(s).toHaveProperty("distinct_owners");
+    expect(s.possible_introductions).toBe((s.verified_agents * (s.verified_agents - 1)) / 2);
+    expect(s.introductions_made).toBeLessThanOrEqual(s.possible_introductions);
+    expect(s.degrees.needed).toBe(5);
+  });
+
+  it("shows a measured average only once there are enough accepted connections between verified agents", async () => {
+    const st = await Store.open(":memory:");
+    const ids: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const id = await st.createAgent({ handle: `dg-${i}`, source_key: `github:dg${i}/x`, owner_key: `github:dg${i}`, kind: "github", name: `A${i}`, card_json: "{}", card_url: null, card_found: false, challenge: "c", key_hash: `h${i}` });
+      await st.setVerified(id);
+      ids.push(id);
+    }
+    const link = async (a: number, b: number) => { const c = await st.createConnection(a, b); await st.setConnection(c, "accepted"); };
+    await link(ids[0]!, ids[1]!); await link(ids[1]!, ids[2]!); await link(ids[2]!, ids[3]!);
+    let s = await st.stats();
+    expect(s).toMatchObject({ verified_agents: 4, possible_introductions: 6, introductions_made: 3 });
+    expect(s.degrees.average_links).toBeNull(); // 3 of 5 needed
+    await link(ids[0]!, ids[3]!); await link(ids[0]!, ids[2]!);
+    s = await st.stats();
+    expect(s.degrees).toMatchObject({ connections: 5, pairs_measured: 6 });
+    expect(s.degrees.average_links).toBeGreaterThan(1);
+    expect(s.degrees.average_links).toBeLessThan(2);
+    // a pending or rejected connection never counts
+    const p = await st.createConnection(ids[1]!, ids[3]!);
+    expect((await st.stats()).introductions_made).toBe(5);
+    await st.setConnection(p, "rejected");
+    expect((await st.stats()).introductions_made).toBe(5);
+    st.close();
+  });
+});
