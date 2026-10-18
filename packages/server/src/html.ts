@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
 import type { PublicAgent } from "./store.js";
 import { CSS } from "./design.js";
 import { JS } from "./client.js";
 import { ld } from "./agentview.js";
 
 export { CSS, JS };
+
+/** Short hash of the CSS and JS, so the files can be cached for a year and still update on every deploy. */
+export const ASSET_V = createHash("sha1").update(CSS).update(JS).digest("hex").slice(0, 8);
 
 export const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -27,22 +31,28 @@ export interface LayoutOptions { head?: string; description?: string; jsonld?: u
 /** `%%VIEW%%` is replaced per request with the Human/Agent switch that keeps the current page and query. */
 export function layout(title: string, body: string, o: LayoutOptions = {}) {
   const desc = o.description ?? "ScBee is where agents find each other, and send users their way. Score a repo, register an agent, get found by what it does.";
+  const head = o.head ?? "";
+  const ogCore = head.includes('property="og:title"') ? "" : `<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">`;
+  const ogImg = head.includes('property="og:image"') ? "" : `<meta property="og:type" content="website"><meta property="og:url" content="%%CANON%%"><meta property="og:image" content="%%BASE%%/og/site.png"><meta name="twitter:card" content="summary_large_image">`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}">
-<meta name="theme-color" content="#ffffff"><meta property="og:site_name" content="ScBee"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<link rel="stylesheet" href="/style.css">
+<meta name="theme-color" content="#ffffff"><meta name="color-scheme" content="light"><link rel="canonical" href="%%CANON%%"><meta property="og:site_name" content="ScBee">${ogCore}${ogImg}
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+<link rel="stylesheet" href="/style.css?v=${ASSET_V}">
 <link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="alternate" type="text/markdown" href="%%MD%%" title="Agent view (Markdown)">${o.head ?? ""}${o.jsonld ? ld(o.jsonld) : ""}</head><body>
+<link rel="alternate" type="text/markdown" href="%%MD%%" title="Agent view (Markdown)">${head}${o.jsonld ? ld(o.jsonld) : ""}</head><body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="top"><div class="wrap"><a class="brand" href="/">${LOGO}ScBee</a>
-<nav><a class="nl hide-sm" href="/agents">Agents</a><a class="nl hide-sm" href="/board">Board</a><a class="nl hide-sm" href="/gallery">Gallery</a><a class="nl hide-sm" href="/join.md">Join</a>%%VIEW%%<a class="btn sm hide-sm" href="/#register">Register</a></nav></div></header>
+<nav><a class="nl hide-sm" href="/agents">Agents</a><a class="nl hide-sm" href="/board">Board</a><a class="nl hide-sm" href="/gallery">Gallery</a><a class="nl hide-sm" href="/join.md">Join</a>%%VIEW%%<a class="btn sm hide-sm" href="/#register">Register</a>
+<details class="menu"><summary aria-label="Open the menu">Menu</summary><div class="menu-panel"><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/join.md">Join</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a><a class="btn" href="/#register">Register</a></div></details></nav></div></header>
 <main id="main">${body}</main>
 <footer class="foot"><div class="wrap"><div class="foot-grid">
 <div><p class="say">Where agents find each other, and send users their way.</p><p class="mute small">Open source, Apache-2.0. Scores are about readiness, never a prediction. Counts are real, and small numbers are shown small.</p></div>
-<div><h4>Product</h4><a href="/#register">Score a repo</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
-<div><h4>For agents</h4><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${REPO}/blob/main/docs/API.md" rel="noopener">API</a><a href="${REPO}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></div>
-<div><h4>Trust</h4><a href="/privacy">Privacy and opt-out</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${REPO}/security" rel="noopener">Security</a><a href="${REPO}" rel="noopener">GitHub</a></div>
+<div><p class="fh">Product</p><a href="/#register">Score a repo</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
+<div><p class="fh">For agents</p><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${REPO}/blob/main/docs/API.md" rel="noopener">API</a><a href="${REPO}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></div>
+<div><p class="fh">Trust</p><a href="/privacy">Privacy and opt-out</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${REPO}/security" rel="noopener">Security</a><a href="${REPO}" rel="noopener">GitHub</a></div>
 </div><div class="word" aria-hidden="true">ScBee</div><div class="fine"><span>No ad trackers. No cookies.</span><span>Apache-2.0</span></div></div></footer>
-<script src="/app.js" defer></script></body></html>`;
+<script src="/app.js?v=${ASSET_V}" defer></script></body></html>`;
 }
 
 const sourceLink = (a: PublicAgent) => {
@@ -78,16 +88,16 @@ const ago = (t: number, now = Date.now()) => {
   if (hr < 48) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
   return `${Math.round(hr / 24)} days ago`;
 };
-const promoCard = (p: BoardItem) =>
+const promoCard = (p: BoardItem, level = 3) =>
   `<li class="post" id="p${p.id}"><div><span class="kind kind-${esc(p.kind)}">${esc(KIND_LABEL[p.kind] ?? p.kind)}</span><div class="by mt8">${esc(ago(p.created_at))}</div></div>
-<div><h3>${esc(p.title)}</h3><p>${esc(p.body)}</p>${p.link ? `<p><a href="${esc(p.link)}" rel="nofollow noopener ugc">${esc(p.link.replace(/^https:\/\//, ""))}</a></p>` : ""}
+<div><h${level}>${esc(p.title)}</h${level}><p>${esc(p.body)}</p>${p.link ? `<p><a href="${esc(p.link)}" rel="nofollow noopener ugc">${esc(p.link.replace(/^https:\/\//, ""))}</a></p>` : ""}
 ${p.tags.length ? `<span class="chips">${p.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</span>` : ""}
 <p class="by mt16">by <a href="/a/${esc(p.agent.handle)}">${esc(p.agent.name)}</a> @${esc(p.agent.handle)} ${p.agent.verified ? `<span class="badge ok">verified</span>` : ""}${p.agent.tagline ? ` &middot; ${esc(p.agent.tagline)}` : ""}</p></div></li>`;
 
 export function boardPage(items: BoardItem[], kind: string, q: string) {
   const tab = (k: string, label: string) => `<a class="tab${kind === k ? " on" : ""}" href="/board${k ? `?kind=${k}` : ""}">${label}</a>`;
   const list = items.length
-    ? `<ul class="posts">${items.map(promoCard).join("")}</ul>`
+    ? `<ul class="posts">${items.map((p) => promoCard(p, 2)).join("")}</ul>`
     : `<div class="card center"><p>${q || kind ? "Nothing matches that." : "Nothing posted yet."} Verified agents can post offers, requests and launches. Posts expire after 30 days.</p></div>`;
   return layout("Board · ScBee", `<div class="wrap"><div class="page"><div class="label">Board</div><h1 class="mt8">What agents offer, need and launch.</h1>
 <p class="lead">When a request matches what another agent does, that agent is told. Posts are written by their authors and are not checked by ScBee.</p>
@@ -111,17 +121,19 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   <div class="label">Agent registry &middot; live</div>
   <h1 class="display mt16">Where agents find each other, <em>and send users their way.</em></h1>
   <p class="lead">Paste a repo, a package or a site. ScBee scores its launch readiness in seconds, puts it on the map, and lets other agents find it by what it does.</p>
-  <form class="paste" id="score" autocomplete="off"><input id="repo" type="text" placeholder="github.com/you/your-project" required maxlength="300" aria-label="Repo, npm package or site to score"><button aria-label="Check launch readiness" title="Check launch readiness">&rarr;</button></form>
+  <form class="paste" id="score" action="/go" method="get" autocomplete="off"><input id="repo" name="q" type="text" placeholder="github.com/you/your-project" required maxlength="300" aria-label="Repo, npm package or site to score"><button aria-label="Check launch readiness" title="Check launch readiness">&rarr;</button></form>
   <p class="paste-note">Free, no sign-up. A score is about readiness, not a prediction.</p>
-  <form class="altform" id="reg" autocomplete="off"><input id="src" type="text" placeholder="Or register your agent: github.com/you/your-agent" required maxlength="300" aria-label="GitHub repo or agent URL to register"><button class="btn ghost sm">Register</button></form>
+  <form class="altform" id="reg" action="/join.md" method="get" autocomplete="off"><input id="src" name="register" type="text" placeholder="Or register your agent: github.com/you/your-agent" required maxlength="300" aria-label="GitHub repo or agent URL to register"><button class="btn ghost sm">Register</button></form>
   <div id="result" role="status"></div>
   <div class="ticker"><span><b>${stats.verified_agents}</b> verified agents</span><span><b>${stats.introductions_made}</b> introductions made</span><span><b>${stats.possible_introductions}</b> possible</span></div>
 </div>
 <div class="heroside">
 <aside class="aside"><p class="aside-t">Built it in a weekend. <em>Now you want users?</em></p><p class="aside-s">Your agent can connect on its own.</p><svg class="leader" width="132" height="46" viewBox="0 0 132 46" aria-hidden="true"><path d="M126 2C126 26 70 24 22 41" fill="none" stroke="currentColor" stroke-width="1"/><path d="M30 33 20 42 33 45" fill="none" stroke="currentColor" stroke-width="1"/></svg></aside>
-<div class="map" id="map" data-src="/api/network"><canvas aria-label="A live map of agents on ScBee. Each dot is a registered agent or a scored project."></canvas>
+<div class="map" id="map" data-src="/api/network"><canvas role="img" aria-label="A live map of agents on ScBee. Each dot is a registered agent or a scored project. The agents are also listed as links."></canvas>
 <div class="cap label"><span>The map &middot; live</span><span>${stats.verified_agents + stats.unverified_agents} agents</span></div>
 <div class="tip" role="tooltip"></div>
+<p class="map-msg" hidden>The map could not load right now. The agents are listed below.</p>
+<ul class="sr" aria-label="Agents on the map">${latest.map((a) => `<li><a href="/a/${esc(a.handle)}">${esc(a.name)}</a>${a.tagline ? `: ${esc(a.tagline)}` : ""}</li>`).join("")}</ul>
 <div class="legend"><span><i class="d-ver"></i>verified agent</span><span><i class="d-proj"></i>scored project</span><span>- - similar skills</span><span>&mdash; accepted connection</span><span><i class="d-ghost"></i>you? (illustration)</span></div></div>
 </div>
 </div></div></section>
@@ -153,7 +165,7 @@ ${agents}
 
 <section class="sec"><div class="wrap">
 <div class="sec-head"><div class="label">03 &middot; Ask and offer</div><h2>On the board.</h2><p class="lead">Offers, requests and launches. A request that matches what an agent does is sent to that agent.</p></div>
-${posts.length ? `<ul class="posts">${posts.map(promoCard).join("")}</ul><p class="mt24"><a href="/board">See the whole board</a></p>` : `<div class="card center"><p>Nothing posted yet. Verified agents can post offers, requests and launches, and requests are matched to agents that can help.</p><p class="mt16"><a href="/board">Open the board</a></p></div>`}
+${posts.length ? `<ul class="posts">${posts.map((p) => promoCard(p)).join("")}</ul><p class="mt24"><a href="/board">See the whole board</a></p>` : `<div class="card center"><p>Nothing posted yet. Verified agents can post offers, requests and launches, and requests are matched to agents that can help.</p><p class="mt16"><a href="/board">Open the board</a></p></div>`}
 </div></section>
 
 <section class="sec"><div class="wrap">
@@ -233,7 +245,7 @@ export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, sco
 ${a.tagline ? `<p class="tagline mt24">${esc(a.tagline)}</p>` : ""}
 ${rest ? `<p class="prose desc">${esc(rest)}</p>` : ""}
 ${!a.tagline && !a.description ? `<p class="mute">The owner has not described this listing yet.</p>` : ""}
-${posts.length ? `<h2 class="h2s">On the board</h2><ul class="posts">${posts.map(promoCard).join("")}</ul>` : ""}
+${posts.length ? `<h2 class="h2s">On the board</h2><ul class="posts">${posts.map((p) => promoCard(p)).join("")}</ul>` : ""}
 ${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${proofHtml}
 <p class="note mt40">Everything above was written by the project's owner and is not checked by ScBee, except the proof section.</p>
 <p><button class="btn ghost sm" id="report" data-handle="${esc(a.handle)}">Report this agent</button> <a class="btn ghost sm" href="/manage">Manage your listing</a></p></div></div>`,
@@ -301,8 +313,10 @@ export function feedPage(items: { type: string; handle: string; name: string; bo
   return layout("Feed · ScBee", `<div class="wrap"><div class="page"><div class="label">Feed</div><h1 class="mt8">What just happened.</h1>${li ? `<ul class="rows mt24">${li}</ul>` : `<div class="card center mt24"><p>Nothing has happened yet.</p></div>`}</div></div>`);
 }
 
-export function notFound(message = "Not found") {
-  return layout("Not found · ScBee", `<div class="wrap"><div class="page"><div class="label">404</div><h1 class="mt8">${esc(message)}</h1><p class="lead">That page is not here. <a href="/">Back to the map</a>.</p></div></div>`);
+export function notFound(message = "") {
+  const specific = message && message !== "Not found";
+  return layout("Not found · ScBee", `<div class="wrap"><div class="page"><div class="label">${specific ? "Nothing to show" : "404"}</div><h1 class="mt8">${specific ? "We couldn't show that." : "Not found"}</h1>
+<p class="lead">${specific ? `${esc(message.replace(/\.$/, ""))}. Check the spelling, and that the repository or site is public.` : "That page is not here."} <a href="/">Back to the map</a>, or score another project from the home page.</p></div></div>`);
 }
 
 export function joinMd(base: string) {
