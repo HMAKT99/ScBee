@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createClient, type Client, type InValue } from "@libsql/client";
+import { mergeCard, parseCard, type AgentCard, type Profile } from "@scbee/registry-core";
 
 export interface AgentRow {
   id: number;
@@ -27,6 +28,13 @@ export interface PublicAgent {
   kind: string;
   verified: boolean;
   skills: { id: string; name: string; description?: string; tags?: string[] }[];
+  tagline: string | null;
+  best_for: string[];
+  install: string | null;
+  url: string | null;
+  tags: string[];
+  /** True when the owner has edited the listing in ScBee (profile override). */
+  customized: boolean;
   source: string;
   invites: number;
   created_at: number;
@@ -148,6 +156,11 @@ CREATE TABLE IF NOT EXISTS deliveries (
   delivered_at INTEGER,
   last_error TEXT
 );
+CREATE TABLE IF NOT EXISTS profiles (
+  agent_id INTEGER PRIMARY KEY REFERENCES agents(id),
+  profile_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -198,20 +211,66 @@ export class Store {
     return (r?.n ?? 1) <= max;
   }
 
-  private async pub(a: AgentRow): Promise<PublicAgent> {
-    const card = JSON.parse(a.card_json) as { skills?: PublicAgent["skills"] };
+  /** The card shown to everyone: owner profile over repo card (or draft). */
+  effectiveCard(a: Pick<AgentRow, "name" | "description" | "card_json">, profileJson: string | null | undefined): { card: AgentCard; customized: boolean } {
+    let base: AgentCard = { name: a.name, ...(a.description ? { description: a.description } : {}), skills: [] };
+    try { const r = parseCard(JSON.parse(a.card_json)); if (r.ok) base = r.card; } catch { /* keep minimal */ }
+    let profile: Profile | null = null;
+    try { profile = profileJson ? (JSON.parse(profileJson) as Profile) : null; } catch { profile = null; }
+    return { card: mergeCard(base, profile), customized: !!profile && Object.keys(profile).length > 0 };
+  }
+
+  private async pub(a: AgentRow, profileJson?: string | null): Promise<PublicAgent> {
+    if (profileJson === undefined) profileJson = (await this.one<{ profile_json: string }>("SELECT profile_json FROM profiles WHERE agent_id = ?", [a.id]))?.profile_json ?? null;
+    const { card, customized } = this.effectiveCard(a, profileJson);
     const inv = await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM agents WHERE invited_by = ? AND hidden = 0", [a.id]);
     return {
       handle: a.handle,
-      name: a.name,
-      description: a.description,
+      name: card.name,
+      description: card.description ?? null,
       kind: a.kind,
       verified: a.verified === 1,
       skills: card.skills ?? [],
+      tagline: card.tagline ?? null,
+      best_for: card.best_for ?? [],
+      install: card.install ?? null,
+      url: card.url ?? null,
+      tags: card.tags ?? [],
+      customized,
       source: a.source_key,
       invites: Number(inv?.n ?? 0),
       created_at: a.created_at,
     };
+  }
+
+  // profile overrides (set by the verified owner through the API or the manage page)
+  getProfile(agentId: number) {
+    return this.one<{ profile_json: string; updated_at: number }>("SELECT profile_json, updated_at FROM profiles WHERE agent_id = ?", [agentId]);
+  }
+  async setProfile(agentId: number, profile: Profile) {
+    await this.run(
+      `INSERT INTO profiles (agent_id, profile_json, updated_at) VALUES (?,?,?)
+       ON CONFLICT(agent_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = excluded.updated_at`,
+      [agentId, JSON.stringify(profile), Date.now()]);
+  }
+  async deleteProfile(agentId: number) {
+    await this.run("DELETE FROM profiles WHERE agent_id = ?", [agentId]);
+  }
+  /** Re-read the repo or draft card: update what the registry stored (verification and keys are untouched). */
+  async updateStoredCard(id: number, name: string, description: string | null, cardJson: string, cardUrl: string | null, cardFound: boolean) {
+    await this.run("UPDATE agents SET name = ?, description = ?, card_json = ?, card_url = ?, card_found = ? WHERE id = ?",
+      [name, description, cardJson, cardUrl, cardFound ? 1 : 0, id]);
+  }
+
+  /** Circuit breaker for outbound calls (stored with the rate limits so every instance sees it). */
+  async tripBreaker(name: string, ms: number) {
+    await this.run(
+      `INSERT INTO rate_limits (key, n, reset_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET n = 1, reset_at = excluded.reset_at`,
+      [`breaker:${name}`, Date.now() + ms]);
+  }
+  async breakerOpen(name: string): Promise<boolean> {
+    const r = await this.one<{ reset_at: number }>("SELECT reset_at FROM rate_limits WHERE key = ?", [`breaker:${name}`]);
+    return !!r && r.reset_at > Date.now();
   }
 
   byHandle(handle: string) {
@@ -264,13 +323,14 @@ export class Store {
 
   async list(q: string, verifiedOnly: boolean, limit = 50): Promise<PublicAgent[]> {
     const like = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
-    const rows = await this.rows<AgentRow>(
-      `SELECT * FROM agents WHERE hidden = 0 ${verifiedOnly ? "AND verified = 1" : ""}
-       AND (? = '' OR name LIKE ? ESCAPE '\\' OR handle LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR card_json LIKE ? ESCAPE '\\')
-       ORDER BY verified DESC, id DESC LIMIT ?`,
-      [q, like, like, like, like, limit],
+    const rows = await this.rows<AgentRow & { profile_json: string | null }>(
+      `SELECT a.*, p.profile_json AS profile_json FROM agents a LEFT JOIN profiles p ON p.agent_id = a.id
+       WHERE a.hidden = 0 ${verifiedOnly ? "AND a.verified = 1" : ""}
+       AND (? = '' OR a.name LIKE ? ESCAPE '\\' OR a.handle LIKE ? ESCAPE '\\' OR a.description LIKE ? ESCAPE '\\' OR a.card_json LIKE ? ESCAPE '\\' OR p.profile_json LIKE ? ESCAPE '\\')
+       ORDER BY a.verified DESC, a.id DESC LIMIT ?`,
+      [q, like, like, like, like, like, limit],
     );
-    return Promise.all(rows.map((r) => this.pub(r)));
+    return Promise.all(rows.map((r) => this.pub(r, r.profile_json ?? null)));
   }
 
   async publicAgent(handle: string): Promise<PublicAgent | undefined> {

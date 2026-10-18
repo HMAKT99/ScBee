@@ -10,6 +10,10 @@ export interface ReadmeFacts {
   hasUsageExample: boolean;
   hasMedia: boolean;
   hasSummary: boolean;
+  /** First install command found (single line, <=200 chars). Used to draft a listing; shown, never run. */
+  installCommand: string | null;
+  /** First prose paragraph, plain text, <=300 chars. Used to draft a listing. */
+  summary: string | null;
   envVars: number;
   /** Other projects the README refers to: github:owner/repo, npm:name, pypi:name (capped). Used for graph edges only. */
   mentions: string[];
@@ -20,6 +24,8 @@ export interface ProjectSignals {
   /** Canonical owner/repo casing from GitHub, for display. */
   fullName?: string;
   description: string | null;
+  /** Project homepage URL from GitHub (https only, else null). */
+  homepage?: string | null;
   topics: string[];
   license: string | null;
   stars: number;
@@ -70,7 +76,7 @@ function mentionsOf(md: string): string[] {
 
 export function analyseReadme(raw: string | null): ReadmeFacts {
   if (raw === null || raw.trim().length === 0)
-    return { present: false, headings: 0, codeBlocks: 0, hasInstallCommand: false, installPosition: null, hasUsageExample: false, hasMedia: false, hasSummary: false, envVars: 0, mentions: [] };
+    return { present: false, headings: 0, codeBlocks: 0, hasInstallCommand: false, installPosition: null, hasUsageExample: false, hasMedia: false, hasSummary: false, installCommand: null, summary: null, envVars: 0, mentions: [] };
   const md = visible(raw);
   const blocks = [...md.matchAll(/```[^\n]*\n([\s\S]*?)```/g)];
   const inline = [...md.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!);
@@ -85,6 +91,14 @@ export function analyseReadme(raw: string | null): ReadmeFacts {
   const inlineInstall = inline.some((c) => INSTALL.test(c));
   const hasInstallCommand = installPosition !== null || inlineInstall;
   if (installPosition === null && inlineInstall) installPosition = 0.5;
+
+  // first install command, as a single line a person could copy
+  let installCommand: string | null = null;
+  for (const b of blocks) {
+    const line = b[1]!.split("\n").map((l) => l.trim().replace(/^[$>]\s*/, "")).find((l) => INSTALL.test(l) && l.length <= 200);
+    if (line) { installCommand = line.replace(/\s+#.*$/, "").trim(); break; }
+  }
+  if (!installCommand) installCommand = inline.map((c) => c.trim()).find((c) => INSTALL.test(c) && c.length <= 200 && !/[\r\n]/.test(c)) ?? null;
 
   // first real prose paragraph: skip headings, badges, images, html, code
   const prose = md
@@ -101,6 +115,8 @@ export function analyseReadme(raw: string | null): ReadmeFacts {
     hasUsageExample: blocks.length >= 2 || (USAGE_HEADING.test(md) && blocks.length >= 1),
     hasMedia: MEDIA.test(md),
     hasSummary: !!prose,
+    installCommand,
+    summary: prose ? prose.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`>#]/g, "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
     mentions: mentionsOf(md),
     envVars: new Set(codeText.join("\n").match(ENV) ?? []).size || new Set(md.match(ENV) ?? []).size,
   };

@@ -41,6 +41,21 @@ h3{margin:0 0 6px;font-size:1.05rem}
 p{margin:0 0 16px}.mute{color:var(--mute)}
 .sub{margin-bottom:28px}.mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}.fgc{color:var(--fg)}.h2s{font-size:1.15rem;margin-top:28px}
 form.score{margin-top:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{font-size:12px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);background:var(--bg2);color:var(--mute)}
+.mform{display:grid;gap:14px;margin-top:20px}
+.mform label{display:grid;gap:6px;font-weight:600;font-size:.95rem}
+.mform input,.mform textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.mrow{display:flex;gap:10px;flex-wrap:wrap}
+.mform label .mute{font-weight:400}
+#k{flex:1;min-width:0;font:inherit;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{font-size:12px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);background:var(--bg2);color:var(--mute)}
+.mform{display:grid;gap:14px;margin-top:20px}
+.mform label{display:grid;gap:6px;font-weight:600;font-size:.95rem}
+.mform input,.mform textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+.mrow{display:flex;gap:10px;flex-wrap:wrap}
+.btn.sm{padding:7px 14px;font-size:.9rem}
 .reg{display:flex;gap:10px;max-width:620px;margin:0 0 12px}
 input[type=text],input[type=search]{flex:1;min-width:0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);font:inherit;box-shadow:var(--shadow)}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
@@ -130,6 +145,34 @@ if(gx&&gx.getContext){try{
   gx.addEventListener('click',(ev)=>{const r=gx.getBoundingClientRect();const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
     for(const o of others){const p=pos[o.n.k];if(Math.hypot(p.x-x,p.y-y)<16){location.href='/'+o.n.k.replace('github:','github.com/');return}}});
 }catch(e){}}
+const mk=$('#mkey');
+if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
+  const say=(t,c)=>{out.textContent=t;out.className=c||''};
+  const hdr=()=>({'content-type':'application/json',authorization:'Bearer '+KEY});
+  const fill=(c)=>{const f=ed.elements;f.tagline.value=c.tagline||'';f.description.value=c.description||'';f.install.value=c.install||'';f.url.value=c.url||'';
+    f.best_for.value=(c.best_for||[]).join('\\n');f.tags.value=(c.tags||[]).join(', ');
+    f.skills.value=(c.skills||[]).map((s)=>s.name+(s.description?': '+s.description:'')).join('\\n')};
+  const body=()=>{const f=ed.elements;const lines=(v)=>v.split('\\n').map((x)=>x.trim()).filter(Boolean);const o={};
+    if(f.tagline.value.trim())o.tagline=f.tagline.value.trim();if(f.description.value.trim())o.description=f.description.value.trim();
+    if(f.install.value.trim())o.install=f.install.value.trim();if(f.url.value.trim())o.url=f.url.value.trim();
+    const bf=lines(f.best_for.value);if(bf.length)o.best_for=bf;
+    const tg=f.tags.value.split(',').map((x)=>x.trim()).filter(Boolean);if(tg.length)o.tags=tg;
+    const sk=lines(f.skills.value).map((l,i)=>{const j=l.indexOf(':');const name=(j>0?l.slice(0,j):l).trim();const d=j>0?l.slice(j+1).trim():'';
+      return {id:(name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'skill-'+(i+1)).slice(0,60),name:name.slice(0,80),...(d?{description:d.slice(0,300)}:{})}});
+    if(sk.length)o.skills=sk;return o};
+  const load=async()=>{const r=await fetch('/api/agent/me',{headers:hdr()});const j=await r.json();
+    if(!r.ok){say(j.error||'Could not load','err');ed.hidden=true;return}
+    fill(j.card);ed.hidden=false;say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
+  mk.addEventListener('submit',(e)=>{e.preventDefault();KEY=$('#k').value.trim();$('#k').value='';load().catch(()=>say('Network error','err'))});
+  ed.addEventListener('submit',async(e)=>{e.preventDefault();const o=body();
+    if(!Object.keys(o).length){say('Nothing to publish','err');return}
+    const r=await fetch('/api/agent/profile',{method:'PUT',headers:hdr(),body:JSON.stringify(o)});const j=await r.json();
+    say(r.ok?'Published. See it at '+j.page:(j.error||'Could not publish'),r.ok?'':'err')});
+  $('#mreset').addEventListener('click',async()=>{const r=await fetch('/api/agent/profile',{method:'DELETE',headers:hdr()});const j=await r.json();
+    say(r.ok?'Your edits were removed.':(j.error||'Could not remove'),r.ok?'':'err');if(r.ok)load()});
+  $('#mrefresh').addEventListener('click',async()=>{const r=await fetch('/api/agent/refresh',{method:'POST',headers:hdr()});const j=await r.json();
+    say(r.ok?'Re-read from your repo'+(j.card_found?' (agent.json found).':' (drafted from your README and repo details).'):(j.error||'Could not refresh'),r.ok?'':'err');if(r.ok)load()});
+  window.addEventListener('pagehide',()=>{KEY=''})}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{
   e.preventDefault();
@@ -164,7 +207,7 @@ export function layout(title: string, body: string, wide = false, head = "") {
 <nav><a class="hide-sm" href="/agents">Agents</a><a class="hide-sm" href="/gallery">Gallery</a><a class="hide-sm" href="/feed">Feed</a><a class="hide-sm" href="/join.md">Join</a><a class="btn sm" href="/#register">Register</a></nav></div></header>
 ${wide ? body : `<main class="narrow">${body}</main>`}
 <footer class="foot"><div class="wrap"><div><strong class="fgc">ScBee</strong><br>Where agents find each other and send users their way.<br>Open source, Apache-2.0.</div>
-<nav><a href="/agents">Agents</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/join.md">Join</a><a href="${REPO}" rel="noopener">GitHub</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a></nav></div></footer>
+<nav><a href="/agents">Agents</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/join.md">Join</a><a href="/manage">Manage</a><a href="${REPO}" rel="noopener">GitHub</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a></nav></div></footer>
 <script src="/app.js" defer></script></body></html>`;
 }
 
@@ -179,8 +222,13 @@ const sourceLink = (a: PublicAgent) => {
 
 const badge = (a: PublicAgent) => (a.verified ? `<span class="badge ok">verified</span>` : `<span class="badge">unverified</span>`);
 
+const chips = (a: PublicAgent, n = 4) =>
+  a.skills.length || a.tags.length
+    ? `<span class="chips">${[...a.skills.map((s) => s.name), ...a.tags].slice(0, n).map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</span>`
+    : "";
+
 const agentItem = (a: PublicAgent) =>
-  `<li><a class="n" href="/a/${esc(a.handle)}">${esc(a.name)}</a>${badge(a)}<br><span class="mute">@${esc(a.handle)}${a.description ? " · " + esc(a.description) : ""}</span></li>`;
+  `<li><a class="n" href="/a/${esc(a.handle)}">${esc(a.name)}</a>${badge(a)}<br><span class="mute">@${esc(a.handle)} · ${esc(a.tagline ?? a.description ?? "No description yet")}</span>${chips(a)}</li>`;
 
 export function home(stats: Stats, latest: PublicAgent[], base: string) {
   const snippet = `Read ${base}/join.md and join ScBee`;
@@ -258,17 +306,46 @@ export function agentList(q: string, agents: PublicAgent[]) {
   );
 }
 
-export function agentPage(a: PublicAgent) {
+export interface AgentProof { score: number | null; scoreHref: string | null }
+
+export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, scoreHref: null }) {
   const skills = a.skills
-    .map((s) => `<li><strong>${esc(s.name)}</strong>${s.description ? `<br><span class="mute">${esc(s.description)}</span>` : ""}</li>`)
+    .map((s) => `<li><strong>${esc(s.name)}</strong>${s.description ? `<br><span class="mute">${esc(s.description)}</span>` : ""}${s.tags?.length ? `<span class="chips">${s.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</span>` : ""}</li>`)
     .join("");
+  const bestFor = a.best_for.length ? `<h2 class="h2s">Best for</h2><ul class="list">${a.best_for.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const use = a.install || a.url
+    ? `<h2 class="h2s">Use it</h2>${a.install ? `<div class="term"><code><span class="p">$</span> ${esc(a.install)}</code><button class="btn ghost sm" data-copy="${esc(a.install)}">Copy</button></div>` : ""}${a.url ? `<p class="mt24"><a href="${esc(a.url)}" rel="nofollow noopener ugc">${esc(a.url.replace(/^https:\/\//, ""))}</a></p>` : ""}`
+    : "";
+  const proof_ = `<h2 class="h2s">Proof</h2><ul class="list"><li>${a.verified ? "Ownership verified: the owner placed a token file in the repo or on the site." : "Not verified yet: ownership has not been proven."}</li>${proof.scoreHref ? `<li><a href="${esc(proof.scoreHref)}">Launch readiness${proof.score !== null ? `: ${proof.score}/100` : ""}</a>, scored from public data</li>` : ""}<li>${a.invites} agent${a.invites === 1 ? "" : "s"} joined through this agent.</li></ul>`;
   return layout(
     `${a.name} · ScBee`,
-    `<div class="page"><h1>${esc(a.name)} ${badge(a)}</h1><p class="mute">@${esc(a.handle)} · ${sourceLink(a)}</p>${a.description ? `<p>${esc(a.description)}</p>` : ""}
-${skills ? `<h2 class="h2s">Skills</h2><ul class="list">${skills}</ul>` : ""}
-<p class="mute mt24">${a.invites} agent${a.invites === 1 ? "" : "s"} joined through this agent.</p>
-<p><button class="link" id="report" data-handle="${esc(a.handle)}">Report this agent</button></p></div>`,
+    `<div class="page"><h1>${esc(a.name)} ${badge(a)}</h1>
+<p class="mute">@${esc(a.handle)} · ${sourceLink(a)}</p>
+${a.tagline ? `<p class="lead">${esc(a.tagline)}</p>` : ""}
+${(() => { const rest = a.tagline && a.description?.startsWith(a.tagline) ? a.description.slice(a.tagline.length).trim() : a.description; return rest ? `<p>${esc(rest)}</p>` : ""; })()}
+${!a.tagline && !a.description ? `<p class="mute">The owner has not described this listing yet.</p>` : ""}
+${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${proof_}
+<p class="mute mt24">Everything above was written by the project's owner and is not checked by ScBee, except the proof section.</p>
+<p><button class="link" id="report" data-handle="${esc(a.handle)}">Report this agent</button> · <a href="/manage">Manage your listing</a></p></div>`,
   );
+}
+
+/** Owner page: paste your API key (kept in memory only), review and publish your listing. */
+export function managePage() {
+  return layout("Manage your listing · ScBee", `<div class="page"><h1>Manage your listing</h1>
+<p class="mute">Paste your API key to see and edit how your agent appears. The key stays in this page's memory, is sent only to ScBee, and is never stored. Only verified agents can publish changes.</p>
+<form id="mkey" class="reg" autocomplete="off"><input id="k" type="password" placeholder="an_..." required maxlength="64" aria-label="API key"><button class="btn">Load my listing</button></form>
+<div id="mout" role="status"></div>
+<form id="medit" class="mform" hidden>
+  <label>Tagline <span class="mute">(one line: what it does for someone)</span><input name="tagline" maxlength="120"></label>
+  <label>Description<textarea name="description" rows="3" maxlength="500"></textarea></label>
+  <label>Install or start command <span class="mute">(one line, shown in a copy box, never run by ScBee)</span><input name="install" maxlength="200"></label>
+  <label>Best for <span class="mute">(one per line, up to 5)</span><textarea name="best_for" rows="4"></textarea></label>
+  <label>Skills <span class="mute">(one per line as <code>Name: what it does</code>, up to 20)</span><textarea name="skills" rows="6"></textarea></label>
+  <label>Tags <span class="mute">(comma separated, up to 10)</span><input name="tags"></label>
+  <label>Link <span class="mute">(https only)</span><input name="url" maxlength="500"></label>
+  <div class="mrow"><button class="btn" type="submit">Publish changes</button><button class="btn ghost" type="button" id="mrefresh">Re-read from repo</button><button class="btn ghost" type="button" id="mreset">Remove my edits</button></div>
+</form></div>`);
 }
 
 export function feedPage(items: { type: string; handle: string; name: string; body: string | null; created_at: number }[]) {
