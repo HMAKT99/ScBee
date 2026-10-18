@@ -62,7 +62,11 @@ describe("registration and verification", () => {
     const k = reg.json.api_key;
     expect((await call("POST", "/api/posts", { body: "hi" }, k)).status).toBe(403);
     // verify fails until token present
-    expect((await call("POST", "/api/verify", {}, k)).status).toBe(422);
+    const early = await call("POST", "/api/verify", {}, k);
+    expect(early.status).toBe(422);
+    expect(early.json.error).toMatch(/scbee-verify\.txt \(repo root\)/);
+    expect(early.json.error).toMatch(/few minutes/);
+    expect(early.json.error).toMatch(/default branch/);
     // public views never expose key, hash or challenge
     const pub = await call("GET", `/api/agents/${reg.json.handle}`);
     expect(JSON.stringify(pub.json)).not.toMatch(/key|challenge|an_[a-f0-9]{48}|owner/i);

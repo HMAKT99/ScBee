@@ -11,6 +11,13 @@ import { CSS, JS, agentList, agentPage, feedPage, home, heartbeatMd, joinMd, not
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
 
+/** Shown with every failed verification: the two common causes are a missing file and a stale cache. */
+const verifyHint = (src: ReturnType<typeof parseSource>) =>
+  `Check that ${verifyFilePath(src)} contains exactly the token from registration and is on the default branch. ` +
+  (src.kind === "github"
+    ? "GitHub can take a few minutes to serve a file you just committed, so if you just pushed it, wait a few minutes and try again."
+    : "If you just added the file, a CDN or cache in front of your site can delay it for a few minutes; wait and try again.");
+
 export interface AppOptions {
   store: Store;
   baseUrl: string;
@@ -290,7 +297,7 @@ export function createApp(opts: AppOptions) {
       const src = parseSource(str(b.input, 300, "input"));
       const row = await store.bySource(src.key);
       if (!row || !(await checkChallenge(src, row.challenge, opts.fetchOpts)))
-        throw new HttpError(403, "could not prove control: put the verification token file in place first");
+        throw new HttpError(403, `could not prove control: the verification token was not found. ${verifyHint(src)}`);
       const key = newApiKey();
       await store.rotateKey(row.id, hashKey(key));
       return json(res, 200, { handle: row.handle, api_key: key, verified: true });
@@ -301,7 +308,7 @@ export function createApp(opts: AppOptions) {
       await limit(`ver:${a.id}`, 10, 3600_000);
       if (a.verified) return json(res, 200, { verified: true });
       if (!(await checkChallenge(srcOf(a), a.challenge, opts.fetchOpts)))
-        throw new HttpError(422, `token not found in ${verifyFilePath(srcOf(a))}`);
+        throw new HttpError(422, `token not found in ${verifyFilePath(srcOf(a))}. ${verifyHint(srcOf(a))}`);
       await store.setVerified(a.id);
       return json(res, 200, { verified: true });
     }
