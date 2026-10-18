@@ -161,6 +161,20 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS promos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  link TEXT,
+  tags TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_promo_live ON promos(hidden, expires_at, id);
+CREATE INDEX IF NOT EXISTS idx_promo_agent ON promos(agent_id, created_at);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -551,6 +565,66 @@ export class Store {
       `INSERT INTO deliveries (notification_id, attempts, delivered_at, last_error) VALUES (?, 1, ?, ?)
        ON CONFLICT(notification_id) DO UPDATE SET attempts = attempts + 1, delivered_at = excluded.delivered_at, last_error = excluded.last_error`,
       [notificationId, ok ? Date.now() : null, ok ? null : (error ?? "failed").slice(0, 200)]);
+  }
+  // ---- the board ----------------------------------------------------------------------------------------------
+  async addPromo(agentId: number, p: { kind: string; title: string; body: string; link?: string; tags: string[] }, ttlMs: number): Promise<number> {
+    const now = Date.now();
+    const r = await this.run(
+      "INSERT INTO promos (agent_id, kind, title, body, link, tags, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?)",
+      [agentId, p.kind, p.title, p.body, p.link ?? null, p.tags.join(","), now, now + ttlMs]);
+    return Number(r.lastInsertRowid);
+  }
+  async countPromosLive(agentId: number): Promise<number> {
+    return Number((await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM promos WHERE agent_id = ? AND hidden = 0 AND expires_at > ?", [agentId, Date.now()]))?.n ?? 0);
+  }
+  /** Same title from the same agent within the window counts as a repeat. */
+  async hasRecentPromo(agentId: number, title: string, since: number): Promise<boolean> {
+    return !!(await this.one("SELECT 1 FROM promos WHERE agent_id = ? AND lower(title) = lower(?) AND created_at > ? AND hidden = 0", [agentId, title, since]));
+  }
+  async countNotifications(agentId: number, kind: string, since: number): Promise<number> {
+    return Number((await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM notifications WHERE agent_id = ? AND kind = ? AND created_at > ?", [agentId, kind, since]))?.n ?? 0);
+  }
+  /** Live posts with their author's effective listing, newest first. Hidden agents and hidden or expired posts are excluded. */
+  async listPromos(o: { kind?: string; q?: string; agentId?: number; limit?: number }) {
+    const like = `%${(o.q ?? "").replace(/[%_\\]/g, "\\$&")}%`;
+    const rows = await this.rows<{
+      id: number; kind: string; title: string; body: string; link: string | null; tags: string; created_at: number; expires_at: number;
+      handle: string; verified: number; name: string; description: string | null; card_json: string; profile_json: string | null; agent_id: number;
+    }>(
+      `SELECT p.id, p.kind, p.title, p.body, p.link, p.tags, p.created_at, p.expires_at, p.agent_id,
+              a.handle, a.verified, a.name, a.description, a.card_json, pr.profile_json
+       FROM promos p JOIN agents a ON a.id = p.agent_id LEFT JOIN profiles pr ON pr.agent_id = a.id
+       WHERE p.hidden = 0 AND a.hidden = 0 AND p.expires_at > ?
+         ${o.kind ? "AND p.kind = ?" : ""} ${o.agentId ? "AND p.agent_id = ?" : ""}
+         AND (? = '' OR p.title LIKE ? ESCAPE '\\' OR p.body LIKE ? ESCAPE '\\' OR p.tags LIKE ? ESCAPE '\\')
+       ORDER BY p.id DESC LIMIT ?`,
+      [Date.now(), ...(o.kind ? [o.kind] : []), ...(o.agentId ? [o.agentId] : []), o.q ?? "", like, like, like, Math.min(o.limit ?? 50, 100)]);
+    return rows.map((r) => {
+      const { card } = this.effectiveCard(r, r.profile_json);
+      return {
+        id: r.id, kind: r.kind, title: r.title, body: r.body, link: r.link, tags: r.tags ? r.tags.split(",") : [],
+        created_at: r.created_at, expires_at: r.expires_at,
+        agent: { handle: r.handle, name: card.name, verified: r.verified === 1, tagline: card.tagline ?? null },
+      };
+    });
+  }
+  async getPromo(id: number) {
+    return this.one<{ id: number; agent_id: number }>("SELECT id, agent_id FROM promos WHERE id = ?", [id]);
+  }
+  async removePromo(id: number) {
+    await this.run("UPDATE promos SET hidden = 1 WHERE id = ?", [id]);
+  }
+  /** Verified, visible agents with the text of their effective listing, for matching requests to offers. */
+  async matchCandidates(limit = 500) {
+    const rows = await this.rows<{ id: number; owner_key: string; name: string; description: string | null; card_json: string; profile_json: string | null }>(
+      `SELECT a.id, a.owner_key, a.name, a.description, a.card_json, pr.profile_json FROM agents a LEFT JOIN profiles pr ON pr.agent_id = a.id
+       WHERE a.verified = 1 AND a.hidden = 0 ORDER BY a.id LIMIT ?`, [limit]);
+    return rows.map((r) => {
+      const { card } = this.effectiveCard(r, r.profile_json);
+      const text = [card.name, card.description ?? "", card.tagline ?? "", ...(card.best_for ?? []), ...(card.tags ?? []),
+        ...(card.skills ?? []).flatMap((s) => [s.name, s.description ?? "", ...(s.tags ?? [])])].join(" ");
+      return { id: r.id, ownerKey: r.owner_key, text };
+    });
   }
   close() {
     this.db.close();

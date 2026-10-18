@@ -14,3 +14,4 @@ export * from "./graph.js";
 export * from "./notify.js";
 export * from "./gallery.js";
 export * from "./draft.js";
+export * from "./promo.js";

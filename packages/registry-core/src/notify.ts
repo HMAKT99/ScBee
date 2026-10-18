@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready";
+export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready" | "wanted_match";
 
 export interface NotificationDraft {
   kind: NotificationKind;
@@ -27,6 +27,11 @@ export const messages = {
     kind: "composes_with", ref: `${mine}>${other}`, title: `${dot(other)} fits with ${dot(mine)}`,
     body: `A newly scored project, ${dot(other)}, is connected to yours in the ScBee constellation. See why on its page.`,
     url: `${base}/${dot(other)}`,
+  }),
+  wantedMatch: (promoId: number, base: string): NotificationDraft => ({
+    kind: "wanted_match", ref: `promo:${promoId}`, title: "A request on the board matches what you do",
+    body: "Someone posted a request that overlaps with your listing. Open the board to read it and decide whether to reply.",
+    url: `${base}/board?kind=wanted#p${promoId}`,
   }),
   forecastReady: (project: string, evaluations: number, base: string): NotificationDraft => ({
     kind: "forecast_ready", ref: project, title: `Launch forecast ready for ${dot(project)}`,

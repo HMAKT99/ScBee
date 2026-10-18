@@ -6,7 +6,8 @@ const BAD_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f​-‏‪-‮�
 const text = (max: number) =>
   z.string().trim().max(max).refine((s) => !BAD_CHARS.test(s), "contains control or invisible characters");
 
-const httpsUrl = z
+export const safeText = text;
+export const httpsUrl = z
   .string()
   .max(500)
   .refine((s) => {
