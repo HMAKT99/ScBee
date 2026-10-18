@@ -141,8 +141,8 @@ export async function safeFetchJson(url: string, opts?: FetchOptions): Promise<u
 export async function safePostJson(
   url: string, body: string, headers: Record<string, string>,
   { lookup = defaultLookup, requester = defaultRequester, timeoutMs = 3000 }: FetchOptions = {},
-): Promise<{ status: number }> {
+): Promise<{ status: number; body: string }> {
   const resolved = await assertPublicUrl(url, lookup);
   const res = await requester(resolved, { timeoutMs, maxBytes: 16 * 1024, headers: { "content-type": "application/json", ...headers }, method: "POST", body });
-  return { status: res.status };
+  return { status: res.status, body: res.body };
 }

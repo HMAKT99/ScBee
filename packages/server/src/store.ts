@@ -175,6 +175,11 @@ CREATE TABLE IF NOT EXISTS promos (
 );
 CREATE INDEX IF NOT EXISTS idx_promo_live ON promos(hidden, expires_at, id);
 CREATE INDEX IF NOT EXISTS idx_promo_agent ON promos(agent_id, created_at);
+CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS rate_limits (
   key TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
@@ -274,6 +279,15 @@ export class Store {
   async updateStoredCard(id: number, name: string, description: string | null, cardJson: string, cardUrl: string | null, cardFound: boolean) {
     await this.run("UPDATE agents SET name = ?, description = ?, card_json = ?, card_url = ?, card_found = ? WHERE id = ?",
       [name, description, cardJson, cardUrl, cardFound ? 1 : 0, id]);
+  }
+
+  /** Small expiring values (for example a short-lived GitHub installation token). */
+  async getKv(key: string): Promise<string | null> {
+    const r = await this.one<{ value: string; expires_at: number }>("SELECT value, expires_at FROM kv WHERE key = ?", [key]);
+    return r && r.expires_at > Date.now() ? r.value : null;
+  }
+  async setKv(key: string, value: string, expiresAt: number) {
+    await this.run("INSERT INTO kv (key, value, expires_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at", [key, value, expiresAt]);
   }
 
   /** Circuit breaker for outbound calls (stored with the rate limits so every instance sees it). */

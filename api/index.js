@@ -15,6 +15,8 @@ function init() {
       adminToken: process.env.ADMIN_TOKEN || undefined,
       trustProxy: true,
       githubToken: process.env.GITHUB_TOKEN || undefined,
+      githubApp: process.env.GITHUB_APP_ID && process.env.GITHUB_APP_INSTALLATION_ID && process.env.GITHUB_APP_PRIVATE_KEY
+        ? { appId: process.env.GITHUB_APP_ID, installationId: process.env.GITHUB_APP_INSTALLATION_ID, privateKey: process.env.GITHUB_APP_PRIVATE_KEY } : undefined,
       cronSecret: process.env.CRON_SECRET || undefined,
       githubHourlyBudget: process.env.GITHUB_HOURLY_BUDGET ? Number(process.env.GITHUB_HOURLY_BUDGET) : undefined,
       webhookKey: process.env.WEBHOOK_KEY || undefined,

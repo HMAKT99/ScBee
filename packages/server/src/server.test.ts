@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Requester } from "@scbee/registry-core";
@@ -914,5 +915,47 @@ describe("steps apart on the home page", () => {
     await st.setConnection(p, "rejected");
     expect((await st.stats()).introductions_made).toBe(5);
     st.close();
+  });
+});
+
+describe("GitHub App identity", () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+  const setup = async (tokenStatus: number) => {
+    const st = await Store.open(":memory:");
+    const calls: { url: string; auth?: string; method?: string }[] = [];
+    const req: Requester = async (r, o) => {
+      calls.push({ url: r.url.toString(), auth: o?.headers?.authorization, method: o?.method });
+      if (r.url.pathname.endsWith("/access_tokens")) return tokenStatus === 201 ? { status: 201, body: JSON.stringify({ token: "ghs_apptoken", expires_at: new Date(Date.now() + 3600_000).toISOString() }) } : { status: tokenStatus, body: "{}" };
+      if (r.url.hostname === "api.github.com") return { status: 200, body: JSON.stringify({ full_name: "app/repo", description: "d", topics: [] }) };
+      return { status: 404, body: "" };
+    };
+    const { server } = createApp({ store: st, baseUrl: "http://t", fetchOpts: { lookup, requester: req }, githubApp: { appId: "42", installationId: "7", privateKey }, registerPerHour: 1000 });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const b = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return { st, server, calls, get: (p: string) => fetch(b + p) };
+  };
+
+  it("mints one installation token, uses it only for api.github.com, and reuses it from the cache", async () => {
+    const { st, server, calls, get } = await setup(201);
+    expect((await get("/api/score/github.com/app/repo")).status).toBe(200);
+    expect((await get("/api/score/github.com/app/repo2")).status).toBe(200);
+    const tokenCalls = calls.filter((c) => c.url.endsWith("/access_tokens"));
+    expect(tokenCalls).toHaveLength(1);
+    expect(tokenCalls[0]!.method).toBe("POST");
+    const api = calls.filter((c) => c.url.startsWith("https://api.github.com/repos/"));
+    expect(api.length).toBeGreaterThan(0);
+    expect(api.every((c) => c.auth === "Bearer ghs_apptoken")).toBe(true);
+    expect(calls.filter((c) => c.url.startsWith("https://raw.githubusercontent.com")).every((c) => c.auth === undefined)).toBe(true);
+    server.close(); st.close();
+  });
+
+  it("falls back to anonymous reads when the app token cannot be minted, and stops retrying for a while", async () => {
+    const { st, server, calls, get } = await setup(401);
+    expect((await get("/api/score/github.com/app/repo")).status).toBe(200);
+    expect((await get("/api/score/github.com/app/repo2")).status).toBe(200);
+    expect(calls.filter((c) => c.url.endsWith("/access_tokens"))).toHaveLength(1); // breaker open after the first failure
+    expect(calls.filter((c) => c.url.startsWith("https://api.github.com/repos/")).every((c) => c.auth === undefined)).toBe(true);
+    expect(await st.breakerOpen("github-app")).toBe(true);
+    server.close(); st.close();
   });
 });

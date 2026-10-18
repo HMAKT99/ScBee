@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, fetchInstallationToken, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { GALLERY_CSS, galleryPage } from "./gallery.js";
@@ -28,6 +28,8 @@ export interface AppOptions {
   registerPerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
   githubToken?: string;
+  /** ScBee's own GitHub App (a separate identity with its own 5,000/hour limit). Public data only; never a personal token. */
+  githubApp?: { appId: string; installationId: string; privateKey: string };
   /** Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). */
   githubHourlyBudget?: number;
   /** Cached project scores are reused this long (default 6 hours). */
@@ -149,7 +151,7 @@ export function createApp(opts: AppOptions) {
    * Every call to api.github.com goes through one shared hourly budget and a circuit breaker, so ScBee stays a
    * quiet, polite client no matter how many visitors there are. Raw file fetches are not API calls and are not counted.
    */
-  const ghBudget = opts.githubHourlyBudget ?? (opts.githubToken ? 4000 : 45);
+  const ghBudget = opts.githubHourlyBudget ?? (opts.githubToken || opts.githubApp ? 4000 : 45);
   const baseRequester = opts.fetchOpts?.requester ?? defaultRequester;
   const ghOpts: FetchOptions = {
     ...opts.fetchOpts,
@@ -163,12 +165,31 @@ export function createApp(opts: AppOptions) {
     },
   };
 
+  /** Token for api.github.com: a configured token, else a cached or freshly minted GitHub App installation token, else none. */
+  async function ghToken(): Promise<string | undefined> {
+    if (opts.githubToken) return opts.githubToken;
+    const app = opts.githubApp;
+    if (!app) return undefined;
+    if (await store.breakerOpen("github-app")) return undefined;
+    const cached = await store.getKv("gh:installation-token");
+    if (cached) return cached;
+    try {
+      const t = await fetchInstallationToken(app.appId, app.privateKey, app.installationId, opts.fetchOpts);
+      await store.setKv("gh:installation-token", t.token, t.expiresAt - 5 * 60_000);
+      return t.token;
+    } catch (e) {
+      console.error("github app token failed:", e instanceof Error ? e.message : "unknown"); // message only; never the key or token
+      await store.tripBreaker("github-app", 5 * 60_000);
+      return undefined;
+    }
+  }
+
   /** Card for a GitHub project: its own agent.json when it has one, otherwise a draft from public repo facts. */
   async function cardFor(input: string) {
     const r = await resolveAgent(input, opts.fetchOpts);
     if (r.cardFound || r.source.kind !== "github") return r;
     try {
-      const sig = await fetchDraftSignals(r.source.owner, r.source.repo, ghOpts, opts.githubToken);
+      const sig = await fetchDraftSignals(r.source.owner, r.source.repo, ghOpts, await ghToken());
       return { ...r, card: draftCard(sig, sig.fullName?.split("/")[1] ?? r.source.repo) };
     } catch (e) {
       if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
@@ -228,7 +249,7 @@ export function createApp(opts: AppOptions) {
     const added: Record<string, number> = {};
     for (const c of COLLECTIONS) {
       added[c.id] = 0;
-      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, opts.githubToken)) {
+      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, await ghToken())) {
         try {
           await projectScore(owner, repo, null);
           await store.addToGallery(c.id, `github:${owner}/${repo}`);
@@ -264,7 +285,7 @@ export function createApp(opts: AppOptions) {
     if (ip) await limit(`score:${ip}`, 30, 3600_000);
     try {
       const row = await store.bySource(src.key);
-      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, opts.githubToken);
+      const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, await ghToken());
       const result = scoreProject(sig);
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
       if (!cached) await afterFirstScore(src.key).catch(() => undefined);

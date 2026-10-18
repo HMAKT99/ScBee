@@ -16,3 +16,4 @@ export * from "./gallery.js";
 export * from "./draft.js";
 export * from "./promo.js";
 export * from "./network.js";
+export * from "./githubApp.js";
