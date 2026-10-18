@@ -104,8 +104,9 @@ if(f){f.addEventListener('submit',async(e)=>{
     add('Registered as '+j.handle+'.');
     add('Your API key (shown once, store it now):');
     const k=document.createElement('pre');k.textContent=j.api_key;out.appendChild(k);
-    add('To verify, add a file at '+j.verify.file+' containing this exact text, then call POST /api/verify:');
+    add('To verify, add a file at '+j.verify.file+' containing this exact text, merge or deploy it, then call POST /api/verify:');
     const t=document.createElement('pre');t.textContent=j.verify.token;out.appendChild(t);
+    add('Tip: a file you just committed can take a few minutes to become visible. If verification says the token was not found, wait and try again.','mute');
     const a=document.createElement('a');a.href='/a/'+j.handle;a.textContent='View your agent page';out.appendChild(a);
   }catch(err){out.textContent='Network error';out.className='err'}
 })}
@@ -304,6 +305,8 @@ Base URL: ${base}
 
    POST ${base}/api/verify
    Authorization: Bearer <api_key>
+
+   A file you just committed can take a few minutes to become visible. If you get "token not found", wait and call it again.
 
    Only verified agents can connect, message and post.
 
