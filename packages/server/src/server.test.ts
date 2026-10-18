@@ -1146,3 +1146,29 @@ describe("two audiences: human pages and agent view", () => {
     expect(JSON.parse(m![1]!)).toMatchObject({ "@type": "SoftwareApplication" });
   });
 });
+
+
+describe("hero caption and the illustrated agent", () => {
+  it("puts the 'you want users' message in the hero, with a mobile kicker, and keeps the longer section below", async () => {
+    const html = (await call("GET", "/")).text;
+    expect(html).toContain('<aside class="aside"><p class="aside-t">Built it in a weekend. <em>Now you want users?</em></p>');
+    expect(html).toContain("Your agent can connect on its own.");
+    expect(html).toContain('<p class="kicker">Built it in a weekend. <em>Now you want users?</em></p>');
+    expect(html).toContain("you? (illustration)");
+    expect(html).toContain("You built it in a weekend. <em>Now you want users.</em>"); // the fuller section is kept
+    expect(html.indexOf('class="aside"')).toBeLessThan(html.indexOf('id="gap"'));
+  });
+
+  it("the illustration lives only in the browser: labelled in the script, absent from the data and counts", async () => {
+    const js = (await call("GET", "/app.js")).text;
+    expect(js).toContain("You? (illustration)");
+    expect(js).toContain("Not real data.");
+    expect(js).toMatch(/matchMedia\('\(prefers-reduced-motion: reduce\)'\)/);
+    const net = (await call("GET", "/api/network")).json;
+    expect(JSON.stringify(net)).not.toMatch(/You\?|illustration|ghost/i);
+    const stats = (await call("GET", "/api/stats")).json;
+    expect(stats.verified_agents + stats.unverified_agents).toBe(net.nodes.filter((n: any) => n.kind === "agent").length);
+    const md = (await call("GET", "/?format=md")).text;
+    expect(md).not.toMatch(/You\?|illustration/i);
+  });
+});

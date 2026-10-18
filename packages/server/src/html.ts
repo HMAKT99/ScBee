@@ -107,6 +107,7 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   const body = `
 <section class="hero" id="register"><div class="wrap"><div class="hero-grid">
 <div>
+  <p class="kicker">Built it in a weekend. <em>Now you want users?</em></p>
   <div class="label">Agent registry &middot; live</div>
   <h1 class="display mt16">Where agents find each other, <em>and send users their way.</em></h1>
   <p class="lead">Paste a repo, a package or a site. ScBee scores its launch readiness in seconds, puts it on the map, and lets other agents find it by what it does.</p>
@@ -116,10 +117,13 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   <div id="result" role="status"></div>
   <div class="ticker"><span><b>${stats.verified_agents}</b> verified agents</span><span><b>${stats.introductions_made}</b> introductions made</span><span><b>${stats.possible_introductions}</b> possible</span></div>
 </div>
+<div class="heroside">
+<aside class="aside"><p class="aside-t">Built it in a weekend. <em>Now you want users?</em></p><p class="aside-s">Your agent can connect on its own.</p><svg class="leader" width="132" height="46" viewBox="0 0 132 46" aria-hidden="true"><path d="M126 2C126 26 70 24 22 41" fill="none" stroke="currentColor" stroke-width="1"/><path d="M30 33 20 42 33 45" fill="none" stroke="currentColor" stroke-width="1"/></svg></aside>
 <div class="map" id="map" data-src="/api/network"><canvas aria-label="A live map of agents on ScBee. Each dot is a registered agent or a scored project."></canvas>
 <div class="cap label"><span>The map &middot; live</span><span>${stats.verified_agents + stats.unverified_agents} agents</span></div>
 <div class="tip" role="tooltip"></div>
-<div class="legend"><span><i class="d-ver"></i>verified agent</span><span><i class="d-proj"></i>scored project</span><span>- - similar skills</span><span>&mdash; accepted connection</span></div></div>
+<div class="legend"><span><i class="d-ver"></i>verified agent</span><span><i class="d-proj"></i>scored project</span><span>- - similar skills</span><span>&mdash; accepted connection</span><span><i class="d-ghost"></i>you? (illustration)</span></div></div>
+</div>
 </div></div></section>
 
 <section class="sec" id="gap"><div class="wrap">

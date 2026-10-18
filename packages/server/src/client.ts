@@ -41,11 +41,11 @@ const mapEl=$('#map');
 if(mapEl){fetch('/api/network').then((r)=>r.json()).then((g)=>{try{
   const cv=mapEl.querySelector('canvas'),tip=mapEl.querySelector('.tip'),ctx=cv.getContext('2d');
   const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W=0,H=0;const dpr=Math.min(window.devicePixelRatio||1,2);
+  let W=0,H=0,LH=40;const dpr=Math.min(window.devicePixelRatio||1,2);
   const nodes=g.nodes.map((n,i)=>({...n,x:0,y:0,vx:0,vy:0,ph:i*1.7}));
   const idx=Object.fromEntries(nodes.map((n)=>[n.id,n]));
   const edges=g.edges.map((e)=>({a:idx[e.a],b:idx[e.b],kind:e.kind,w:e.w,why:e.why})).filter((e)=>e.a&&e.b);
-  const size=()=>{const r=mapEl.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)};
+  const size=()=>{const r=mapEl.getBoundingClientRect();W=r.width;H=r.height;const lg=mapEl.querySelector('.legend');LH=(lg?lg.offsetHeight:30)+22;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)};
   size();
   const R=()=>Math.min(W,H);
   nodes.forEach((n,i)=>{const a=(i/Math.max(nodes.length,1))*Math.PI*2+0.4;const rr=R()*(n.kind==='agent'?0.2:0.36);n.x=W/2+Math.cos(a)*rr;n.y=H/2+Math.sin(a)*rr});
@@ -53,9 +53,24 @@ if(mapEl){fetch('/api/network').then((r)=>r.json()).then((g)=>{try{
     for(const a of nodes){for(const b of nodes){if(a===b)continue;let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1;const f=(R()*R()*0.012)/(d*d);a.vx+=dx/d*f;a.vy+=dy/d*f}}
     for(const e of edges){const dx=e.b.x-e.a.x,dy=e.b.y-e.a.y,d=Math.hypot(dx,dy)||1;const L=R()*0.18;const f=(d-L)*0.01;e.a.vx+=dx/d*f;e.a.vy+=dy/d*f;e.b.vx-=dx/d*f;e.b.vy-=dy/d*f}
     for(const n of nodes){n.vx+=(W/2-n.x)*(n.kind==='agent'?0.004:0.0016);n.vy+=(H/2-n.y)*(n.kind==='agent'?0.004:0.0016);n.x+=n.vx;n.y+=n.vy;n.vx*=0.82;n.vy*=0.82;
-      const m=34;n.x=Math.max(m,Math.min(W-m,n.x));n.y=Math.max(m+14,Math.min(H-m-46,n.y))}};
+      const m=34;n.x=Math.max(m,Math.min(W-m,n.x));n.y=Math.max(m+14,Math.min(H-m-LH+22,n.y))}};
   for(let s=0;s<320;s++)step();
+  // An illustrated "you": client-only, never part of the data, counts or API. It shows how a new agent would connect.
+  const ghost={kind:'ghost',name:'You?',x:0,y:0,a:0,rest:{x:0,y:0},near:[]};
+  const placeGhost=()=>{const ag=nodes.filter((n)=>n.kind==='agent');let best={x:W/2,y:H/2},bd=-1;
+    for(let gx=0.2;gx<=0.8;gx+=0.05)for(let gy=0.25;gy<=(H-LH-18)/H;gy+=0.05){const px=W*gx,py=H*gy;const d=Math.min(999,...ag.map((n)=>Math.hypot(n.x-px,n.y-py)));if(d>bd){bd=d;best={x:px,y:py}}}
+    ghost.rest=best;ghost.near=[...ag].sort((a,b)=>Math.hypot(a.x-best.x,a.y-best.y)-Math.hypot(b.x-best.x,b.y-best.y)).slice(0,3)};
+  placeGhost();
   let hover=null;
+  const drawGhost=(t)=>{const ph=reduce?0.6:((t%12000)/12000);
+    const a=Math.min(Math.min(1,ph/0.08),ph>0.83?Math.max(0,1-(ph-0.83)/0.17):1);
+    const e=1-Math.pow(1-Math.min(1,ph/0.42),3);const sx=W-34,sy=48;
+    const gx=sx+(ghost.rest.x-sx)*e,gy=sy+(ghost.rest.y-sy)*e;ghost.dx=gx;ghost.dy=gy;ghost.a=a;
+    const lg=Math.max(0,Math.min(1,(ph-0.42)/0.13));
+    ctx.save();ctx.globalAlpha=a;ctx.setLineDash([3,4]);ctx.strokeStyle='#f2a20f';ctx.lineWidth=1.4;
+    for(const n of ghost.near){const nx=n.dx??n.x,ny=n.dy??n.y;ctx.beginPath();ctx.moveTo(gx,gy);ctx.lineTo(gx+(nx-gx)*lg,gy+(ny-gy)*lg);ctx.stroke()}
+    ctx.setLineDash([4,3]);ctx.beginPath();ctx.arc(gx,gy,hover===ghost?10:8,0,7);ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#0d0d0d';ctx.lineWidth=1.3;ctx.stroke();ctx.setLineDash([]);
+    ctx.font='400 11px "JetBrains Mono",ui-monospace,monospace';ctx.fillStyle='#737373';ctx.textAlign='center';ctx.fillText('You?',gx,gy+24);ctx.restore()};
   const draw=(t)=>{ctx.clearRect(0,0,W,H);
     for(const e of edges){ctx.beginPath();ctx.moveTo(e.a.x,e.a.y);ctx.lineTo(e.b.x,e.b.y);
       if(e.kind==='connection'){ctx.strokeStyle='#f2a20f';ctx.lineWidth=2;ctx.setLineDash([])}else{ctx.strokeStyle='rgba(18,18,15,.3)';ctx.lineWidth=1;ctx.setLineDash([3,4])}
@@ -69,18 +84,20 @@ if(mapEl){fetch('/api/network').then((r)=>r.json()).then((g)=>{try{
         if(n.verified){ctx.fillStyle='#0d0d0d';ctx.fill();ctx.beginPath();ctx.arc(x,y,on?11:9,0,7);ctx.strokeStyle='#f2a20f';ctx.lineWidth=1.6;ctx.stroke()}
         else{ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#0d0d0d';ctx.lineWidth=1.4;ctx.stroke()}
         if(W>300){ctx.font='500 12px Inter,system-ui,sans-serif';ctx.fillStyle='#0d0d0d';ctx.textAlign='center';ctx.fillText(n.name.length>18?n.name.slice(0,17)+'…':n.name,x,y+24)}
-      }else{ctx.beginPath();ctx.arc(x,y,on?5:3.2,0,7);ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#737373';ctx.lineWidth=1.2;ctx.stroke()}}};
+      }else{ctx.beginPath();ctx.arc(x,y,on?5:3.2,0,7);ctx.fillStyle='#ffffff';ctx.fill();ctx.strokeStyle='#737373';ctx.lineWidth=1.2;ctx.stroke()}}
+    drawGhost(t)};
   const loop=(t)=>{draw(t);requestAnimationFrame(loop)};
   if(reduce)draw(0);else requestAnimationFrame(loop);
   const pick=(ev)=>{const r=cv.getBoundingClientRect();const x=ev.clientX-r.left,y=ev.clientY-r.top;let best=null,bd=18;
-    for(const n of nodes){const d=Math.hypot((n.dx??n.x)-x,(n.dy??n.y)-y);if(d<bd){bd=d;best=n}}return {best,x,y}};
-  cv.addEventListener('mousemove',(ev)=>{const {best,x,y}=pick(ev);hover=best;cv.style.cursor=best?'pointer':'default';
-    if(best){tip.innerHTML='';const b=document.createElement('b');b.textContent=best.name;tip.appendChild(b);
-      const s=document.createElement('span');s.textContent=best.kind==='agent'?((best.verified?'Verified agent. ':'Unverified agent. ')+(best.tagline||'')):('Scored project, '+best.score+'/100');tip.appendChild(s);
+    for(const n of nodes){const d=Math.hypot((n.dx??n.x)-x,(n.dy??n.y)-y);if(d<bd){bd=d;best=n}}
+    if(ghost.a>0.4){const d=Math.hypot((ghost.dx??ghost.x)-x,(ghost.dy??ghost.y)-y);if(d<bd){bd=d;best=ghost}}return {best,x,y}};
+  cv.addEventListener('mousemove',(ev)=>{const {best,x,y}=pick(ev);hover=best;cv.style.cursor=best&&best.path?'pointer':'default';
+    if(best){tip.innerHTML='';const b=document.createElement('b');b.textContent=best.kind==='ghost'?'You? (illustration)':best.name;tip.appendChild(b);
+      const s=document.createElement('span');s.textContent=best.kind==='ghost'?'How a new agent would connect. Not real data.':best.kind==='agent'?((best.verified?'Verified agent. ':'Unverified agent. ')+(best.tagline||'')):('Scored project, '+best.score+'/100');tip.appendChild(s);
       tip.style.left=Math.min(x+14,W-250)+'px';tip.style.top=Math.max(y-10,40)+'px';tip.classList.add('on')}else tip.classList.remove('on')});
   cv.addEventListener('mouseleave',()=>{hover=null;tip.classList.remove('on')});
-  cv.addEventListener('click',(ev)=>{const {best}=pick(ev);if(best)location.href=best.path});
-  addEventListener('resize',()=>{size();for(let s=0;s<60;s++)step();if(reduce)draw(0)});
+  cv.addEventListener('click',(ev)=>{const {best}=pick(ev);if(best&&best.path)location.href=best.path});
+  addEventListener('resize',()=>{size();for(let s=0;s<60;s++)step();placeGhost();if(reduce)draw(0)});
 }catch(e){console.error('map',e)}}).catch((e)=>console.error('map fetch',e))}
 const of=$('#oform');
 if(of){const out=$('#oout'),cf=$('#oconfirm');let cur='';
