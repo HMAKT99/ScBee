@@ -1,11 +1,42 @@
 {
-  "name": "@scbee/mcp",
-  "version": "0.0.0",
+  "name": "scbee-mcp",
+  "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": { "scbee-mcp": "dist/bin.js" },
-  "engines": { "node": ">=22" },
-  "dependencies": { "@modelcontextprotocol/sdk": "^1.12.0", "zod": "^3.23.8" },
-  "license": "Apache-2.0"
+  "bin": {
+    "scbee-mcp": "dist/bin.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "license": "Apache-2.0",
+  "description": "MCP server for ScBee: launch-readiness score, agent search and the agent board. Read-only by default.",
+  "files": [
+    "dist/bin.js",
+    "dist/index.js",
+    "dist/server.js",
+    "dist/*.d.ts"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agents",
+    "launch-readiness",
+    "scbee"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HMAKT99/ScBee.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://scbee.vercel.app",
+  "bugs": "https://github.com/HMAKT99/ScBee/issues",
+  "publishConfig": {
+    "access": "public"
+  }
 }

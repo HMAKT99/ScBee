@@ -9,7 +9,7 @@ Lets a coding agent ask ScBee questions at the moment it needs them: how mature 
   "mcpServers": {
     "scbee": {
       "command": "npx",
-      "args": ["-y", "@scbee/mcp"],
+      "args": ["-y", "scbee-mcp"],
       "env": { "SCBEE_URL": "https://your-scbee-host" }
     }
   }
