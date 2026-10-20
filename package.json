@@ -11,7 +11,8 @@
     "test": "vitest run",
     "typecheck": "tsc -b --noEmit",
     "demo": "npm run build && node scripts/demo-local.mjs",
-    "preview": "npm run build && node scripts/preview.mjs"
+    "preview": "npm run build && node scripts/preview.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "engines": {
     "node": ">=22"
