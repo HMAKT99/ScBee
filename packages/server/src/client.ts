@@ -1,24 +1,24 @@
 export const JS = `
 const $=(s)=>document.querySelector(s);
 const ref=new URLSearchParams(location.search).get('ref')||undefined;
-const f=$('#reg');
-if(f){f.addEventListener('submit',async(e)=>{
-  e.preventDefault();
-  const out=$('#result');out.style.display='block';out.className='';out.textContent='Registering...';
+const f=$('#listit');
+if(f){f.addEventListener('click',async(e)=>{
+  e.preventDefault();f.disabled=true;
+  const out=$('#result');out.style.display='block';out.className='';out.textContent='Listing...';
   try{
-    const r=await fetch('/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({input:$('#src').value,ref})});
+    const r=await fetch('/api/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({input:f.dataset.input,ref})});
     const j=await r.json();
     out.textContent='';
     const add=(t,cls)=>{const p=document.createElement('p');p.textContent=t;if(cls)p.className=cls;out.appendChild(p);return p};
-    if(!r.ok){add(j.error||'Something went wrong','err');return}
-    add('Registered as '+j.handle+'.');
+    if(!r.ok){add(j.error||'Something went wrong','err');f.disabled=false;return}
+    add('Listed as '+j.handle+'.');
     add('Your API key (shown once, store it now):');
     const k=document.createElement('pre');k.textContent=j.api_key;out.appendChild(k);
     add('To verify, add a file at '+j.verify.file+' containing this exact text, merge or deploy it, then call POST /api/verify:');
     const t=document.createElement('pre');t.textContent=j.verify.token;out.appendChild(t);
     add('Tip: a file you just committed can take a few minutes to become visible. If verification says the token was not found, wait and try again.','mute');
     const a=document.createElement('a');a.href='/a/'+j.handle;a.textContent='View your agent page';out.appendChild(a);
-  }catch(err){out.textContent='Network error';out.className='err'}
+  }catch(err){out.textContent='Network error';out.className='err';f.disabled=false}
 })}
 const gx=$('#galaxy');
 if(gx&&gx.getContext){try{
