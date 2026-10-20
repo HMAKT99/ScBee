@@ -1456,3 +1456,70 @@ describe("network: pair pages and handoff", () => {
     expect((await call("GET", "/llms.txt")).text).toContain("/api/handoff");
   });
 });
+
+describe("connections panel: suggestions, limits and notifications", () => {
+  const card = (name: string, description: string) => ({ name, description, tagline: description, skills: [{ id: "s", name: "Lint markdown files" }] });
+
+  it("suggests verified agents under other owners with a reason, and never your own or already-asked agents", async () => {
+    const me = await makeAgent("sugme/agent", { card: card("Doc Linter", "lint markdown documentation files for broken links") });
+    const peer = await makeAgent("sugpeer/agent", { card: card("Link Checker", "checks markdown documentation files for broken links and lint") });
+    const sibling = await makeAgent("sugme/second", { card: card("Doc Linter Two", "lint markdown documentation files for broken links") });
+    const far = await makeAgent("sugfar/agent", { card: { name: "Weather Bot", description: "forecast rainfall", skills: [{ id: "w", name: "Rain" }] } });
+    expect((await call("GET", "/api/suggestions")).status).toBe(401);
+    const r = await call("GET", "/api/suggestions", undefined, me.key);
+    expect(r.status).toBe(200);
+    const handles = r.json.suggestions.map((s: any) => s.handle);
+    expect(handles).toContain(peer.handle);
+    expect(handles).not.toContain(sibling.handle); // same owner: not an introduction
+    expect(handles).not.toContain(far.handle); // nothing in common
+    expect(handles).not.toContain(me.handle);
+    expect(r.json.suggestions.find((s: any) => s.handle === peer.handle).reason).toMatch(/You both mention: /);
+    expect(r.json.note).toMatch(/nothing happens until the other side accepts/);
+    // once asked, they drop off the list
+    await call("POST", "/api/connections", { to: peer.handle }, me.key);
+    expect((await call("GET", "/api/suggestions", undefined, me.key)).json.suggestions.map((s: any) => s.handle)).not.toContain(peer.handle);
+  });
+
+  it("tells the other side, names peers in the list, links the shared page, and tells the asker on accept", async () => {
+    const x = await makeAgent("connx/agent", { card: card("Asker Agent", "lint markdown files") });
+    const y = await makeAgent("conny/agent", { card: card("Answerer Agent", "lint markdown files") });
+    const c = await call("POST", "/api/connections", { to: y.handle }, x.key);
+    expect(c.status).toBe(201);
+    const got = await call("GET", "/api/notifications", undefined, y.key);
+    expect(JSON.stringify(got.json)).toContain(`@${x.handle} would like to connect`);
+    const pending = (await call("GET", "/api/connections", undefined, y.key)).json.connections[0];
+    expect(pending).toMatchObject({ status: "pending", outgoing: false, peer: x.handle, peer_name: "Asker Agent", pair: null });
+    expect((await call("POST", `/api/connections/${c.json.id}/accept`, {}, y.key)).status).toBe(200);
+    const back = await call("GET", "/api/notifications", undefined, x.key);
+    expect(JSON.stringify(back.json)).toContain(`@${y.handle} accepted your request`);
+    const done = (await call("GET", "/api/connections", undefined, x.key)).json.connections[0];
+    expect(done.pair).toMatch(/^\/pair\/[a-z0-9-]+\/[a-z0-9-]+$/);
+  });
+
+  it("allows at most 10 requests waiting for an answer", async () => {
+    const asker = await makeAgent("capme/agent");
+    for (let i = 0; i < 10; i++) {
+      const t = await makeAgent(`captarget${i}/agent`);
+      expect((await call("POST", "/api/connections", { to: t.handle }, asker.key)).status).toBe(201);
+    }
+    const t11 = await makeAgent("captarget11/agent");
+    const r = await call("POST", "/api/connections", { to: t11.handle }, asker.key);
+    expect(r.status).toBe(429);
+    expect(r.json.error).toMatch(/10 requests waiting/);
+  });
+
+  it("the Manage page has the panel and the script builds it with text nodes only", async () => {
+    const page = await call("GET", "/manage");
+    expect(page.text).toContain('id="mconn"');
+    expect(page.text).toContain("Suggested introductions");
+    expect(page.text).toContain("Agents under your own account are not suggested");
+    const js = (await call("GET", "/app.js")).text;
+    expect(js).toContain("/api/suggestions");
+    expect(js).toContain("Ask to connect");
+    const panel = js.slice(js.indexOf("const el=(t,c,x)"), js.indexOf("window.addEventListener('pagehide'"));
+    expect(panel.length).toBeGreaterThan(500);
+    expect(panel).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
+    expect(panel).toContain("textContent");
+    expect((await call("GET", "/join.md")).text).toContain("/api/suggestions");
+  });
+});

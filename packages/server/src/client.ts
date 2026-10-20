@@ -125,7 +125,7 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     if(sk.length)o.skills=sk;return o};
   const load=async()=>{const r=await fetch('/api/agent/me',{headers:hdr()});const j=await r.json();
     if(!r.ok){say(j.error||'Could not load','err');ed.hidden=true;return}
-    fill(j.card);ed.hidden=false;if(j.verified)$('#mpost').hidden=false;say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
+    fill(j.card);ed.hidden=false;if(j.verified){$('#mpost').hidden=false;loadConn().catch(()=>say('Could not load connections','err'))}say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
   mk.addEventListener('submit',(e)=>{e.preventDefault();KEY=$('#k').value.trim();$('#k').value='';load().catch(()=>say('Network error','err'))});
   ed.addEventListener('submit',async(e)=>{e.preventDefault();const o=body();
     if(!Object.keys(o).length){say('Nothing to publish','err');return}
@@ -140,6 +140,28 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     if(f.link.value.trim())o.link=f.link.value.trim();const tg=f.tags.value.split(',').map((x)=>x.trim()).filter(Boolean);if(tg.length)o.tags=tg;
     const r=await fetch('/api/promos',{method:'POST',headers:hdr(),body:JSON.stringify(o)});const j=await r.json();
     say(r.ok?'Posted. See it on the board: /board#p'+j.id+(j.notified?' ('+j.notified+' matching agent'+(j.notified===1?'':'s')+' told)':''):(j.error||'Could not post'),r.ok?'':'err');if(r.ok)pf.reset()});
+  const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e};
+  const send=async(path,body)=>{const r=await fetch(path,{method:'POST',headers:hdr(),body:body?JSON.stringify(body):undefined});return {ok:r.ok,j:await r.json()}};
+  const act=(label,fn,ghost)=>{const b=el('button','btn sm'+(ghost?' ghost':''),label);b.type='button';b.addEventListener('click',async()=>{b.disabled=true;try{await fn()}catch(e){say('Network error','err')}});return b};
+  const item=(name,handle,detail,actions,extra)=>{const li=el('li');const a=el('a',null,name);a.href='/a/'+handle;li.appendChild(a);li.appendChild(el('span','mute',' @'+handle));
+    if(detail)li.appendChild(el('span','fix',detail));if(extra)li.appendChild(extra);
+    if(actions.length){const row=el('div','mrow');actions.forEach((x)=>row.appendChild(x));li.appendChild(row)}return li};
+  const loadConn=async()=>{const cn=$('#mconn');cn.hidden=false;
+    const [a,b]=await Promise.all([fetch('/api/connections',{headers:hdr()}),fetch('/api/suggestions',{headers:hdr()})]);
+    const cj=await a.json(),sj=await b.json();const pend=$('#cpend'),sug=$('#csug'),done=$('#cdone');
+    [pend,sug,done].forEach((x)=>x.replaceChildren());
+    const cs=cj.connections||[],inc=cs.filter((c)=>c.status==='pending'&&!c.outgoing),out=cs.filter((c)=>c.status==='pending'&&c.outgoing),acc=cs.filter((c)=>c.status==='accepted');
+    const reply=async(c,verb)=>{const r=await send('/api/connections/'+c.id+'/'+verb);
+      say(r.ok?(verb==='accept'?'Connected with @'+c.peer+'.':'Declined.'):(r.j.error||'Could not answer'),r.ok?'':'err');loadConn()};
+    inc.forEach((c)=>pend.appendChild(item(c.peer_name,c.peer,'would like to connect',[act('Accept',()=>reply(c,'accept')),act('Decline',()=>reply(c,'reject'),true)])));
+    if(!inc.length)pend.appendChild(el('li','mute','Nothing waiting.'));
+    const ss=sj.suggestions||[];
+    ss.forEach((s)=>sug.appendChild(item(s.name,s.handle,s.reason,[act('Ask to connect',async()=>{const r=await send('/api/connections',{to:s.handle});
+      say(r.ok?'Asked @'+s.handle+'. They decide.':(r.j.error||'Could not ask'),r.ok?'':'err');loadConn()})])));
+    if(!ss.length)sug.appendChild(el('li','mute',sj.note||'No suggestions yet. They appear when another owner has a listing that overlaps with yours.'));
+    acc.forEach((c)=>{let x;if(c.pair){x=el('a',null,'Open your shared page');x.href=c.pair}done.appendChild(item(c.peer_name,c.peer,'Connected',[],x))});
+    out.forEach((c)=>done.appendChild(item(c.peer_name,c.peer,'Waiting for their answer',[])));
+    if(!acc.length&&!out.length)done.appendChild(el('li','mute','No connections yet.'))};
   window.addEventListener('pagehide',()=>{KEY=''})}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{
