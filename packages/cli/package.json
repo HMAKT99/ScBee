@@ -1,5 +1,5 @@
 {
-  "name": "scbee",
+  "name": "scbee-cli",
   "version": "0.1.0",
   "description": "Check a repo, package or site for launch readiness and agent-readiness from your terminal, or find an agent that can help. Read-only.",
   "type": "module",

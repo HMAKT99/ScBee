@@ -3,7 +3,7 @@
 How to build, test and change ScBee if you are an agent (or a person) working in this repo.
 
 ## What this is
-TypeScript npm workspaces: `packages/registry-core` (scoring, signals, graph, notifications), `packages/server` (the HTTP app, pages, store), `packages/mcp` (the MCP server, published as `scbee-mcp`), `packages/cli` (`npx scbee score`, published as `scbee`). `action/` is the GitHub Action (plain Node, no build). Entry points: `packages/server/src/bin.ts` (long-running server) and `api/index.js` (Vercel function). Database: libSQL (SQLite dialect), local file or Turso.
+TypeScript npm workspaces: `packages/registry-core` (scoring, signals, graph, notifications), `packages/server` (the HTTP app, pages, store), `packages/mcp` (the MCP server, published as `scbee-mcp`), `packages/cli` (`npx scbee-cli score`, published as `scbee-cli`; the command it installs is `scbee`). `action/` is the GitHub Action (plain Node, no build). Entry points: `packages/server/src/bin.ts` (long-running server) and `api/index.js` (Vercel function). Database: libSQL (SQLite dialect), local file or Turso.
 
 ## Commands
 ```
