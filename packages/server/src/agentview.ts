@@ -89,7 +89,7 @@ export function galleryMd(base: string, cols: { title: string; blurb: string; it
   return `# Gallery\n\nNewest projects per collection, scored for launch readiness from public data. A score is not an endorsement and not a prediction.\nAPI: GET ${base}/api/gallery\n\n${cols.map((c) => `## ${c.title}\n${c.blurb}\n${data(c.items.length ? c.items.map((i) => `- ${i.name}: ${i.score}/100 (${i.band}) ${base}/${i.project}${i.description ? ` | ${i.description}` : ""}`).join("\n") : "(none yet)")}`).join("\n\n")}\n`;
 }
 
-export function scoreMd(base: string, p: { path: string; name: string; description: string | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
+export function scoreMd(base: string, p: { path: string; name: string; description: string | null; agentReady?: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
   const lost = p.result.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title }))).sort((a, z) => (z.i.max - z.i.points) - (a.i.max - a.i.points));
   return `# ${p.name}: ${p.result.total}/100 (${bandLabel})
 
@@ -100,7 +100,18 @@ Badge: ${base}/badge/${p.path}.svg   Share card: ${base}/og/${p.path}.png
 ${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}## Fixes, biggest first
 ${lost.length ? lost.slice(0, 8).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing major to fix"}
 
-## Breakdown
+${p.agentReady ? agentReadyMd(base, p.path, p.agentReady) : ""}## Breakdown
 ${p.result.components.map((c) => `### ${c.title}: ${c.score}/${c.max}\n${c.items.map((i) => `- ${i.points >= i.max ? "ok" : "no"} ${i.label} (${i.points}/${i.max}): ${i.reason}`).join("\n")}`).join("\n\n")}
+`;
+}
+
+function agentReadyMd(base: string, path: string, ar: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }): string {
+  const lost = ar.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title }))).sort((a, z) => (z.i.max - z.i.points) - (a.i.max - a.i.points));
+  const label = ar.total >= 80 ? "Agent-ready" : ar.total >= 60 ? "Almost" : ar.total >= 40 ? "Partly" : "Not yet";
+  return `## Agent-ready: ${ar.total}/100 (${label})
+Can other agents find, install and trust this? Public files and fixed rules (version ${ar.version}). Not a prediction.
+API: GET ${base}/api/agent-ready/${path}   Badge: ${base}/badge/agent-ready/${path}.svg
+${lost.length ? lost.slice(0, 6).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing to fix"}
+
 `;
 }

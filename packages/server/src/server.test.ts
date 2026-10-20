@@ -1722,3 +1722,80 @@ describe("one link is the front door", () => {
     expect(md).toContain("/api/score/github.com/OWNER/REPO");
   });
 });
+
+describe("agent-ready score", () => {
+  const seedRepo = (owner: string, repo: string, entries: string[], readme: string, extra: object = {}) => {
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    files[api] = JSON.stringify({ full_name: `${owner}/${repo}`, description: "an agent tool", stargazers_count: 0, license: { spdx_id: "MIT" }, created_at: new Date().toISOString(), pushed_at: new Date().toISOString(), ...extra });
+    files[`${api}/contents`] = JSON.stringify([{ name: "README.md", type: "file" }, ...entries.map((name) => ({ name, type: "file" }))]);
+    files[`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/README.md`] = readme;
+  };
+  const readme = "# Tool\n\nA tool for agents.\n\n```\nnpx tool\n```\n\n## Usage\n\n```js\ntool();\n```\n\nRead-only, with a rate limit of 60 per minute. Add it under mcpServers.\n";
+
+  it("scores a repo from its files and README, with a fix for every lost point", async () => {
+    seedRepo("arfull", "tool", ["llms.txt", "AGENTS.md", "SKILL.md", "openapi.yaml", "server.json", "agent.json", "SECURITY.md"], readme);
+    const r = await call("GET", "/api/agent-ready/github.com/arfull/tool");
+    expect(r.status).toBe(200);
+    expect(r.json.components.map((c: any) => c.title)).toEqual(["Discoverable", "Usable", "Safe to adopt"]);
+    const items = r.json.components.flatMap((c: any) => c.items) as any[];
+    const got = (label: string) => items.find((i) => i.label === label);
+    for (const label of ["Agent card", "llms.txt", "MCP server config", "Agent Skill", "API contract", "Agent instructions", "Copy-ready install", "Licence", "Security policy", "Permissions stated", "Limits stated"])
+      expect(got(label).points, label).toBe(got(label).max);
+    expect(got("Tagged release").points).toBe(0); // no release in the fixture
+    expect(got("Tagged release").fix).toMatch(/Tag a release/);
+    expect(r.json.total).toBe(95);
+    expect(r.json.band).toBe("Agent-ready");
+    expect(r.json.note).toMatch(/Not a prediction/);
+    // the readiness score response carries the summary
+    const score = await call("GET", "/api/score/github.com/arfull/tool");
+    expect(score.json.agent_ready).toMatchObject({ total: 95, band: "Agent-ready" });
+  });
+
+  it("a bare repo gets a low score and a to-do list", async () => {
+    seedRepo("arbare", "tool", [], "# Tool\n\nSomething small that does one thing well enough.\n", { license: null });
+    const r = await call("GET", "/api/agent-ready/github.com/arbare/tool");
+    expect(r.json.total).toBeLessThan(20);
+    expect(r.json.band).toBe("Not yet");
+    expect(r.json.components.flatMap((c: any) => c.items).filter((i: any) => i.points < i.max && !i.fix)).toEqual([]);
+  });
+
+  it("shows on the result page, in the Markdown twin, and as a badge to copy", async () => {
+    seedRepo("arpage", "tool", ["llms.txt", "AGENTS.md"], readme);
+    const page = await call("GET", "/github.com/arpage/tool");
+    expect(page.status).toBe(200);
+    expect(page.text).toContain('<h2 class="h2s">Agent-ready</h2>');
+    expect(page.text).toContain("Can other agents find, install and trust this?");
+    expect(page.text).toContain("/badge/agent-ready/github.com/arpage/tool.svg");
+    expect(page.text).toContain("Copy badge");
+    const md = await call("GET", "/github.com/arpage/tool?format=md");
+    expect(md.text).toMatch(/## Agent-ready: \d+\/100/);
+    expect(md.text).toContain("/api/agent-ready/github.com/arpage/tool");
+    const badge = await call("GET", "/badge/agent-ready/github.com/arpage/tool.svg");
+    expect(badge.status).toBe(200);
+    expect(badge.headers.get("content-type")).toMatch(/image\/svg/);
+    expect(badge.text).toContain("agent-ready:");
+    expect(badge.text).toMatch(/\d+\/100/);
+    expect((await call("GET", "/badge/agent-ready/github.com/nobody-zz/not-real-zz.svg")).text).toContain("unknown");
+  });
+
+  it("scores a website too, and a result stored before the facts existed is read again", async () => {
+    const site = "https://agentsite.example.dev";
+    files[`${site}/robots.txt`] = "User-agent: *\nAllow: /";
+    files[`${site}/`] = '<html lang="en"><head><title>Agent Site</title><meta name="description" content="A site with agent files so other agents can use it."><meta name="viewport" content="x"></head><body>hi</body></html>';
+    files[`${site}/llms.txt`] = "# Agent Site\n> A site built for agents to read and use easily.";
+    const w = await call("GET", "/api/agent-ready/web/agentsite.example.dev");
+    expect(w.status).toBe(200);
+    expect(w.json.components.map((c: any) => c.title)).toEqual(["Discoverable", "Safe to adopt"]);
+    expect(w.json.components[0].items.find((i: any) => i.label === "llms.txt").points).toBe(20);
+    // an old stored row without the facts is refreshed rather than served without them
+    seedRepo("arold", "tool", ["llms.txt"], readme);
+    await call("GET", "/api/score/github.com/arold/tool");
+    const row = await store.getProject("github:arold/tool");
+    const old = JSON.parse(row!.signals_json); delete old.agent;
+    await store.saveProject("github:arold/tool", JSON.stringify(old), row!.result_json, row!.score_version, row!.total, 0);
+    const again = await call("GET", "/api/agent-ready/github.com/arold/tool");
+    expect(again.status).toBe(200);
+    expect(again.json.components[0].items.find((i: any) => i.label === "llms.txt").points).toBe(10);
+    expect((await call("GET", "/llms.txt")).text).toContain("/api/agent-ready/");
+  });
+});
