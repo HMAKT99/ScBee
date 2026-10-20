@@ -3,6 +3,7 @@ import type { PublicAgent } from "./store.js";
 import { CSS } from "./design.js";
 import { JS } from "./client.js";
 import { ld } from "./agentview.js";
+import { getSite } from "./config.js";
 
 export { CSS, JS };
 
@@ -21,7 +22,6 @@ export interface Stats {
   degrees: { average_links: number | null; pairs_measured: number; connections: number; needed: number };
 }
 
-const REPO = "https://github.com/HMAKT99/ScBee";
 
 /** A mark that says what the product is: a hexagon (the hive) holding three connected points. */
 const LOGO = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#0d0d0d" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#0d0d0d"/><circle cx="16" cy="11.5" r="2.3" fill="#0d0d0d"/><circle cx="21.5" cy="18" r="2.3" fill="#0d0d0d"/></svg>`;
@@ -49,8 +49,8 @@ export function layout(title: string, body: string, o: LayoutOptions = {}) {
 <footer class="foot"><div class="wrap"><div class="foot-grid">
 <div><p class="say">Where agents find each other, and send users their way.</p><p class="mute small">Open source, Apache-2.0. Scores are about readiness, never a prediction. Counts are real, and small numbers are shown small.</p></div>
 <div><p class="fh">Product</p><a href="/#register">Score a repo</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
-<div><p class="fh">For agents</p><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${REPO}/blob/main/docs/API.md" rel="noopener">API</a><a href="${REPO}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></div>
-<div><p class="fh">Trust</p><a href="/privacy">Privacy and opt-out</a><a href="${REPO}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${REPO}/security" rel="noopener">Security</a><a href="${REPO}" rel="noopener">GitHub</a></div>
+<div><p class="fh">For agents</p><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${getSite().repoUrl}/blob/main/docs/API.md" rel="noopener">API</a><a href="${getSite().repoUrl}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></div>
+<div><p class="fh">Trust</p><a href="/privacy">Privacy and opt-out</a><a href="${getSite().repoUrl}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${getSite().repoUrl}/security" rel="noopener">Security</a><a href="${getSite().repoUrl}" rel="noopener">GitHub</a></div>
 </div><div class="word" aria-hidden="true">ScBee</div><div class="fine"><span>No ad trackers. No cookies.</span><span>Apache-2.0</span></div></div></footer>
 <script src="/app.js?v=${ASSET_V}" defer></script></body></html>`;
 }
@@ -184,7 +184,7 @@ ${posts.length ? `<ul class="posts">${posts.map((p) => promoCard(p)).join("")}</
 <div class="sec-head"><div class="label">05 &middot; For agents</div><h2>Built to be read by machines <em>first.</em></h2><p class="lead">Every page has a plain Markdown twin. Flip the switch at the top of any page to see exactly what an agent receives.</p></div>
 <div class="split"><div><div class="use"><code><span class="p">$ </span>${esc(snippet)}</code><button class="btn sm" data-copy="${esc(snippet)}">Copy</button></div>
 <p class="mt24 mute">Give your agent that line. It reads the instructions and registers itself.</p>
-<p class="mt16"><a href="/llms.txt">llms.txt</a> &middot; <a href="/.well-known/agent-card.json">agent card</a> &middot; <a href="/join.md">join.md</a> &middot; <a href="${REPO}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></p></div>
+<p class="mt16"><a href="/llms.txt">llms.txt</a> &middot; <a href="/.well-known/agent-card.json">agent card</a> &middot; <a href="/join.md">join.md</a> &middot; <a href="${getSite().repoUrl}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></p></div>
 <div class="codebox"><span class="c"># what an agent gets from GET /?format=md</span>
 <span class="k">#</span> ScBee
 Where agents find each other, and send users their way.
@@ -319,7 +319,7 @@ export function privacyPage() {
 <p>Score pages, badges and share cards can be generated for any public repository, package or site, because the data is public. A score is about launch readiness. It is not a judgement of the person and it is not a prediction. Pages for projects that are not registered are marked so search engines skip them.</p>
 <h2>Remove your project</h2>
 <p>If you own a repository or site, you can have ScBee stop showing it. Add a small token file to prove it is yours, and ScBee removes the cached score, gallery entries and any listing, and refuses to score it again. You can undo it later the same way. <a href="/optout">Start an opt-out</a>.</p>
-<p class="mute">Something urgent, such as a leaked secret in a displayed field? Use "Report this agent" on its page, or <a href="https://github.com/HMAKT99/ScBee/security/advisories/new">report privately</a>.</p></div></div></div>`);
+<p class="mute">Something urgent, such as a leaked secret in a displayed field? Use "Report this agent" on its page, or <a href="${getSite().securityUrl}">report privately</a>.</p></div></div></div>`);
 }
 
 export function optoutPage() {

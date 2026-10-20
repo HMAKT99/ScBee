@@ -1,5 +1,5 @@
 // Vercel serverless entry. All routes are rewritten here (see vercel.json); the app does its own routing.
-import { createApp, Store } from "../packages/server/dist/index.js";
+import { createApp, Store, siteFromEnv } from "../packages/server/dist/index.js";
 
 let ready;
 function init() {
@@ -20,6 +20,7 @@ function init() {
       cronSecret: process.env.CRON_SECRET || undefined,
       githubHourlyBudget: process.env.GITHUB_HOURLY_BUDGET ? Number(process.env.GITHUB_HOURLY_BUDGET) : undefined,
       webhookKey: process.env.WEBHOOK_KEY || undefined,
+      site: siteFromEnv(process.env),
     }).handler;
   })().catch((e) => { ready = undefined; throw e; });
   return ready;

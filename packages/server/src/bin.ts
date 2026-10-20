@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createApp } from "./app.js";
 import { Store } from "./store.js";
+import { siteFromEnv } from "./config.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const baseUrl = (process.env.BASE_URL ?? `http://localhost:${port}`).replace(/\/$/, "");
@@ -16,6 +17,7 @@ const { server } = createApp({
   cronSecret: process.env.CRON_SECRET || undefined,
   githubHourlyBudget: process.env.GITHUB_HOURLY_BUDGET ? Number(process.env.GITHUB_HOURLY_BUDGET) : undefined,
   webhookKey: process.env.WEBHOOK_KEY || undefined,
+  site: siteFromEnv(process.env),
 });
 server.listen(port, () => console.log(`scbee listening on ${baseUrl} (port ${port})`));
 for (const sig of ["SIGINT", "SIGTERM"] as const)

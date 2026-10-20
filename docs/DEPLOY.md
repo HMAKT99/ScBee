@@ -1,6 +1,6 @@
 # Deploying
 
-Needs a host that runs Node 22.13+ (or Docker) and a persistent volume for the SQLite file. Nothing here is deployed yet; hosting, domain and budget are your decisions.
+Needs a host that runs Node 22.13+ (or Docker) and a persistent volume for the SQLite file (or a hosted libSQL database). The reference site runs on Vercel with Turso (see below). Hosting, domain and budget are your decisions. To run your own copy under your own name, start with [RUN-YOUR-OWN.md](RUN-YOUR-OWN.md).
 
 ## Docker
 
@@ -38,6 +38,7 @@ Environment variables:
 | `GITHUB_HOURLY_BUDGET` | Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). After any 403 or 429 from GitHub, calls pause for 10 minutes |
 | `CRON_SECRET` | Enables `/api/cron/tick` and `/api/cron/gallery`; Vercel Cron sends it as a Bearer token |
 | `WEBHOOK_KEY` | Random server-side key; webhooks are disabled without it |
+| `SITE_NAME`, `SITE_REPO_URL`, `SITE_SECURITY_URL`, `SITE_POLICY_URL`, `SITE_SPECIMEN` | Who runs this copy: the name, your public source repo, where to report a security problem, your security policy, and the `owner/repo` shown as the live example on the home page. Optional; see [RUN-YOUR-OWN.md](RUN-YOUR-OWN.md) |
 
 `api/index.js` is the entry point and `vercel.json` rewrites every path to it. Rate limits are stored in the
 database, so they are shared across function instances. The long-running server (`scbee` bin, Docker) uses the

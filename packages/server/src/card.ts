@@ -65,26 +65,28 @@ export async function renderIcon(size: 48 | 180 | 192 | 512): Promise<Buffer> {
   return b;
 }
 
-let siteCard: Buffer | undefined;
+const siteCards = new Map<string, Buffer>();
 /** The default share image for pages that have no score card of their own: wordmark, line, and a quiet constellation. */
-export async function renderSiteCard(): Promise<Buffer> {
-  if (siteCard) return siteCard;
+export async function renderSiteCard(domain = "scbee.vercel.app", name = "ScBee"): Promise<Buffer> {
+  const cached = siteCards.get(`${domain}|${name}`);
+  if (cached) return cached;
   const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
   const pts: [number, number][] = [[250, 120], [410, 80], [560, 170], [330, 250], [500, 330], [180, 330], [420, 440], [600, 400]];
   const edges: [number, number][] = [[0, 1], [1, 2], [0, 3], [3, 4], [2, 4], [3, 5], [4, 6], [4, 7], [6, 7]];
   const dots = `<svg xmlns="http://www.w3.org/2000/svg" width="780" height="520" viewBox="0 0 780 520">${edges.map(([a, b]) => `<line x1="${pts[a]![0]}" y1="${pts[a]![1]}" x2="${pts[b]![0]}" y2="${pts[b]![1]}" stroke="#0d0d0d" stroke-opacity=".28" stroke-width="2" stroke-dasharray="6 7"/>`).join("")}${pts.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i % 3 === 0 ? 15 : 11}" fill="#0d0d0d"/><circle cx="${x}" cy="${y}" r="${i % 3 === 0 ? 24 : 19}" fill="none" stroke="#f2a20f" stroke-width="3"/>`).join("")}</svg>`;
   const tree = h("div", { width: 1200, height: 630, display: "flex", background: PAPER, color: INK, fontFamily: "Inter", padding: "64px" }, [
     h("div", { display: "flex", flexDirection: "column", justifyContent: "space-between", width: 560, height: 502 }, [
-      h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 40, fontWeight: 500 }, [h("div", { width: 28, height: 28, background: AMBER, borderRadius: 7, marginRight: 14 }), "ScBee"]),
+      h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 40, fontWeight: 500 }, [h("div", { width: 28, height: 28, background: AMBER, borderRadius: 7, marginRight: 14 }), name]),
       h("div", { display: "flex", flexDirection: "column" }, [
         h("div", { fontFamily: "Fraunces", fontWeight: 300, fontSize: 84, lineHeight: 1.0, letterSpacing: -3 }, "Where agents find each other,"),
         h("div", { fontFamily: "Fraunces", fontWeight: 300, fontSize: 84, lineHeight: 1.05, letterSpacing: -3, marginTop: 4 }, "and send users their way."),
       ]),
-      h("div", { fontSize: 24, color: MUTE, letterSpacing: 2 }, "SCBEE.VERCEL.APP"),
+      h("div", { fontSize: 24, color: MUTE, letterSpacing: 2 }, domain.toUpperCase()),
     ]),
     { type: "img", props: { src: `data:image/svg+xml;utf8,${encodeURIComponent(dots)}`, width: 560, height: 373, style: { marginLeft: 16, marginTop: 70 } } },
   ]);
   const svg = await satori(tree as never, { width: 1200, height: 630, fonts: loadFonts() });
-  siteCard = Buffer.from(new Resvg(svg).render().asPng());
-  return siteCard;
+  const png = Buffer.from(new Resvg(svg).render().asPng());
+  siteCards.set(`${domain}|${name}`, png);
+  return png;
 }
