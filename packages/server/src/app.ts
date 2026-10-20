@@ -93,6 +93,8 @@ const BOT_AGENT = /bot|crawl|spider|preview|headless|curl|wget|python|go-http|sc
 export function goTarget(raw: string): string | null {
   const v = raw.trim();
   if (!v || v.length > 300) return null;
+  const handle = v.match(/^@([a-z0-9-]{3,39})$/)?.[1];
+  if (handle) return `/a/${handle}`;
   const gh = v.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?(?:[/?#].*)?$/) ?? v.match(/^([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
   if (gh) return `/github.com/${gh[1]}/${gh[2]}`;
   const npm = v.match(/^(?:https?:\/\/)?(?:www\.)?npmjs\.com\/package\/((?:@[^/]+\/)?[^/?#]+)/i)?.[1] ?? v.match(/^npm:(\S+)$/i)?.[1]

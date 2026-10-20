@@ -1267,6 +1267,7 @@ describe("site polish", () => {
       ["owner/repo", "/github.com/owner/repo"], ["https://github.com/Owner/Repo.git", "/github.com/Owner/Repo"], ["github.com/o/r/tree/main", "/github.com/o/r"],
       ["left-pad", "/npm/left-pad"], ["@scope/pkg", "/npm/@scope/pkg"], ["npm:Some-Pkg", "/npm/some-pkg"], ["https://www.npmjs.com/package/left-pad", "/npm/left-pad"],
       ["example.com", "/web/example.com"], ["https://Sub.Example.co.uk/page", "/web/sub.example.co.uk"],
+      ["https://agent.example.com/.well-known/agent-card.json", "/web/agent.example.com"], ["@some-agent", "/a/some-agent"],
     ];
     for (const [q, to] of cases) {
       const r = await raw(`/go?q=${encodeURIComponent(q)}`);
@@ -1278,7 +1279,11 @@ describe("site polish", () => {
     expect(bad).toContain("Enter owner/repo, an npm package, or a website");
     const home = await bodyOf("/");
     expect(home).toMatch(/<form class="paste" id="score" action="\/go" method="get"[^>]*><input id="repo" name="q"/);
-    expect(home).toMatch(/<form class="altform" id="reg" action="\/join\.md" method="get"/);
+    // one box is the front door: no second register form, and the placeholder names the three kinds of link
+    expect(home).not.toContain('id="reg"');
+    expect(home).not.toContain("Or register your agent");
+    expect(home).toContain("Paste your GitHub, agent or website link");
+    expect(home).toContain("github.com/you/project, agent.com, @handle");
   });
 
   it("structure: skip link, mobile menu without JavaScript, footer headings that do not skip levels, a text alternative for the map", async () => {
@@ -1677,5 +1682,43 @@ describe("collaboration: propose, accept, notes, both confirm, receipts", () => 
     expect((await call("GET", "/join.md")).text).toContain("/api/collabs");
     expect((await call("GET", "/llms.txt")).text).toContain("/api/collabs/public");
     expect((await call("GET", "/privacy")).text).toContain("collaboration proposals");
+  });
+});
+
+describe("one link is the front door", () => {
+  const repoFiles = (o: string, r: string) => {
+    const api = `https://api.github.com/repos/${o}/${r}`;
+    files[api] = JSON.stringify({ full_name: `${o}/${r}`, description: "a small agent", stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+  };
+
+  it("an unlisted project page has a List it button that carries its own link, and no separate register form", async () => {
+    repoFiles("onelink", "unlisted");
+    const page = await call("GET", "/github.com/onelink/unlisted");
+    expect(page.status).toBe(200);
+    expect(page.text).toMatch(/<button class="btn" id="listit" data-input="github\.com\/onelink\/unlisted">List it on ScBee<\/button>/);
+    expect(page.text).toContain('id="result" role="status"');
+    expect(page.text).toContain("join.md");
+    expect(page.text).not.toContain("Claim it on ScBee"); // the old bare link is gone
+    expect(page.text.match(/<h2 class="h2s">Claim this project<\/h2>[\s\S]*?<\/div>\s*<h2|Claim this project[\s\S]*List it on ScBee/)).toBeTruthy();
+  });
+
+  it("the page script lists through /api/register using the button's own link", async () => {
+    const js = (await call("GET", "/app.js")).text;
+    expect(js).toContain("$('#listit')");
+    expect(js).toContain("input:f.dataset.input");
+    expect(js).not.toContain("$('#reg')");
+    expect(js).not.toContain("$('#src')");
+    // the call it makes works for a repo link
+    files["https://raw.githubusercontent.com/onelink2/agent/HEAD/agent.json"] = JSON.stringify({ name: "One Link Two", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/onelink2/agent" });
+    expect(reg.status).toBe(201);
+    expect(reg.json.verify.file).toBeTruthy();
+  });
+
+  it("join.md tells agents the one-link start", async () => {
+    const md = (await call("GET", "/join.md")).text;
+    expect(md).toContain("Fastest start: your link is all it takes");
+    expect(md).toContain("/api/score/github.com/OWNER/REPO");
   });
 });

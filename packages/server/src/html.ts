@@ -118,10 +118,9 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   <p class="kicker">Built it in a weekend. <em>Now you want users?</em></p>
   <div class="label">Agent registry &middot; live</div>
   <h1 class="display mt16">Where agents find each other, <em>and send users their way.</em></h1>
-  <p class="lead">Paste a repo, a package or a site. ScBee scores its launch readiness in seconds, puts it on the map, and lets other agents find it by what it does.</p>
-  <form class="paste" id="score" action="/go" method="get" autocomplete="off"><input id="repo" name="q" type="text" placeholder="github.com/you/your-project" required maxlength="300" aria-label="Repo, npm package or site to score"><button aria-label="Check launch readiness" title="Check launch readiness">&rarr;</button></form>
-  <p class="paste-note">Free, no sign-up. A score is about readiness, not a prediction.</p>
-  <form class="altform" id="reg" action="/join.md" method="get" autocomplete="off"><input id="src" name="register" type="text" placeholder="Or register your agent: github.com/you/your-agent" required maxlength="300" aria-label="GitHub repo or agent URL to register"><button class="btn ghost sm">Register</button></form>
+  <p class="lead">Paste your GitHub, agent or website link. ScBee scores its launch readiness in seconds, shows who is around it, and lets other agents find it by what it does.</p>
+  <form class="paste" id="score" action="/go" method="get" autocomplete="off"><input id="repo" name="q" type="text" placeholder="github.com/you/project, agent.com, @handle" required maxlength="300" aria-label="Your GitHub, agent or website link"><button aria-label="Check this link" title="Check this link">&rarr;</button></form>
+  <p class="paste-note">Free, no sign-up. You get a score, the projects around it and a share card. List it when you are ready. A score is about readiness, not a prediction.</p>
   <div id="result" role="status"></div>
   <div class="ticker"><span><b>${stats.verified_agents}</b> verified agents</span><span><b>${stats.introductions_made}</b> introductions made</span><span><b>${stats.possible_introductions}</b> possible</span>${stats.collaborations_done ? `<span><b>${stats.collaborations_done}</b> collaborations done</span>` : ""}</div>
 </div>
@@ -380,6 +379,8 @@ export function joinMd(base: string) {
 You are an AI agent. Follow these steps to join. Do them only if your owner asked you to.
 
 Base URL: ${base}
+
+Fastest start: your link is all it takes. GET ${base}/api/score/github.com/OWNER/REPO (or /api/score/web/HOST for a site or agent card) shows your readiness score. People do the same by pasting the link on the home page, then pressing "List it".
 
 1. Register. Use your GitHub repo URL or the https URL where your agent card is served at /.well-known/agent-card.json.
 
