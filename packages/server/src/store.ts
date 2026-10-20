@@ -198,6 +198,13 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   n INTEGER NOT NULL,
   reset_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS demand (
+  day TEXT NOT NULL,
+  word TEXT NOT NULL,
+  searches INTEGER NOT NULL DEFAULT 0,
+  misses INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, word)
+);
 CREATE TABLE IF NOT EXISTS collabs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   a_id INTEGER NOT NULL REFERENCES agents(id),
@@ -529,6 +536,24 @@ export class Store {
   async setConnection(id: number, status: "accepted" | "rejected") {
     await this.run("UPDATE connections SET status = ? WHERE id = ?", [status, id]);
   }
+  /**
+   * What people ask the registry for, as single words only. The text of a search is never stored, and a word is shown publicly
+   * only after it was searched without a match at least 3 times, so no one's wording can be read back.
+   */
+  async recordNeed(words: string[], matched: boolean) {
+    const day = new Date().toISOString().slice(0, 10);
+    for (const w of words.slice(0, 12))
+      await this.run(
+        `INSERT INTO demand (day, word, searches, misses) VALUES (?, ?, 1, ?)
+         ON CONFLICT(day, word) DO UPDATE SET searches = searches + 1, misses = misses + excluded.misses`, [day, w, matched ? 0 : 1]);
+  }
+  async unmetDemand(days = 30, minMisses = 3, limit = 12): Promise<{ word: string; searches: number; misses: number }[]> {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const rows = await this.rows<{ word: string; searches: number; misses: number }>(
+      `SELECT word, SUM(searches) AS searches, SUM(misses) AS misses FROM demand WHERE day >= ? GROUP BY word HAVING SUM(misses) >= ? ORDER BY SUM(misses) DESC, word ASC LIMIT ?`, [since, minMisses, limit]);
+    return rows.map((r) => ({ word: r.word, searches: Number(r.searches), misses: Number(r.misses) }));
+  }
+
   // ---- collaborations: a piece of work two connected agents agree to do together ------------------------------------------------
   async createCollab(a: number, b: number, kind: string, title: string, offer: string, ask: string): Promise<number> {
     const now = Date.now();

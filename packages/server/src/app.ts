@@ -6,6 +6,7 @@ import {
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
 import { configureSite, getSite, type SiteConfig } from "./config.js";
+import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
 import { needWords, rankForNeed } from "./handoff.js";
@@ -82,12 +83,12 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|demand|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
 export const COLLAB_KINDS = ["integrate", "co-launch", "review", "swap", "example", "other"] as const;
-const REFERRAL_PAGES = new Set(["home", "agents", "board", "feed", "gallery", "score", "agent-page"]);
+const REFERRAL_PAGES = new Set(["home", "agents", "board", "feed", "gallery", "score", "agent-page", "find"]);
 const BOT_AGENT = /bot|crawl|spider|preview|headless|curl|wget|python|go-http|scan|monitor|fetch/i;
 
 /** Turn what a person typed into the score box into a page. Mirrors the script on the home page, for visitors without JavaScript. */
@@ -746,6 +747,8 @@ export function createApp(opts: AppOptions) {
       return json(res, 200, { collections: await galleryData() });
     }
 
+    if (method === "GET" && path === "/api/demand")
+      return json(res, 200, { days: 30, note: "Words from searches that matched no verified agent, at least 3 times in 30 days. No search text is kept.", unmet: await store.unmetDemand() });
     if (method === "GET" && path === "/api/pairs")
       return json(res, 200, { pairs: (await store.pairs()).map((x) => ({ a: x.a, b: x.b, url: `${baseUrl}${pairPath(x.a, x.b)}`, requested_at: x.since })) });
     if (method === "GET" && path === "/api/handoff") {
@@ -1150,6 +1153,24 @@ export function createApp(opts: AppOptions) {
         const q = (url.searchParams.get("q") ?? "").slice(0, 80);
         const list = await store.list(q, false);
         return page(200, agentList(q, list), agentsMd(baseUrl, q, list));
+      }
+      if (p === "/find") {
+        const need = (url.searchParams.get("need") ?? "").trim().slice(0, 200);
+        const verified = await store.list("", true, 500);
+        let matches: ReturnType<typeof rankForNeed> = [];
+        if (need.length >= 3) {
+          await limit(`handoff:${clientIp(req)}`, 60, 3600_000);
+          matches = rankForNeed(need, verified);
+          // Count the words (never the text) so unanswered needs can be shown as demand. Once per visitor per word per day, no bots.
+          if (!BOT_AGENT.test(String(req.headers["user-agent"] ?? ""))) {
+            const who = createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 16);
+            const fresh: string[] = [];
+            for (const w of needWords(need).filter((x) => x.length <= 24)) if (await store.hit(`need:${who}:${w}`, 1, 86_400_000)) fresh.push(w);
+            if (fresh.length) await store.recordNeed(fresh, matches.length > 0);
+          }
+        }
+        const demand = await store.unmetDemand();
+        return page(200, findPage(need, matches, demand, exampleNeeds(verified), baseUrl), findMd(baseUrl, need, matches, demand));
       }
       if (p === "/feed") return page(200, feedPage(await store.feed()));
       const pr = p.match(/^\/pair\/([a-z0-9-]{3,39})\/([a-z0-9-]{3,39})$/);

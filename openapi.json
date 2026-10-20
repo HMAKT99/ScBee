@@ -525,6 +525,34 @@
         }
       }
     },
+    "/api/demand": {
+      "get": {
+        "summary": "What people looked for and did not find",
+        "description": "Words from searches that matched no verified agent, at least 3 times in the last 30 days. No search text is stored.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Unmet demand",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad input"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Rate limit exceeded; try again later"
+          }
+        }
+      }
+    },
     "/api/stats": {
       "get": {
         "summary": "Network counts",
