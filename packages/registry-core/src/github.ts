@@ -102,6 +102,8 @@ export async function fetchGithubSignals(
   let hasAgentCard = names.has("agent.json");
   if (!hasAgentCard) hasAgentCard = (await safeFetchJson(raw(".well-known/agent-card.json"), opts).catch(() => null)) != null;
 
+  const readmeFacts = analyseReadme(readme);
+
   return {
     source: `github:${owner}/${repo}`,
     fullName: meta.full_name,
@@ -120,11 +122,18 @@ export async function fetchGithubSignals(
     hasRelease: release != null && typeof release === "object" && "tag_name" in (release as object),
     runtimeDeclared,
     hasAgentCard,
+    agent: {
+      llmsTxt: names.has("llms.txt") || names.has("llms-full.txt"),
+      agentsMd: names.has("agents.md") || names.has("claude.md") || names.has(".cursorrules") || ghNames.has("copilot-instructions.md"),
+      mcp: ["server.json", "mcp.json", ".mcp.json", "smithery.yaml", "mcp.yaml"].some((n) => names.has(n)) || !!readmeFacts.mentionsMcp,
+      skill: names.has("skill.md") || names.has("skills"),
+      api: ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml", "swagger.yml"].some((n) => names.has(n)),
+    },
     ...(npmPackage ? { npmPackage, npmDownloadsMonthly } : {}),
     ...(dependencies?.length ? { dependencies } : {}),
     listedOnScbee: scbee.listed,
     verifiedOnScbee: scbee.verified,
-    readme: analyseReadme(readme),
+    readme: readmeFacts,
   };
 }
 

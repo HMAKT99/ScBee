@@ -1,4 +1,4 @@
-import { band, type Forecast, type GraphEdge, type GraphNode, type ScoreResult } from "@scbee/registry-core";
+import { agentBand, band, type Forecast, type GraphEdge, type GraphNode, type ScoreResult } from "@scbee/registry-core";
 import { esc, layout } from "./html.js";
 
 export interface ProjectView {
@@ -12,20 +12,22 @@ export interface ProjectView {
   fetchedAt: number;
   result: ScoreResult;
   listed: boolean;
+  /** The "can agents use this" score. Null until the project has been re-read with the facts it needs. */
+  agentReady?: ScoreResult | null;
 }
 
 /** Flat badge for READMEs. Colour reflects the band. */
-export function badgeSvg(total: number | null): string {
+export function badgeSvg(total: number | null, label = "ScBee"): string {
   const value = total === null ? "unknown" : `${total}/100`;
-  const color = total === null ? "#9f9f9f" : band(total).color;
-  const lw = 52;
+  const color = total === null ? "#9f9f9f" : (label === "ScBee" ? band(total) : agentBand(total)).color;
+  const lw = label === "ScBee" ? 52 : Math.round(16 + label.length * 6.4);
   const rw = 14 + value.length * 7;
   const w = lw + rw;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="20" role="img" aria-label="ScBee: ${value}"><title>ScBee: ${value}</title>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="20" role="img" aria-label="${label}: ${value}"><title>${label}: ${value}</title>
 <linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
 <clipPath id="r"><rect width="${w}" height="20" rx="3" fill="#fff"/></clipPath>
 <g clip-path="url(#r)"><rect width="${lw}" height="20" fill="#0d0d0d"/><rect x="${lw}" width="${rw}" height="20" fill="${color}"/><rect width="${w}" height="20" fill="url(#s)"/></g>
-<g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="${lw / 2}" y="14">ScBee</text><text x="${lw + rw / 2}" y="14" font-weight="bold">${value}</text></g></svg>`;
+<g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11"><text x="${lw / 2}" y="14">${label}</text><text x="${lw + rw / 2}" y="14" font-weight="bold">${value}</text></g></svg>`;
 }
 
 export interface VerdictView {
@@ -70,6 +72,22 @@ ${g.edges.length
 
 
 
+const renderComps = (r: ScoreResult): string => r.components.map((c) => `<section class="comp"><div><h3>${esc(c.title)}</h3><div class="sc">${c.score}/${c.max}</div></div><div>
+<meter min="0" max="${c.max}" value="${c.score}"></meter>
+<ul class="items">${c.items.map((i) => `<li class="${i.points >= i.max ? "ok" : "no"}"><strong>${esc(i.label)}</strong> (${i.points}/${i.max}) ${esc(i.reason)}${i.fix && i.points < i.max ? `<span class="fix">Fix: ${esc(i.fix)}</span>` : ""}</li>`).join("")}</ul></div></section>`).join("");
+
+/** "Can agents use this?": headline, the few fixes worth the most, the breakdown, and a badge to copy. */
+function agentReadySection(ar: ScoreResult, path: string, base: string): string {
+  const b = agentBand(ar.total);
+  const lost = ar.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max)).sort((x, y) => (y.max - y.points) - (x.max - x.points)).slice(0, 3);
+  const badgeMd = `[![Agent-ready](${base}/badge/agent-ready/${path}.svg)](${base}/${path})`;
+  return `<h2 class="h2s">Agent-ready</h2><div class="specimen">
+<p><strong>${ar.total}/100</strong> <span class="band">${esc(b.label)}</span> Can other agents find, install and trust this? Checked from public files by fixed rules (version ${esc(ar.version)}).</p>
+${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points})</span></li>`).join("")}</ol>` : `<p>Nothing to fix. Agents can find, install and trust this.</p>`}
+<div class="comps">${renderComps(ar)}</div>
+<div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy badge</button></div></div>`;
+}
+
 /** The invitation on a project nobody has claimed yet: what the owner gets, with no promise about users. */
 function claimSection(around: number, input: string): string {
   return `<h2 class="h2s">Claim this project</h2><div class="specimen">
@@ -96,9 +114,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
 <meta property="og:description" content="${esc(`${b.label}. See exactly what to fix before you launch.`)}">
 <meta property="og:image" content="${esc(`${base}/og/${path}.png`)}"><meta property="og:url" content="${esc(url)}">
 <meta name="twitter:card" content="summary_large_image">${p.listed ? "" : '\n<meta name="robots" content="noindex,follow">'}`;
-  const comps = r.components.map((c) => `<section class="comp"><div><h3>${esc(c.title)}</h3><div class="sc">${c.score}/${c.max}</div></div><div>
-<meter min="0" max="${c.max}" value="${c.score}"></meter>
-<ul class="items">${c.items.map((i) => `<li class="${i.points >= i.max ? "ok" : "no"}"><strong>${esc(i.label)}</strong> (${i.points}/${i.max}) ${esc(i.reason)}${i.fix && i.points < i.max ? `<span class="fix">Fix: ${esc(i.fix)}</span>` : ""}</li>`).join("")}</ul></div></section>`).join("");
+  const comps = renderComps(r);
   const fixes = lost.length
     ? `<div class="fixes"><h2>Biggest wins first</h2><ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points} ${esc(i.c)})</span></li>`).join("")}</ol></div>`
     : `<div class="fixes"><h2>Nothing major to fix</h2><p>Every check passes. Ship it.</p></div>`;
@@ -108,6 +124,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
 ${p.description ? `<p class="lead mt16">${esc(p.description)}</p>` : ""}</div></div>
 ${fixes}
 <h2 class="h2s">Breakdown</h2><div class="comps">${comps}</div>
+${p.agentReady ? agentReadySection(p.agentReady, path, base) : ""}
 ${graph ? constellationSection(graph) : ""}
 ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <h2 class="h2s">Share it</h2>

@@ -17,7 +17,15 @@ export interface ReadmeFacts {
   envVars: number;
   /** Other projects the README refers to: github:owner/repo, npm:name, pypi:name (capped). Used for graph edges only. */
   mentions: string[];
+  /** README says it is an MCP server or shows an mcpServers config. Optional: older stored results lack it. */
+  mentionsMcp?: boolean;
+  /** README says what it can and cannot touch (read-only, permissions, sandbox, untrusted input). */
+  mentionsSafety?: boolean;
+  /** README states rate limits, quotas, pricing or a free tier. */
+  mentionsLimits?: boolean;
 }
+
+import type { AgentFacts } from "./agentready.js";
 
 export interface ProjectSignals {
   source: string;
@@ -39,6 +47,8 @@ export interface ProjectSignals {
   hasRelease: boolean;
   runtimeDeclared: boolean;
   hasAgentCard: boolean;
+  /** Facts for the Agent-Ready score. Optional: results stored before it existed are re-read on the next visit. */
+  agent?: AgentFacts;
   /** npm package for this repo, when its package.json names one that points back to the repo. */
   npmPackage?: string;
   /** Runtime dependencies from package.json as npm:name (capped). Used for graph edges only. */
@@ -53,6 +63,9 @@ const INSTALL =
   /\b(npm\s+(i|install|add)\b|npx\s+\S|pnpm\s+(add|dlx|i|install)\b|yarn\s+(add|dlx)\b|bunx?\s+\S|pip3?\s+install\b|pipx\s+(install|run)\b|uvx?\s+(add|pip|tool|run)\b|brew\s+install\b|cargo\s+(install|add)\b|go\s+(install|get)\b|docker\s+(run|pull|compose\s+up)\b|gem\s+install\b|composer\s+require\b|dotnet\s+(add|tool)\b|curl\s[^\n]*\|\s*(ba)?sh)/i;
 const USAGE_HEADING = /^#{1,6}\s*.*\b(usage|example|examples|quick\s?start|getting started|how to use|demo|tutorial)\b/im;
 const MEDIA = /(!\[[^\]]*\]\([^)]+\)|<img\s|\.(gif|mp4|webm|mov)\b|youtu\.?be|loom\.com|asciinema\.org|vimeo\.com)/i;
+const MCP_HINT = /\bmcpServers\b|model[- ]context[- ]protocol|\bmcp[- ]server\b/i;
+const SAFETY_HINT = /\b(read[- ]only|least[- ]privilege|permissions?|sandbox(?:ed)?|untrusted|allow-?list|human (?:approval|in the loop)|never (?:writes?|stores?|sends?|executes?))\b/i;
+const LIMITS_HINT = /\brate[- ]?limits?\b|\bquotas?\b|\busage limits?\b|\bpricing\b|\bfree tier\b/i;
 const ENV = /\b[A-Z][A-Z0-9]*_(?:API_KEY|KEY|TOKEN|SECRET|PASSWORD|URL|DSN)\b/g;
 
 /** Remove things a reader would not see (and an attacker might use to game the score). */
@@ -118,6 +131,9 @@ export function analyseReadme(raw: string | null): ReadmeFacts {
     installCommand,
     summary: prose ? prose.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`>#]/g, "").replace(/\s+/g, " ").trim().slice(0, 300) : null,
     mentions: mentionsOf(md),
+    mentionsMcp: MCP_HINT.test(md),
+    mentionsSafety: SAFETY_HINT.test(md),
+    mentionsLimits: LIMITS_HINT.test(md),
     envVars: new Set(codeText.join("\n").match(ENV) ?? []).size || new Set(md.match(ENV) ?? []).size,
   };
 }

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
@@ -81,7 +81,7 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
@@ -138,10 +138,11 @@ export function createApp(opts: AppOptions) {
     if (await store.isOptedOut(key)) throw new HttpError(410, "removed at the owner's request");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
     const cached = await store.getProject(key);
-    const view = (result: ScoreResult, fetchedAt: number, listed: boolean) => ({
-      owner: host, repo: "", title: host, path: `web/${host}`, description: null, stars: 0, fetchedAt, result, listed });
+    const view = (result: ScoreResult, fetchedAt: number, listed: boolean, agentReady: ScoreResult | null = null) => ({
+      owner: host, repo: "", title: host, path: `web/${host}`, description: null, stars: 0, fetchedAt, result, listed, agentReady });
     if (cached && cached.score_version === SITE_SCORE_VERSION && Date.now() - cached.fetched_at < ttl) {
-      return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, (JSON.parse(cached.signals_json) as SiteSignals).listedOnScbee);
+      const cs = JSON.parse(cached.signals_json) as SiteSignals;
+      return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, cs.listedOnScbee, scoreAgentReadySite(cs));
     }
     await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
     try {
@@ -149,9 +150,9 @@ export function createApp(opts: AppOptions) {
       const sig = await fetchSiteSignals(host, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts);
       const result = scoreSite(sig);
       await store.saveProject(key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, 0);
-      return view(result, Date.now(), !!row);
+      return view(result, Date.now(), !!row, scoreAgentReadySite(sig));
     } catch (e) {
-      if (cached && !(e instanceof SiteError && e.status !== 502)) return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, false);
+      if (cached && !(e instanceof SiteError && e.status !== 502)) return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, false, scoreAgentReadySite(JSON.parse(cached.signals_json) as SiteSignals));
       if (e instanceof SiteError) throw new HttpError(e.status, e.message);
       throw e;
     }
@@ -350,12 +351,13 @@ export function createApp(opts: AppOptions) {
     if (await store.isOptedOut(src.key)) throw new HttpError(410, "removed at the owner's request");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
     const cached = await store.getProject(src.key);
-    const fresh = cached && cached.score_version === SCORE_VERSION && Date.now() - cached.fetched_at < ttl;
+    // A stored result from before the Agent-Ready facts existed is read again instead of being served without them.
+    const fresh = cached && cached.score_version === SCORE_VERSION && Date.now() - cached.fetched_at < ttl && cached.signals_json.includes('"agent":');
     const view = (c: NonNullable<typeof cached>) => {
       const sig = JSON.parse(c.signals_json) as ProjectSignals;
       const [o, r] = (sig.fullName ?? "").split("/");
       return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: c.fetched_at,
-        result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee };
+        result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee, agentReady: scoreAgentReady(sig) };
     };
     if (fresh) return view(cached);
     if (ip) await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
@@ -366,7 +368,7 @@ export function createApp(opts: AppOptions) {
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
       if (!cached) await afterFirstScore(src.key).catch(() => undefined);
       const [o, r] = (sig.fullName ?? "").split("/");
-      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row };
+      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row, agentReady: scoreAgentReady(sig) };
     } catch (e) {
       if (cached && !(e instanceof ProjectError && e.status === 404)) return view(cached);
       if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
@@ -468,7 +470,17 @@ export function createApp(opts: AppOptions) {
     if (method === "GET" && sm) {
       const v = await projectScore(sm[1]!, sm[2]!, ip);
       return json(res, 200, { project: `github.com/${v.owner}/${v.repo}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
+        agent_ready: v.agentReady ? { total: v.agentReady.total, band: agentBand(v.agentReady.total).label, version: v.agentReady.version } : null,
         note: "A readiness score from public data and fixed rules. Not a prediction." });
+    }
+    const arm = path.match(/^\/api\/agent-ready\/(github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}|web\/[A-Za-z0-9.-]{4,253})$/);
+    if (method === "GET" && arm) {
+      // Can other agents find, install and trust this? Same fixed-rule, public-data approach as the readiness score.
+      const parts = arm[1]!.split("/");
+      const v = parts[0] === "web" ? await siteScore(parts[1]!, ip) : await projectScore(parts[1]!, parts[2]!, ip);
+      if (!v.agentReady) throw new HttpError(503, "the agent-ready check is being prepared for this project; try again in a minute");
+      return json(res, 200, { project: arm[1], band: agentBand(v.agentReady.total).label, checked_at: v.fetchedAt, ...v.agentReady,
+        note: "Whether other agents can find, install and trust this, from public files and fixed rules. Not a prediction." });
     }
 
     if (method === "POST" && path === "/api/verdicts") {
@@ -1037,6 +1049,18 @@ export function createApp(opts: AppOptions) {
         res.writeHead(302, { ...SECURITY_HEADERS, location: `/github.com/${facts.repo.owner}/${facts.repo.repo}`, "cache-control": "public, max-age=3600" });
         return void res.end();
       }
+      const abm = p.match(/^\/badge\/agent-ready\/(?:github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)|web\/([A-Za-z0-9.-]{4,253}?))\.svg$/);
+      if (abm) {
+        let total: number | null = null;
+        try {
+          const ip = clientIp(req);
+          const h = abm[3] ? parseHost(abm[3]) : null;
+          const v = abm[3] ? (h ? await siteScore(h, ip) : null) : await projectScore(abm[1]!, abm[2]!, ip);
+          total = v?.agentReady?.total ?? null;
+        } catch { /* unknown badge */ }
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        return void res.end(badgeSvg(total, "agent-ready"));
+      }
       const wm = p.match(/^\/(?:(badge|og)\/)?web\/([A-Za-z0-9.-]{4,253}?)(?:\.(svg|png))?\/?$/);
       const wHost = wm ? parseHost(wm[2]!) : null;
       if (wm && wHost) {
@@ -1056,7 +1080,7 @@ export function createApp(opts: AppOptions) {
         if (!kind && !ext) {
           try {
             const v = await siteScore(wHost, ip);
-            return page(200, projectPage(v, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result }, band(v.result.total).label));
+            return page(200, projectPage(v, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady }, band(v.result.total).label));
           } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
         }
       }
@@ -1080,7 +1104,7 @@ export function createApp(opts: AppOptions) {
           try {
             const v = await projectScore(owner, repo, ip);
             return page(200, projectPage(v, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
-              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result }, band(v.result.total).label));
+              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
             throw e;

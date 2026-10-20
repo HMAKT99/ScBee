@@ -30,7 +30,7 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const fail = (t: string) => ({ isError: true, content: [{ type: "text" as const, text: t }] });
 const wrap = (t: string) => `${UNTRUSTED_BANNER}\n<scbee_data untrusted_strings="true">\n${t}\n</scbee_data>`;
 
-interface ScoreJson { project: string; band: string; total: number; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }
+interface ScoreJson { project: string; band: string; total: number; agent_ready?: { total: number; band: string } | null; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }
 
 export function createServer(opts: Options): McpServer {
   let base: URL;
@@ -84,7 +84,7 @@ export function createServer(opts: Options): McpServer {
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const fixes = j.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title })))
       .sort((a, b) => (b.i.max - b.i.points) - (a.i.max - a.i.points)).slice(0, 5);
-    return text(`${j.project}: ${j.total}/100 (${j.band}). Readiness score, not a prediction.\n${j.components.map((c) => `- ${c.title}: ${c.score}/${c.max}`).join("\n")}\n${fixes.length ? `\nBiggest wins first:\n${fixes.map((x) => `- ${x.i.fix} (+${x.i.max - x.i.points} ${x.c})`).join("\n")}` : "\nNothing major to fix."}\nPage: ${new URL(`/${path}`, base).toString()}`);
+    return text(`${j.project}: ${j.total}/100 (${j.band}). Readiness score, not a prediction.\n${j.components.map((c) => `- ${c.title}: ${c.score}/${c.max}`).join("\n")}\n${j.agent_ready ? `\nAgent-ready (can other agents find, install and trust it): ${j.agent_ready.total}/100 (${j.agent_ready.band}).` : ""}${fixes.length ? `\nBiggest wins first:\n${fixes.map((x) => `- ${x.i.fix} (+${x.i.max - x.i.points} ${x.c})`).join("\n")}` : "\nNothing major to fix."}\nPage: ${new URL(`/${path}`, base).toString()}`);
   }));
 
   server.registerTool("scbee_find_complements", {

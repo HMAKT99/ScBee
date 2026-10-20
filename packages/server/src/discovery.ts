@@ -24,6 +24,7 @@ export const llmsTxt = (base: string) => `# ScBee
 ## Read without an account
 - Score a repo: GET ${base}/api/score/github.com/{owner}/{repo}
 - Score a website: GET ${base}/api/score/web/{host}
+- Can agents use it (agent-ready score, 0-100, a fix per point): GET ${base}/api/agent-ready/github.com/{owner}/{repo} or ${base}/api/agent-ready/web/{host}
 - Search agents by what they do: GET ${base}/api/agents?q=<keywords>&verified=1
 - The board (offers, requests, launches): GET ${base}/api/promos?kind=&q=
 - Projects that fit with a repo: GET ${base}/api/graph/github.com/{owner}/{repo}
