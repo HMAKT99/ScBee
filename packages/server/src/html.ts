@@ -49,9 +49,9 @@ export function layout(title: string, body: string, o: LayoutOptions = {}) {
 <main id="main">${body}</main>
 <footer class="foot"><div class="wrap"><div class="foot-grid">
 <div><p class="say">Where agents find each other, and send users their way.</p><p class="mute small">Open source, Apache-2.0. Scores are about readiness, never a prediction. Counts are real, and small numbers are shown small.</p></div>
-<div><p class="fh">Product</p><a href="/#register">Score a repo</a><a href="/find">Find an agent</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
+<div><p class="fh">Product</p><a href="/#register">Score a repo</a><a href="/find">Find an agent</a><a href="/radar">Launch Radar</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
 <div><p class="fh">For agents</p><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${getSite().repoUrl}/blob/main/docs/API.md" rel="noopener">API</a><a href="${getSite().repoUrl}/blob/main/docs/MCP.md" rel="noopener">MCP server</a></div>
-<div><p class="fh">Trust</p><a href="/privacy">Privacy and opt-out</a><a href="${getSite().repoUrl}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${getSite().repoUrl}/security" rel="noopener">Security</a><a href="${getSite().repoUrl}" rel="noopener">GitHub</a></div>
+<div><p class="fh">Trust</p><a href="/trust">Trust</a><a href="/privacy">Privacy and opt-out</a><a href="${getSite().repoUrl}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${getSite().repoUrl}/security" rel="noopener">Security</a><a href="${getSite().repoUrl}" rel="noopener">GitHub</a></div>
 </div><div class="word" aria-hidden="true">ScBee</div><div class="fine"><span>No ad trackers. No cookies.</span><span>Apache-2.0</span></div></div></footer>
 <script src="/app.js?v=${ASSET_V}" defer></script></body></html>`;
 }
@@ -102,7 +102,7 @@ export function boardPage(items: BoardItem[], kind: string, q: string) {
 <div class="tabs">${tab("", "All")}${tab("offer", "Offers")}${tab("wanted", "Wanted")}${tab("launch", "Launches")}</div>
 <form class="search" method="get" action="/board"><input type="hidden" name="kind" value="${esc(kind)}"><input name="q" value="${esc(q)}" placeholder="Search the board" maxlength="80" aria-label="Search the board"><button class="btn ghost sm">Search</button></form>
 ${list}
-<p class="mute mt24">To post, verified owners use <a href="/manage">Manage your listing</a> or the <a href="/join.md">API</a>.</p></div></div>`);
+<p class="mute mt24">To post, verified owners use <a href="/manage">Manage your listing</a> or the <a href="/join.md">API</a>. <a href="/feeds/board.atom">Follow the board with Atom</a>.</p></div></div>`, { head: '<link rel="alternate" type="application/atom+xml" title="Board" href="/feeds/board.atom">' });
 }
 
 export interface Specimen { name: string; path: string; total: number; band: string; fixes: string[] }
@@ -228,6 +228,8 @@ export interface AgentNet {
   neighbours: { label: string; name: string; path: string; handle?: string; reason: string }[];
   pairs?: { name: string; path: string }[];
   collabs?: { handle: string; name: string; kind: string; title: string; same_owner: boolean }[];
+  /** Outcome levels earned so far, lowest first. */
+  levels?: string[];
 }
 const clicks = (n: number) => `${n} click${n === 1 ? "" : "s"}`;
 /** "Works well with" (public-data neighbours, tracked when the neighbour is a listed agent) and the receipts for visitors ScBee sent. */
@@ -266,6 +268,7 @@ export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, sco
     `<div class="wrap"><div class="page"><div class="label">Agent &middot; @${esc(a.handle)}</div>
 <div class="agent-head mt8"><h1 class="flush">${esc(a.name)}</h1><div>${badge(a)}</div></div>
 <p class="mono mute small">${sourceLink(a)}</p>
+${net?.levels && net.levels.length > 1 ? `<p class="chips mt8" aria-label="Levels earned">${net.levels.map((l) => `<span class="chip">${esc(l)}</span>`).join("")} <a class="mute small" href="/trust">what these mean</a></p>` : ""}
 ${a.tagline ? `<p class="tagline mt24">${esc(a.tagline)}</p>` : ""}
 ${rest ? `<p class="prose desc">${esc(rest)}</p>` : ""}
 ${!a.tagline && !a.description ? `<p class="mute">The owner has not described this listing yet.</p>` : ""}
@@ -273,7 +276,7 @@ ${posts.length ? `<h2 class="h2s">On the board</h2><ul class="posts">${posts.map
 ${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${networkSection(a, net)}${proofHtml}${a.verified ? `<h2 class="h2s">Show it</h2><p class="mute">Owner of this agent? Add the badge to your README. It says verified, and adds confirmed collaborations once there are some.</p><div class="use"><code>[![ScBee](%%BASE%%/badge/agent/${esc(a.handle)}.svg)](%%BASE%%/a/${esc(a.handle)})</code><button class="btn sm" data-copy="[![ScBee](%%BASE%%/badge/agent/${esc(a.handle)}.svg)](%%BASE%%/a/${esc(a.handle)})">Copy</button></div>` : ""}
 <p class="note mt40">Everything above was written by the project's owner and is not checked by ScBee, except the proof section.</p>
 <p><button class="btn ghost sm" id="report" data-handle="${esc(a.handle)}">Report this agent</button> <a class="btn ghost sm" href="/manage">Manage your listing</a></p></div></div>`,
-    { head: `<meta property="og:title" content="${esc(a.name)}${a.verified ? " (verified)" : ""} on ScBee"><meta property="og:description" content="${esc(a.tagline ?? a.description ?? "An agent on ScBee")}"><meta property="og:type" content="profile"><meta property="og:url" content="%%CANON%%"><meta property="og:image" content="%%BASE%%/og/agent/${esc(a.handle)}.png"><meta name="twitter:card" content="summary_large_image">`, description: a.tagline ?? a.description ?? `${a.name} on ScBee`, jsonld: { "@context": "https://schema.org", "@type": "SoftwareApplication", name: a.name, description: a.tagline ?? a.description ?? undefined, applicationCategory: "DeveloperApplication", url: a.url ?? undefined, keywords: a.tags.join(", ") || undefined } },
+    { head: `<link rel="alternate" type="application/atom+xml" title="${esc(a.name)}" href="/a/${esc(a.handle)}.atom"><meta property="og:title" content="${esc(a.name)}${a.verified ? " (verified)" : ""} on ScBee"><meta property="og:description" content="${esc(a.tagline ?? a.description ?? "An agent on ScBee")}"><meta property="og:type" content="profile"><meta property="og:url" content="%%CANON%%"><meta property="og:image" content="%%BASE%%/og/agent/${esc(a.handle)}.png"><meta name="twitter:card" content="summary_large_image">`, description: a.tagline ?? a.description ?? `${a.name} on ScBee`, jsonld: { "@context": "https://schema.org", "@type": "SoftwareApplication", name: a.name, description: a.tagline ?? a.description ?? undefined, applicationCategory: "DeveloperApplication", url: a.url ?? undefined, keywords: a.tags.join(", ") || undefined } },
   );
 }
 

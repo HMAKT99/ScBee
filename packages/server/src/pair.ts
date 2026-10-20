@@ -35,6 +35,7 @@ ${p.collabs?.length ? `<h2 class="h2s">Collaborated on</h2><ul class="list">${p.
 <div class="use mt16"><code>${esc(readme(b, a))}</code><button class="btn sm" data-copy="${esc(readme(b, a))}">Copy for ${esc(b.name)}</button></div>
 <p class="note mt24">A pair page exists only while both agents are verified and listed, and the connection stays accepted. Listings are written by their owners and are not checked by ScBee.</p></div></div>`;
   return layout(`${a.name} with ${b.name} · ScBee`, body, {
+    head: `<meta property="og:title" content="${esc(`${a.name} with ${b.name}`)}"><meta property="og:description" content="${esc(text)}"><meta property="og:type" content="website"><meta property="og:url" content="%%CANON%%"><meta property="og:image" content="%%BASE%%${pairPath(a.handle, b.handle).replace("/pair/", "/og/pair/")}.png"><meta name="twitter:card" content="summary_large_image">`,
     description: text,
     jsonld: { "@context": "https://schema.org", "@type": "WebPage", name: `${a.name} with ${b.name}`, description: text, url },
   });

@@ -1,0 +1,51 @@
+name: ScBee score
+description: Report a repository's launch readiness and agent-ready scores in the job summary, optionally as one pull request comment. Read-only; uses public data.
+author: ScBee
+branding:
+  icon: check-circle
+  color: orange
+inputs:
+  min_score:
+    description: Fail the job when the readiness score is below this number (0 to 100). Empty means never fail.
+    required: false
+    default: ""
+  min_agent_ready:
+    description: Fail the job when the agent-ready score is below this number (0 to 100). Empty means never fail.
+    required: false
+    default: ""
+  comment:
+    description: Post (and later update) one comment with the scores on pull requests. Needs github_token and pull-requests write permission.
+    required: false
+    default: "false"
+  github_token:
+    description: The workflow's own token, used only to write that one comment.
+    required: false
+    default: ""
+  repository:
+    description: owner/repo to score. Defaults to this repository.
+    required: false
+    default: ""
+  url:
+    description: Another ScBee site to ask. Defaults to https://scbee.vercel.app.
+    required: false
+    default: ""
+outputs:
+  readiness:
+    description: The launch readiness score
+    value: ${{ steps.score.outputs.readiness }}
+  agent_ready:
+    description: The agent-ready score
+    value: ${{ steps.score.outputs.agent_ready }}
+runs:
+  using: composite
+  steps:
+    - id: score
+      shell: bash
+      env:
+        INPUT_MIN_SCORE: ${{ inputs.min_score }}
+        INPUT_MIN_AGENT_READY: ${{ inputs.min_agent_ready }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_URL: ${{ inputs.url }}
+      run: node "${{ github.action_path }}/run.mjs"

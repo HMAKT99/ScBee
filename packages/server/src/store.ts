@@ -778,6 +778,14 @@ export class Store {
        WHERE g.collection = ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [collection, limit]);
   }
 
+  /** Strong results added recently, across all collections. Positive only: nothing below minScore is ever returned. */
+  radarRows(days: number, minScore: number, limit = 20) {
+    return this.rows<{ source_key: string; signals_json: string; total: number; added_at: number; collection: string }>(
+      `SELECT p.source_key, p.signals_json, p.total, g.added_at, g.collection FROM gallery g JOIN projects p ON p.source_key = g.source_key
+       WHERE g.added_at >= ? AND p.total >= ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL)
+       GROUP BY p.source_key ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [Date.now() - days * 86_400_000, minScore, limit]);
+  }
+
   // notifications
   /** Returns the new notification id, or null when this (agent, kind, ref) was already sent. */
   async notify(agentId: number, n: { kind: string; ref: string; title: string; body: string; url: string }): Promise<number | null> {
