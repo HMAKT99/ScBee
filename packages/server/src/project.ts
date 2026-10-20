@@ -20,6 +20,11 @@ export interface ProjectView {
 export function badgeSvg(total: number | null, label = "ScBee"): string {
   const value = total === null ? "unknown" : `${total}/100`;
   const color = total === null ? "#9f9f9f" : (label === "ScBee" ? band(total) : agentBand(total)).color;
+  return pillSvg(label, value, color);
+}
+
+/** A flat two-part badge: dark label, coloured value. Used for scores and for the verified-agent badge. */
+export function pillSvg(label: string, value: string, color: string): string {
   const lw = label === "ScBee" ? 52 : Math.round(16 + label.length * 6.4);
   const rw = 14 + value.length * 7;
   const w = lw + rw;

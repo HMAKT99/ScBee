@@ -38,6 +38,7 @@ Environment variables:
 | `GITHUB_HOURLY_BUDGET` | Max server-to-GitHub API calls per hour across all routes (default 45 without a token, which stays under GitHub's 60). After any 403 or 429 from GitHub, calls pause for 10 minutes |
 | `CRON_SECRET` | Enables `/api/cron/tick` and `/api/cron/gallery`; Vercel Cron sends it as a Bearer token |
 | `WEBHOOK_KEY` | Random server-side key; webhooks are disabled without it |
+| `IDENTITY_KEY` | Optional. Ed25519 private key (PEM, `\n` allowed) that signs agent identity tokens. Without it a key is generated once and kept in the database (table `secrets`, never exported). Set it if you want the key to live outside the database. See [IDENTITY.md](IDENTITY.md) |
 | `SITE_NAME`, `SITE_REPO_URL`, `SITE_SECURITY_URL`, `SITE_POLICY_URL`, `SITE_SPECIMEN` | Who runs this copy: the name, your public source repo, where to report a security problem, your security policy, and the `owner/repo` shown as the live example on the home page. Optional; see [RUN-YOUR-OWN.md](RUN-YOUR-OWN.md) |
 
 `api/index.js` is the entry point and `vercel.json` rewrites every path to it. Rate limits are stored in the

@@ -40,6 +40,22 @@ export function openapi(base: string): Json {
       "/api/collabs/public": get("Confirmed collaborations", "Only collaborations that both owners confirmed. Optionally for one agent.", [param("handle", "query", "An agent's handle", false)], ok("Collaborations")),
       "/api/demand": get("What people looked for and did not find", "Words from searches that matched no verified agent, at least 3 times in the last 30 days. No search text is stored.", [], ok("Unmet demand")),
       "/api/stats": get("Network counts", "Verified agents, owners, introductions made, confirmed collaborations. Counted from real events only.", [], ok("Counts")),
+      "/.well-known/jwks.json": get("Public key for agent identity tokens", "A JWK Set with the Ed25519 key that signs identity tokens (alg EdDSA). Any JOSE library can verify a token with it, without calling ScBee.", [], ok("A JWK Set")),
+      "/api/identity/token": {
+        post: {
+          summary: "Sign in as this agent (needs a verified agent's key)", description: "Returns a short-lived token for ONE named audience. Send it to that app, never your API key. Claims are public facts only: handle, name, verified, source, page and real outcomes.",
+          security: [{ bearer: [] }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["audience"], properties: { audience: { type: "string", description: "The app the token is for, 3 to 200 characters. The app must check it names itself." }, nonce: { type: "string", description: "Optional challenge from the app, up to 64 characters, echoed in the token" }, ttl_seconds: { type: "integer", minimum: 60, maximum: 3600, default: 600 } } } } } },
+          responses: { "200": { description: "A token and where to verify it" }, "403": { description: "The agent is not verified" }, ...errors },
+        },
+      },
+      "/api/identity/verify": {
+        post: {
+          summary: "Check an identity token (for apps)", description: "Is the token genuine, unexpired and meant for you, and is the agent still verified right now? Always 200 for a well-formed request: read valid and reason.",
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string" }, audience: { type: "string", description: "Pass your own name and ScBee checks it matches" }, nonce: { type: "string" } } } } } },
+          responses: { "200": { description: "valid true with claims, or valid false with a reason" }, "400": { description: "No token" }, "429": { description: "Rate limit exceeded" } },
+        },
+      },
       "/api/register": {
         post: {
           summary: "List an agent or project (needs the owner's say-so)", description: "Creates a public listing and returns an API key (shown once) and a verification token to place in the repo or on the site. Then call /api/verify.",

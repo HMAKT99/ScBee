@@ -1195,7 +1195,10 @@ describe("site polish", () => {
       expect((h.match(/property="og:title"/g) ?? []).length, p).toBe(1);
     }
     const a = await makeAgent("polish/agent");
-    expect(await bodyOf(`/a/${a.handle}`)).toContain('<meta property="og:image" content="http://t/og/site.png">');
+    const ap = await bodyOf(`/a/${a.handle}`);
+    expect(ap).toContain(`<meta property="og:image" content="http://t/og/agent/${a.handle}.png">`); // an agent page has its own card
+    expect(ap).not.toContain("/og/site.png");
+    expect((ap.match(/property="og:title"/g) ?? []).length).toBe(1);
     files["https://api.github.com/repos/polish/score"] = JSON.stringify({ full_name: "polish/score", description: "d", topics: [], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
     files["https://api.github.com/repos/polish/score/contents"] = "[]";
     const sp = await bodyOf("/github.com/polish/score");
@@ -1823,7 +1826,7 @@ describe("ScBee's own agent files", () => {
     const paths = Object.entries<any>(doc.paths);
     expect(paths.length).toBeGreaterThanOrEqual(14);
     for (const [path, ops] of paths) {
-      expect(path.startsWith("/api/"), path).toBe(true);
+      expect(path.startsWith("/api/") || path.startsWith("/.well-known/"), path).toBe(true);
       const templ = [...path.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
       for (const [verb, op] of Object.entries<any>(ops)) {
         expect(["get", "post"], `${verb} ${path}`).toContain(verb);
@@ -1929,5 +1932,125 @@ describe("find an agent", () => {
     expect((await get("/llms.txt")).text).toContain("/find");
     expect(Object.keys((await call("GET", "/openapi.json")).json.paths)).toContain("/api/demand");
     expect((await get("/find?need=ab")).text).not.toContain("No verified agent matches"); // too short: just the form
+  });
+});
+
+describe("verified agent identity", () => {
+  const verifyHttp = (body: object) => call("POST", "/api/identity/verify", body);
+
+  it("only a verified agent can mint a token, and it is bound to one audience", async () => {
+    files["https://raw.githubusercontent.com/idunver/agent/HEAD/agent.json"] = JSON.stringify({ name: "Unverified", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/idunver/agent" });
+    expect((await call("POST", "/api/identity/token", { audience: "https://app.example" })).status).toBe(401);
+    expect((await call("POST", "/api/identity/token", { audience: "https://app.example" }, reg.json.api_key)).status).toBe(403); // not verified
+    const a = await makeAgent("idowner/agent", { card: { name: "Identity Agent", tagline: "Proves who it is", skills: [{ id: "s", name: "Search" }] } });
+    expect((await call("POST", "/api/identity/token", {}, a.key)).status).toBe(400); // an audience is required
+    expect((await call("POST", "/api/identity/token", { audience: "ab" }, a.key)).status).toBe(400);
+    expect((await call("POST", "/api/identity/token", { audience: "https://app.example", ttl_seconds: "soon" }, a.key)).status).toBe(400);
+    const t = await call("POST", "/api/identity/token", { audience: "https://app.example", nonce: "n-123" }, a.key);
+    expect(t.status).toBe(200);
+    expect(t.json.token.split(".")).toHaveLength(3);
+    expect(t.json.audience).toBe("https://app.example");
+    expect(t.json.jwks).toBe("http://t/.well-known/jwks.json");
+    expect(t.json.note).toMatch(/never send your API key/i);
+    expect(JSON.stringify(t.json)).not.toContain(a.key);
+    const claims = JSON.parse(Buffer.from(t.json.token.split(".")[1], "base64url").toString());
+    expect(claims).toMatchObject({ iss: "http://t", sub: a.handle, aud: "https://app.example", nonce: "n-123", verified: true, name: "Identity Agent", source: "github:idowner/agent", page: `http://t/a/${a.handle}` });
+    expect(claims.exp - claims.iat).toBe(600);
+    expect(JSON.stringify(claims)).not.toMatch(/an_[a-f0-9]{48}|owner_key|email|challenge/);
+  });
+
+  it("publishes a key anyone can verify with offline, and the online check agrees and catches changes", async () => {
+    const a = await makeAgent("idoffline/agent", { card: { name: "Offline Agent", skills: [] } });
+    const jwks = await call("GET", "/.well-known/jwks.json");
+    expect(jwks.status).toBe(200);
+    expect(jwks.headers.get("access-control-allow-origin")).toBe("*");
+    expect(jwks.json.keys).toHaveLength(1);
+    expect(jwks.json.keys[0]).toMatchObject({ kty: "OKP", crv: "Ed25519", use: "sig", alg: "EdDSA" });
+    expect(JSON.stringify(jwks.json)).not.toMatch(/PRIVATE|"d"/);
+    const tok = (await call("POST", "/api/identity/token", { audience: "https://app.example" }, a.key)).json.token as string;
+    // offline, the way a relying party's own JOSE library would: no call to ScBee
+    const [h, p, s] = tok.split(".") as [string, string, string];
+    expect(JSON.parse(Buffer.from(h, "base64url").toString())).toMatchObject({ alg: "EdDSA", kid: jwks.json.keys[0].kid });
+    const { createPublicKey, verify } = await import("node:crypto");
+    expect(verify(null, Buffer.from(`${h}.${p}`), createPublicKey({ key: jwks.json.keys[0], format: "jwk" }), Buffer.from(s, "base64url"))).toBe(true);
+    // online
+    const ok = await verifyHttp({ token: tok, audience: "https://app.example" });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toMatchObject({ valid: true, claims: { sub: a.handle, aud: "https://app.example" }, current: { verified: true } });
+    expect(ok.json.current.outcomes).toMatchObject({ collaborations: 0 });
+    expect((await verifyHttp({ token: tok, audience: "https://other.example" })).json).toEqual({ valid: false, reason: "wrong_audience" });
+    expect((await verifyHttp({ token: tok.slice(0, -3) + "AAA" })).json).toEqual({ valid: false, reason: "bad_signature" });
+    expect((await verifyHttp({ token: "not-a-token" })).json).toEqual({ valid: false, reason: "malformed" });
+    expect((await verifyHttp({})).status).toBe(400);
+    // an agent hidden after the token was issued is no longer valid, even though the signature still checks out
+    await call("POST", "/api/admin/hide", { handle: a.handle }, undefined, { "x-admin-token": "adm-secret" });
+    expect((await verifyHttp({ token: tok })).json).toEqual({ valid: false, reason: "agent_not_verified" });
+  });
+
+  it("reports real outcomes, and keeps the same key across restarts", async () => {
+    const x = await makeAgent("idout/one", { card: { name: "Out One", skills: [] } });
+    const y = await makeAgent("idout2/two", { card: { name: "Out Two", skills: [] } });
+    const c = await call("POST", "/api/connections", { to: y.handle }, x.key);
+    await call("POST", `/api/connections/${c.json.id}/accept`, {}, y.key);
+    const claims = (key: string) => call("POST", "/api/identity/token", { audience: "https://app.example" }, key).then((r) => JSON.parse(Buffer.from(r.json.token.split(".")[1], "base64url").toString()));
+    expect((await claims(x.key)).outcomes).toMatchObject({ collaborations: 0, connections: 1 });
+    // the signing key is created once and kept: a second app on the same database publishes the same key
+    const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester } });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const other = await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/.well-known/jwks.json`)).json();
+      expect(other.keys[0].kid).toBe((await call("GET", "/.well-known/jwks.json")).json.keys[0].kid);
+    } finally { server.close(); }
+    // a configured key wins and is accepted with literal \n, as environment variables often carry
+    const { newIdentityPrivateKey } = await import("@scbee/registry-core");
+    const st = await Store.open(":memory:");
+    const pem = newIdentityPrivateKey();
+    const { server: s2 } = createApp({ store: st, baseUrl: "http://t", fetchOpts: { lookup, requester }, identityKey: pem.replace(/\n/g, "\\n") });
+    await new Promise<void>((r) => s2.listen(0, "127.0.0.1", r));
+    try {
+      const k1 = await (await fetch(`http://127.0.0.1:${(s2.address() as AddressInfo).port}/.well-known/jwks.json`)).json();
+      expect(k1.keys[0].kid).not.toBe((await call("GET", "/.well-known/jwks.json")).json.keys[0].kid);
+      expect(await st.getOrCreateSecret("identity-key", () => "never")).toBe("never"); // nothing was stored when a key is configured
+    } finally { s2.close(); st.close(); }
+  });
+
+  it("gives a verified badge and share card, and the share moment after verification", async () => {
+    files["https://raw.githubusercontent.com/idshare/agent/HEAD/agent.json"] = JSON.stringify({ name: "Share Agent", tagline: "Shows it off", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/idshare/agent" });
+    const handle = reg.json.handle as string;
+    expect((await call("GET", `/badge/agent/${handle}.svg`)).text).toContain("unverified");
+    files["https://raw.githubusercontent.com/idshare/agent/HEAD/scbee-verify.txt"] = reg.json.verify.token;
+    const v = await call("POST", "/api/verify", {}, reg.json.api_key);
+    expect(v.json.verified).toBe(true);
+    expect(v.json.share).toMatchObject({ page: `http://t/a/${handle}`, card: `http://t/og/agent/${handle}.png` });
+    expect(v.json.share.badge_markdown).toBe(`[![ScBee](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
+    expect(v.json.share.text).toContain("Share Agent");
+    expect(v.json.share.text).not.toContain("@"); // never tags anyone
+    const badge = await call("GET", `/badge/agent/${handle}.svg`);
+    expect(badge.headers.get("content-type")).toMatch(/image\/svg/);
+    expect(badge.text).toContain("verified");
+    expect(badge.text).not.toContain("unverified");
+    expect((await call("GET", "/badge/agent/no-such-agent.svg")).text).toContain("unverified"); // an unknown agent is not distinguishable from an unverified one
+    const png = await fetch(`${base}/og/agent/${handle}.png`);
+    expect(png.status).toBe(200);
+    expect(png.headers.get("content-type")).toBe("image/png");
+    expect((await fetch(`${base}/og/agent/no-such-agent.png`)).status).toBe(404);
+    const page = await call("GET", `/a/${handle}`);
+    expect(page.text).toContain("Show it</h2>");
+    expect(page.text).toContain(`http://t/badge/agent/${handle}.svg`);
+  });
+
+  it("the Manage page shows the verified moment, and the docs and contract mention identity", async () => {
+    const page = await call("GET", "/manage");
+    expect(page.text).toContain('id="mverified"');
+    expect(page.text).toContain("ScBee never posts for you");
+    const js = (await call("GET", "/app.js")).text;
+    const panel = js.slice(js.indexOf("const showVerified="), js.indexOf("window.addEventListener('pagehide'"));
+    expect(panel).toContain("twitter.com/intent/tweet");
+    expect(panel).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
+    const doc = (await call("GET", "/openapi.json")).json;
+    expect(Object.keys(doc.paths)).toEqual(expect.arrayContaining(["/api/identity/token", "/api/identity/verify", "/.well-known/jwks.json"]));
+    expect((await call("GET", "/llms.txt")).text).toContain("/.well-known/jwks.json");
   });
 });

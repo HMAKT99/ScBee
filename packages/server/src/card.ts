@@ -48,6 +48,30 @@ export async function renderCard(owner: string, repo: string, r: ScoreResult): P
   return Buffer.from(new Resvg(svg).render().asPng());
 }
 
+
+export interface AgentCardFacts { name: string; handle: string; tagline: string | null; verified: boolean; outcomes: { collaborations: number; connections: number } }
+
+/** Share card for an agent's page: who it is, whether its owner proved ownership, and real outcomes only. 1200x630 PNG. */
+export async function renderAgentCard(a: AgentCardFacts): Promise<Buffer> {
+  const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
+  const tag = (a.tagline ?? "").slice(0, 140);
+  const facts = [a.outcomes.connections ? `${a.outcomes.connections} connection${a.outcomes.connections === 1 ? "" : "s"}` : "", a.outcomes.collaborations ? `${a.outcomes.collaborations} collaboration${a.outcomes.collaborations === 1 ? "" : "s"} confirmed by both owners` : ""].filter(Boolean);
+  const tree = h("div", { width: 1200, height: 630, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "52px 64px 48px", background: PAPER, color: INK, fontFamily: "Inter" }, [
+    h("div", { display: "flex", width: 1072, justifyContent: "space-between", alignItems: "center" }, [
+      h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 38, fontWeight: 500 }, [h("div", { width: 26, height: 26, background: AMBER, borderRadius: 6, marginRight: 14 }), "ScBee"]),
+      h("div", { fontSize: 20, color: MUTE, letterSpacing: 2 }, a.verified ? "VERIFIED AGENT" : "AGENT"),
+    ]),
+    h("div", { display: "flex", flexDirection: "column", position: "absolute", left: 64, top: 190, width: 1072 }, [
+      h("div", { fontFamily: "Fraunces", fontWeight: 500, fontSize: a.name.length > 22 ? 78 : 104, lineHeight: 1.02, letterSpacing: -2, wordBreak: "break-all" }, a.name),
+      h("div", { display: "flex", marginTop: 24, fontSize: 28, color: MUTE }, `@${a.handle}`),
+      tag ? h("div", { marginTop: 22, fontFamily: "Fraunces", fontWeight: 300, fontSize: 38, lineHeight: 1.2, width: 980 }, tag) : h("div", {}, ""),
+    ]),
+    h("div", { display: "flex", position: "absolute", left: 64, bottom: 44, width: 1072, borderTop: `1px solid ${INK}`, paddingTop: 18, fontSize: 21, color: MUTE }, facts.length ? facts.join("   ·   ") : "Ownership proven with a file in the repo"),
+  ]);
+  const svg = await satori(tree as never, { width: 1200, height: 630, fonts: loadFonts() });
+  return Buffer.from(new Resvg(svg).render().asPng());
+}
+
 /** The brand mark as a standalone SVG (favicon, touch icon). Transparent corners, amber hexagon, three connected points. */
 export const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#0d0d0d" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#0d0d0d"/><circle cx="16" cy="11.5" r="2.3" fill="#0d0d0d"/><circle cx="21.5" cy="18" r="2.3" fill="#0d0d0d"/></svg>`;
 

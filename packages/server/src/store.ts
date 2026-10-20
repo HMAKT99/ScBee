@@ -198,6 +198,11 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   n INTEGER NOT NULL,
   reset_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS secrets (
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS demand (
   day TEXT NOT NULL,
   word TEXT NOT NULL,
@@ -540,6 +545,14 @@ export class Store {
    * What people ask the registry for, as single words only. The text of a search is never stored, and a word is shown publicly
    * only after it was searched without a match at least 3 times, so no one's wording can be read back.
    */
+  /** A server secret created once and kept (for example the identity signing key when none is configured). Never exported or backed up. */
+  async getOrCreateSecret(name: string, make: () => string): Promise<string> {
+    const read = () => this.one<{ value: string }>("SELECT value FROM secrets WHERE name = ?", [name]);
+    const have = await read();
+    if (have) return have.value;
+    await this.run("INSERT OR IGNORE INTO secrets (name, value, created_at) VALUES (?, ?, ?)", [name, make(), Date.now()]); // another instance may win the race: read back
+    return (await read())!.value;
+  }
   async recordNeed(words: string[], matched: boolean) {
     const day = new Date().toISOString().slice(0, 10);
     for (const w of words.slice(0, 12))

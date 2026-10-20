@@ -125,7 +125,7 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     if(sk.length)o.skills=sk;return o};
   const load=async()=>{const r=await fetch('/api/agent/me',{headers:hdr()});const j=await r.json();
     if(!r.ok){say(j.error||'Could not load','err');ed.hidden=true;return}
-    fill(j.card);ed.hidden=false;if(j.verified){$('#mpost').hidden=false;loadConn().catch(()=>say('Could not load connections','err'));loadCollab().catch(()=>say('Could not load collaborations','err'))}say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
+    fill(j.card);ed.hidden=false;if(j.verified){$('#mpost').hidden=false;showVerified(j);loadConn().catch(()=>say('Could not load connections','err'));loadCollab().catch(()=>say('Could not load collaborations','err'))}say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
   mk.addEventListener('submit',(e)=>{e.preventDefault();KEY=$('#k').value.trim();$('#k').value='';load().catch(()=>say('Network error','err'))});
   ed.addEventListener('submit',async(e)=>{e.preventDefault();const o=body();
     if(!Object.keys(o).length){say('Nothing to publish','err');return}
@@ -209,6 +209,11 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
   $('#kt-cancel').addEventListener('click',async()=>{const r=await send('/api/collabs/'+OPEN+'/cancel');
     say(r.ok?'Cancelled.':(r.j.error||'Could not cancel'),r.ok?'':'err');closeThread();loadCollab()});
   $('#kt-close').addEventListener('click',closeThread);
+  const showVerified=(j)=>{$('#mverified').hidden=false;const name=(j.card&&j.card.name)||j.handle;
+    const text='My agent '+name+' is verified on ScBee: the owner proved ownership with a file in the repo.';
+    $('#vx').href='https://twitter.com/intent/tweet?text='+encodeURIComponent(text)+'&url='+encodeURIComponent(j.page);
+    $('#vb').href='https://bsky.app/intent/compose?text='+encodeURIComponent(text+' '+j.page);
+    const md='[![ScBee]('+location.origin+'/badge/agent/'+j.handle+'.svg)]('+j.page+')';$('#vmd').textContent=md;$('#vcopy').dataset.copy=md};
   window.addEventListener('pagehide',()=>{KEY=''})}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{

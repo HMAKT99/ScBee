@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
@@ -13,8 +13,8 @@ import { needWords, rankForNeed } from "./handoff.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
-import { badgeSvg, projectPage } from "./project.js";
-import { LOGO_SVG, renderCard, renderIcon, renderSiteCard } from "./card.js";
+import { badgeSvg, pillSvg, projectPage } from "./project.js";
+import { LOGO_SVG, renderAgentCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
@@ -36,6 +36,8 @@ export interface AppOptions {
   registerPerHour?: number;
   /** Who runs this copy: name, source repo, security contact, example project. Defaults to the original site. */
   site?: Partial<SiteConfig>;
+  /** Ed25519 private key (PEM) that signs agent identity tokens. When absent one is generated once and kept in the database. */
+  identityKey?: string;
   /** Fresh scores per visitor per hour (default 30). Cached results are not limited. */
   scorePerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
@@ -132,6 +134,14 @@ const str = (v: unknown, max: number, name: string): string => {
 export function createApp(opts: AppOptions) {
   const { store, baseUrl } = opts;
   configureSite(opts.site);
+  let idKey: IdentityKey | undefined;
+  const identity = async (): Promise<IdentityKey> => (idKey ??= identityKeyFromPem(opts.identityKey ?? (await store.getOrCreateSecret("identity-key", newIdentityPrivateKey))));
+  /** Real events only: collaborations confirmed by two different owners, accepted connections, clicks ScBee sent in the last 30 days. */
+  const outcomesOf = async (handle: string) => ({
+    collaborations: (await store.doneCollabs({ handle })).filter((d) => !d.same_owner).length,
+    connections: (await store.pairs()).filter((x) => x.a === handle || x.b === handle).length,
+    referrals_30d: (await store.referralStats(handle)).received,
+  });
   const stats = () => store.stats();
 
   /** Score a public website or agent endpoint: same caching and limits as repos. */
@@ -453,7 +463,45 @@ export function createApp(opts: AppOptions) {
       if (!(await checkChallenge(srcOf(a), a.challenge, opts.fetchOpts)))
         throw new HttpError(422, `token not found in ${verifyFilePath(srcOf(a))}. ${verifyHint(srcOf(a))}`);
       await store.setVerified(a.id);
-      return json(res, 200, { verified: true });
+      const pa = await store.publicAgent(a.handle);
+      return json(res, 200, { verified: true, share: {
+        page: `${baseUrl}/a/${a.handle}`, card: `${baseUrl}/og/agent/${a.handle}.png`,
+        badge_markdown: `[![ScBee](${baseUrl}/badge/agent/${a.handle}.svg)](${baseUrl}/a/${a.handle})`,
+        text: `My agent ${pa?.name ?? a.handle} is verified on ScBee: the owner proved ownership with a file in the repo.`,
+        note: "ScBee never posts for you. Share it yourself if you like.",
+      } });
+    }
+
+    if (method === "POST" && path === "/api/identity/token") {
+      // "Sign in as an agent": a short-lived token for ONE named audience. Send the token to that app, never your API key.
+      const a = await auth(req);
+      needVerified(a);
+      await limit(`idtok:${a.id}`, 30, 3600_000);
+      const b = await readJson(req);
+      const audience = str(b.audience, 200, "audience");
+      if (audience.length < 3) throw new HttpError(400, "audience must name the app the token is for (3 to 200 characters)");
+      const nonce = b.nonce === undefined ? undefined : str(b.nonce, 64, "nonce");
+      const ttl = b.ttl_seconds === undefined ? 600 : Number(b.ttl_seconds);
+      if (!Number.isFinite(ttl)) throw new HttpError(400, "ttl_seconds must be a number (60 to 3600)");
+      const pa = await store.publicAgent(a.handle);
+      const m = mintIdentityToken(await identity(), {
+        iss: baseUrl, sub: a.handle, aud: audience, ...(nonce ? { nonce } : {}), handle: a.handle, name: pa?.name ?? a.handle, verified: true,
+        source: a.source_key, page: `${baseUrl}/a/${a.handle}`, outcomes: await outcomesOf(a.handle),
+      }, ttl);
+      return json(res, 200, { token: m.token, expires_at: m.expires_at, audience, jwks: `${baseUrl}/.well-known/jwks.json`, verify: `${baseUrl}/api/identity/verify`,
+        note: "Send this token only to the app named in audience. Never send your API key. It expires soon." });
+    }
+    if (method === "POST" && path === "/api/identity/verify") {
+      // For apps: is this token genuine, unexpired, meant for me, and is the agent still verified right now?
+      await limit(`idver:${ip}`, 600, 3600_000);
+      const b = await readJson(req);
+      const r = verifyIdentityToken(str(b.token, 4096, "token"), (await identity()).jwk, {
+        issuer: baseUrl, audience: typeof b.audience === "string" ? b.audience : undefined, nonce: typeof b.nonce === "string" ? b.nonce : undefined });
+      if (!r.valid) return json(res, 200, r);
+      const cur = await store.byHandle(r.claims.sub);
+      if (!cur || !cur.verified) return json(res, 200, { valid: false, reason: "agent_not_verified" });
+      return json(res, 200, { valid: true, claims: r.claims, current: { verified: true, outcomes: await outcomesOf(cur.handle) },
+        note: "Check that claims.aud is you. Pass audience in this request and ScBee checks it for you." });
     }
 
     if (method === "GET" && path === "/api/agents") {
@@ -1053,6 +1101,27 @@ export function createApp(opts: AppOptions) {
         res.writeHead(302, { ...SECURITY_HEADERS, location: `/github.com/${facts.repo.owner}/${facts.repo.repo}`, "cache-control": "public, max-age=3600" });
         return void res.end();
       }
+      const agb = p.match(/^\/badge\/agent\/([a-z0-9-]{3,39})\.svg$/);
+      if (agb) {
+        const ag = await store.byHandle(agb[1]!);
+        let value = "unverified", color = "#9f9f9f";
+        if (ag?.verified) {
+          const c = (await outcomesOf(ag.handle)).collaborations;
+          value = c ? `verified \u00b7 ${c} collab${c === 1 ? "" : "s"}` : "verified";
+          color = "#2da44e";
+        }
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        return void res.end(pillSvg("ScBee", value, color));
+      }
+      const ago = p.match(/^\/og\/agent\/([a-z0-9-]{3,39})\.png$/);
+      if (ago) {
+        const ag = await store.publicAgent(ago[1]!);
+        if (!ag) return send(res, 404, notFound(), "text/html");
+        const oc = await outcomesOf(ag.handle);
+        const png = await renderAgentCard({ name: ag.name, handle: ag.handle, tagline: ag.tagline, verified: ag.verified, outcomes: oc });
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+        return void res.end(png);
+      }
       const abm = p.match(/^\/badge\/agent-ready\/(?:github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)|web\/([A-Za-z0-9.-]{4,253}?))\.svg$/);
       if (abm) {
         let total: number | null = null;
@@ -1135,6 +1204,7 @@ export function createApp(opts: AppOptions) {
       if (p === "/robots.txt") return send(res, 200, robotsTxt(baseUrl), "text/plain");
       if (p === "/llms.txt") return send(res, 200, llmsTxt(baseUrl), "text/plain");
       if (p === "/openapi.json") return send(res, 200, JSON.stringify(openapi(baseUrl), null, 2), "application/json");
+      if (p === "/.well-known/jwks.json") return send(res, 200, JSON.stringify({ keys: [(await identity()).jwk] }), "application/json", "public, max-age=3600");
       if (p === "/.well-known/agent-card.json") return send(res, 200, JSON.stringify(scbeeCard(baseUrl), null, 2), "application/json");
       if (p === "/sitemap.xml") {
         const handles = (await store.list("", false, 1000)).map((x) => x.handle);
