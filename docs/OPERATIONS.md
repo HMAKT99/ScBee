@@ -31,6 +31,10 @@ A free monitor tells you the site is down before a visitor does.
 - `npm audit` in the repo, then update anything high severity.
 - Vercel billing: keep the payment details complete.
 
+## Things to know
+- **Log retention:** on the Vercel Hobby plan, runtime logs are kept for about 30 minutes, so a problem from last night cannot be investigated. The uptime monitor above is how you find out; check logs right after it alerts (`vc logs --deployment <your site> --query 'level:error'`).
+- **Known advisories:** `npm audit --omit=dev` reports 2 moderate issues in `fflate` (a ZIP parser used inside the share-card renderer, `satori`). ScBee never passes user-supplied archives to it, so they are not reachable. Re-check after a `satori` update.
+
 ## Secrets
 
 - GitHub App key, Turso token, and `SCBEE_*` variables live only in Vercel (Sensitive). To rotate the App key: generate a new key, update `GITHUB_APP_PRIVATE_KEY`, redeploy, then delete the old key on GitHub.
