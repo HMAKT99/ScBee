@@ -6,6 +6,7 @@ import {
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
 import { configureSite, getSite, type SiteConfig } from "./config.js";
+import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
 import { needWords, rankForNeed } from "./handoff.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
@@ -1130,6 +1131,7 @@ export function createApp(opts: AppOptions) {
       if (p === "/optout") return page(200, optoutPage());
       if (p === "/robots.txt") return send(res, 200, robotsTxt(baseUrl), "text/plain");
       if (p === "/llms.txt") return send(res, 200, llmsTxt(baseUrl), "text/plain");
+      if (p === "/openapi.json") return send(res, 200, JSON.stringify(openapi(baseUrl), null, 2), "application/json");
       if (p === "/.well-known/agent-card.json") return send(res, 200, JSON.stringify(scbeeCard(baseUrl), null, 2), "application/json");
       if (p === "/sitemap.xml") {
         const handles = (await store.list("", false, 1000)).map((x) => x.handle);

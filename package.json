@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "demo": "npm run build && node scripts/demo-local.mjs",
     "preview": "npm run build && node scripts/preview.mjs",
-    "backup": "node scripts/backup.mjs"
+    "backup": "node scripts/backup.mjs",
+    "agent-files": "node scripts/agent-files.mjs"
   },
   "engines": {
     "node": ">=22"
