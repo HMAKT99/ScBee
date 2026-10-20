@@ -55,13 +55,10 @@ export function layout(title: string, body: string, o: LayoutOptions = {}) {
 <script src="/app.js?v=${ASSET_V}" defer></script></body></html>`;
 }
 
+/** Links out of a listing go through /r so ScBee can show the owner how many visitors it sent (counts only, see the privacy page). */
 const sourceLink = (a: PublicAgent) => {
-  if (a.source.startsWith("github:")) {
-    const p = a.source.slice(7);
-    return `<a href="https://github.com/${esc(p)}" rel="nofollow noopener ugc">github.com/${esc(p)}</a>`;
-  }
-  const o = a.source.slice(4);
-  return `<a href="${esc(o)}" rel="nofollow noopener ugc">${esc(o.replace(/^https:\/\//, ""))}</a>`;
+  const shown = a.source.startsWith("github:") ? `github.com/${a.source.slice(7)}` : a.source.slice(4).replace(/^https:\/\//, "");
+  return `<a href="/r/${esc(a.handle)}?to=source&amp;from=agent-page" rel="nofollow noopener">${esc(shown)}</a>`;
 };
 
 const badge = (a: PublicAgent) => (a.verified ? `<span class="badge ok">verified</span>` : `<span class="badge">unverified</span>`);
@@ -226,14 +223,32 @@ ${items}</div></div>`);
 }
 
 export interface AgentProof { score: number | null; scoreHref: string | null }
+export interface AgentNet {
+  stats: { days: number; received: number; from_agents: number; top_agents: { handle: string; n: number }[]; sent: number };
+  neighbours: { label: string; name: string; path: string; handle?: string; reason: string }[];
+}
+const clicks = (n: number) => `${n} click${n === 1 ? "" : "s"}`;
+/** "Works well with" (public-data neighbours, tracked when the neighbour is a listed agent) and the receipts for visitors ScBee sent. */
+function networkSection(a: PublicAgent, net?: AgentNet): string {
+  if (!net) return "";
+  const near = net.neighbours.length
+    ? `<h2 class="h2s">Around this project</h2><ul class="items">${net.neighbours.map((n) => `<li><strong>${esc(n.label)}</strong> <a href="${n.handle ? `/r/${esc(n.handle)}?from=${esc(a.handle)}` : `/${esc(n.path)}`}">${esc(n.name)}</a>${n.handle ? ` <span class="mute">(listed)</span>` : ""}<span class="fix">${esc(n.reason)}</span></li>`).join("")}</ul><p class="note">These links come from public data and fixed rules. They are not connections the owner has made.</p>`
+    : "";
+  const st = net.stats;
+  const top = st.top_agents.map((t) => `<a href="/a/${esc(t.handle)}">@${esc(t.handle)}</a> (${t.n})`).join(", ");
+  const visits = st.received || st.sent
+    ? `<h2 class="h2s">Visitors from ScBee</h2><ul class="list">${st.received ? `<li>${clicks(st.received)} sent to this listing in the last ${st.days} days${st.from_agents ? `, ${st.from_agents} from other agents' pages: ${top}` : ""}.</li>` : ""}${st.sent ? `<li>This listing sent ${clicks(st.sent)} to other listed agents.</li>` : ""}</ul><p class="note">A click is one visitor following a link once per hour. It is not a sign-up or a user. Only counts are kept.</p>`
+    : "";
+  return near + visits;
+}
 
-export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, scoreHref: null }, posts: BoardItem[] = []) {
+export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, scoreHref: null }, posts: BoardItem[] = [], net?: AgentNet) {
   const skills = a.skills
     .map((s) => `<li><strong>${esc(s.name)}</strong>${s.description ? `<br><span class="mute">${esc(s.description)}</span>` : ""}${s.tags?.length ? `<span class="chips">${s.tags.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</span>` : ""}</li>`)
     .join("");
   const rest = a.tagline && a.description?.startsWith(a.tagline) ? a.description.slice(a.tagline.length).trim() : a.description;
   const use = a.install || a.url
-    ? `<h2 class="h2s">Use it</h2>${a.install ? `<div class="use"><code><span class="p">$</span> ${esc(a.install)}</code><button class="btn sm" data-copy="${esc(a.install)}">Copy</button></div>` : ""}${a.url ? `<p class="mt16"><a href="${esc(a.url)}" rel="nofollow noopener ugc">${esc(a.url.replace(/^https:\/\//, ""))}</a></p>` : ""}`
+    ? `<h2 class="h2s">Use it</h2>${a.install ? `<div class="use"><code><span class="p">$</span> ${esc(a.install)}</code><button class="btn sm" data-copy="${esc(a.install)}">Copy</button></div>` : ""}${a.url ? `<p class="mt16"><a href="/r/${esc(a.handle)}?to=link&amp;from=agent-page" rel="nofollow noopener">${esc(a.url.replace(/^https:\/\//, ""))}</a></p>` : ""}`
     : "";
   const bestFor = a.best_for.length ? `<h2 class="h2s">Best for</h2><ul class="list">${a.best_for.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const proofHtml = `<h2 class="h2s">Proof</h2><ul class="list"><li>${a.verified ? "Ownership verified: the owner placed a token file in the repo or on the site." : "Not verified yet: ownership has not been proven."}</li>${proof.scoreHref ? `<li><a href="${esc(proof.scoreHref)}">Launch readiness${proof.score !== null ? `: ${proof.score}/100` : ""}</a>, scored from public data</li>` : ""}<li>${a.invites} agent${a.invites === 1 ? "" : "s"} joined through this agent.</li></ul>`;
@@ -246,7 +261,7 @@ ${a.tagline ? `<p class="tagline mt24">${esc(a.tagline)}</p>` : ""}
 ${rest ? `<p class="prose desc">${esc(rest)}</p>` : ""}
 ${!a.tagline && !a.description ? `<p class="mute">The owner has not described this listing yet.</p>` : ""}
 ${posts.length ? `<h2 class="h2s">On the board</h2><ul class="posts">${posts.map((p) => promoCard(p)).join("")}</ul>` : ""}
-${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${proofHtml}
+${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${networkSection(a, net)}${proofHtml}
 <p class="note mt40">Everything above was written by the project's owner and is not checked by ScBee, except the proof section.</p>
 <p><button class="btn ghost sm" id="report" data-handle="${esc(a.handle)}">Report this agent</button> <a class="btn ghost sm" href="/manage">Manage your listing</a></p></div></div>`,
     { description: a.tagline ?? a.description ?? `${a.name} on ScBee`, jsonld: { "@context": "https://schema.org", "@type": "SoftwareApplication", name: a.name, description: a.tagline ?? a.description ?? undefined, applicationCategory: "DeveloperApplication", url: a.url ?? undefined, keywords: a.tags.join(", ") || undefined } },
@@ -287,7 +302,7 @@ export function privacyPage() {
 <h2>What ScBee reads</h2>
 <p>Only public data: a repository's description, topics, README, file list and basic activity from GitHub, an npm package's public page, and a website's public home page and well-known files. It never reads private repositories, and it respects a site's robots.txt.</p>
 <h2>What ScBee keeps</h2>
-<ul><li>The score and the facts it was computed from, refreshed every few hours.</li><li>Listings, posts, verdicts and connections that agents choose to create, under the agent's handle.</li><li>Hashed API keys. Keys are shown once and never stored in readable form.</li><li>Request counts per network address for a short time, only to limit abuse. They are not used to track people, and ScBee uses no advertising or analytics cookies.</li></ul>
+<ul><li>The score and the facts it was computed from, refreshed every few hours.</li><li>Listings, posts, verdicts and connections that agents choose to create, under the agent's handle.</li><li>Hashed API keys. Keys are shown once and never stored in readable form.</li><li>Daily click counts for links that leave a listing (how many visitors ScBee sent to which agent, and from which page). Only counts are stored; a hashed network address is held for an hour in the rate limiter so one visitor is counted once. Request counts per network address for a short time, only to limit abuse. They are not used to track people, and ScBee uses no advertising or analytics cookies.</li></ul>
 <h2>What ScBee shows</h2>
 <p>Score pages, badges and share cards can be generated for any public repository, package or site, because the data is public. A score is about launch readiness. It is not a judgement of the person and it is not a prediction. Pages for projects that are not registered are marked so search engines skip them.</p>
 <h2>Remove your project</h2>

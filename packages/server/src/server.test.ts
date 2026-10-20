@@ -23,7 +23,7 @@ let close = () => {};
 const store = await Store.open(":memory:");
 
 beforeAll(async () => {
-  const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester }, adminToken: "adm-secret", registerPerHour: 10_000, cronSecret: "cron-secret", webhookKey: "wh-key", githubHourlyBudget: 100_000 });
+  const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup, requester }, adminToken: "adm-secret", registerPerHour: 10_000, scorePerHour: 10_000, cronSecret: "cron-secret", webhookKey: "wh-key", githubHourlyBudget: 100_000 });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   close = () => server.close();
@@ -1330,5 +1330,68 @@ describe("site polish", () => {
     expect(e.text).toContain("We couldn't show that.");
     expect(e.text).toContain("Check the spelling");
     expect((await call("GET", "/nope")).text).toContain("That page is not here.");
+  });
+});
+
+describe("network: referral receipts and the claim invitation", () => {
+  const ua = { "user-agent": "Mozilla/5.0 (test)" };
+  const hop = (path: string, headers: Record<string, string> = ua) => fetch(base + path, { redirect: "manual", headers });
+
+  it("counts a click once per visitor per hour, and redirects only to the listing's own address", async () => {
+    const b = await makeAgent("refown/target");
+    const r = await hop(`/r/${b.handle}?from=home`);
+    expect(r.status).toBe(302);
+    expect(r.headers.get("location")).toBe(`/a/${b.handle}`);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect((await store.referralStats(b.handle)).received).toBe(1);
+    await hop(`/r/${b.handle}?from=home`); // same visitor within the hour: still one
+    expect((await store.referralStats(b.handle)).received).toBe(1);
+    // the destination comes from the stored listing; a hostile `to` or `from` cannot choose it
+    const evil = await hop(`/r/${b.handle}?to=https://evil.example&from=https://evil.example`);
+    expect(evil.headers.get("location")).toBe(`/a/${b.handle}`);
+    const src = await hop(`/r/${b.handle}?to=source`);
+    expect(src.headers.get("location")).toBe("https://github.com/refown/target");
+    expect((await call("GET", "/r/no-such-agent")).status).toBe(404);
+  });
+
+  it("credits the sending agent, ignores bots, and shows the receipts on the page", async () => {
+    const a = await makeAgent("refsend/from");
+    const c = await makeAgent("refrecv/to");
+    expect((await hop(`/r/${c.handle}?from=${a.handle}`, { "user-agent": "Googlebot/2.1" })).status).toBe(302);
+    expect((await store.referralStats(c.handle)).received).toBe(0); // bots are not counted
+    await hop(`/r/${c.handle}?from=${a.handle}`);
+    const got = await store.referralStats(c.handle);
+    expect(got).toMatchObject({ received: 1, from_agents: 1, top_agents: [{ handle: a.handle, n: 1 }] });
+    expect((await store.referralStats(a.handle)).sent).toBe(1);
+    const page = await call("GET", `/a/${c.handle}`);
+    expect(page.text).toContain("Visitors from ScBee");
+    expect(page.text).toMatch(/1 click sent to this listing/);
+    expect(page.text).toMatch(/A click is one visitor following a link once per hour/);
+    const md = await call("GET", `/a/${c.handle}?format=md`);
+    expect(md.text).toMatch(/clicks ScBee sent to this listing in the last 30 days: 1/);
+    // an unverified or unknown "from" earns no agent credit
+    const d = await makeAgent("refdd/other");
+    await hop(`/r/${d.handle}?from=not-a-real-agent`);
+    expect((await store.referralStats(d.handle)).from_agents).toBe(0);
+  });
+
+  it("listing pages send visitors out through /r, and crawlers are told to skip it", async () => {
+    const x = await makeAgent("reflink/agent");
+    const page = await call("GET", `/a/${x.handle}`);
+    expect(page.text).toContain(`href="/r/${x.handle}?to=source&amp;from=agent-page"`);
+    expect(page.text).not.toContain('href="https://github.com/reflink/agent"');
+    expect((await call("GET", "/robots.txt")).text).toContain("Disallow: /r/");
+    expect((await call("GET", "/privacy")).text).toMatch(/Daily click counts/);
+  });
+
+  it("shows the claim invitation on an unclaimed project, and not the old bare button", async () => {
+    const api = "https://api.github.com/repos/claimz/unowned";
+    files[api] = JSON.stringify({ full_name: "claimz/unowned", description: "an agent framework", stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    const page = await call("GET", "/github.com/claimz/unowned");
+    expect(page.text).toContain("Claim this project");
+    expect(page.text).toContain("unclaimed node");
+    expect(page.text).toContain("receipt of the visitors ScBee sends");
+    expect(page.text).not.toContain("Register this agent on ScBee");
   });
 });

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, band, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
@@ -29,6 +29,8 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Registrations allowed per IP per hour (default 10). */
   registerPerHour?: number;
+  /** Fresh scores per visitor per hour (default 30). Cached results are not limited. */
+  scorePerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
   githubToken?: string;
   /** ScBee's own GitHub App (a separate identity with its own 5,000/hour limit). Public data only; never a personal token. */
@@ -75,6 +77,11 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
 const PUBLIC_GET = /^\/api\/(stats|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+
+const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
+/** Where a referral click can have come from. Anything else is counted as "other". */
+const REFERRAL_PAGES = new Set(["home", "agents", "board", "feed", "gallery", "score", "agent-page"]);
+const BOT_AGENT = /bot|crawl|spider|preview|headless|curl|wget|python|go-http|scan|monitor|fetch/i;
 
 /** Turn what a person typed into the score box into a page. Mirrors the script on the home page, for visitors without JavaScript. */
 export function goTarget(raw: string): string | null {
@@ -127,7 +134,7 @@ export function createApp(opts: AppOptions) {
     if (cached && cached.score_version === SITE_SCORE_VERSION && Date.now() - cached.fetched_at < ttl) {
       return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, (JSON.parse(cached.signals_json) as SiteSignals).listedOnScbee);
     }
-    await limit(`score:${ip}`, 30, 3600_000);
+    await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
     try {
       const row = await store.bySource(key);
       const sig = await fetchSiteSignals(host, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts);
@@ -155,6 +162,25 @@ export function createApp(opts: AppOptions) {
     const edges = buildEdges(center, [...nodes.values()], await store.endorsementsFor(key));
     const keep = new Set(edges.flatMap((e) => [e.from, e.to]));
     return { center, nodes: [...nodes.values()].filter((n) => keep.has(n.key) || n.key === key), edges };
+  }
+
+
+  /** Projects around a listing, from the same public-data rules as the constellation. A neighbour that is also a listed agent gets a tracked link. */
+  async function neighboursOf(key: string) {
+    const g = await constellation(key);
+    if (!g.center) return [];
+    const byKey = new Map(g.nodes.map((n) => [n.key, n]));
+    const out: { label: string; name: string; path: string; handle?: string; reason: string }[] = [];
+    for (const e of g.edges) {
+      const other = byKey.get(e.to === key ? e.from : e.to);
+      if (!other || other.key === key) continue;
+      const path = other.key.replace("github:", "github.com/");
+      if (out.some((x) => x.path === path)) continue;
+      const listed = await store.bySource(other.key);
+      out.push({ label: EDGE_LABELS[e.type] ?? e.type, name: other.name, path, handle: listed && !listed.hidden ? listed.handle : undefined, reason: e.reason });
+      if (out.length >= 6) break;
+    }
+    return out;
   }
 
   /** ScBee's own readiness result, shown on the home page as a live specimen (null until it has been scored once). */
@@ -323,7 +349,7 @@ export function createApp(opts: AppOptions) {
         result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee };
     };
     if (fresh) return view(cached);
-    if (ip) await limit(`score:${ip}`, 30, 3600_000);
+    if (ip) await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
     try {
       const row = await store.bySource(src.key);
       const sig = await fetchGithubSignals(src.owner, src.repo, { listed: !!row, verified: row?.verified === 1 }, ghOpts, await ghToken());
@@ -848,7 +874,7 @@ export function createApp(opts: AppOptions) {
       if (nm) {
         const name = parseNpmInput(decodeURIComponent(nm[1]!));
         if (!name) throw new HttpError(404, "not a valid npm package name");
-        await limit(`score:${clientIp(req)}`, 30, 3600_000);
+        await limit(`score:${clientIp(req)}`, opts.scorePerHour ?? 30, 3600_000);
         const facts = await fetchNpmFacts(name, opts.fetchOpts);
         if (!facts) throw new HttpError(404, "npm package not found");
         if (!facts.repo) throw new HttpError(404, "this package has no public GitHub repository, so it cannot be scored yet");
@@ -944,6 +970,27 @@ export function createApp(opts: AppOptions) {
         return page(200, agentList(q, list), agentsMd(baseUrl, q, list));
       }
       if (p === "/feed") return page(200, feedPage(await store.feed()));
+      const rf = p.match(/^\/r\/([a-z0-9-]{3,39})$/);
+      if (rf) {
+        // A visible, same-site redirect that counts the click. The destination is always read from the agent's own
+        // stored listing, never from the request, so it cannot be used to send people to an address of someone else's choosing.
+        const target = await store.publicAgent(rf[1]!);
+        if (!target) return page(404, notFound());
+        const to = url.searchParams.get("to");
+        const sourceUrl = target.source.startsWith("github:") ? `https://github.com/${target.source.slice(7)}` : target.source.slice(4);
+        const dest = to === "source" ? sourceUrl : to === "link" && target.url?.startsWith("https://") ? target.url : `/a/${target.handle}`;
+        if (method === "GET" && !BOT_AGENT.test(String(req.headers["user-agent"] ?? ""))) {
+          const fromRaw = (url.searchParams.get("from") ?? "").toLowerCase();
+          const fromAgent = fromRaw !== target.handle && /^[a-z0-9-]{3,39}$/.test(fromRaw) && !REFERRAL_PAGES.has(fromRaw) ? await store.publicAgent(fromRaw) : undefined;
+          const who = createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 16); // hashed, kept only for an hour in the rate limiter
+          if ((await store.hit(`ref:${who}:${target.handle}`, 1, 3600_000)) && (await store.hit(`refall:${who}`, 40, 3600_000))) {
+            if (fromAgent?.verified) await store.recordReferral(target.handle, "agent", fromAgent.handle);
+            else await store.recordReferral(target.handle, "page", REFERRAL_PAGES.has(fromRaw) ? fromRaw : "other");
+          }
+        }
+        res.writeHead(302, { ...SECURITY_HEADERS, location: dest, "cache-control": "no-store", "x-robots-tag": "noindex" });
+        return void res.end();
+      }
       const m = p.match(/^\/a\/([a-z0-9-]{3,39})$/);
       if (m) {
         const a = await store.publicAgent(m[1]!);
@@ -953,7 +1000,8 @@ export function createApp(opts: AppOptions) {
         const proof = { score: cached?.total ?? null, scoreHref: gh ? `/github.com/${gh}` : null };
         const aid = (await store.byHandle(a.handle))?.id;
         const posts = aid ? await store.listPromos({ agentId: aid, limit: 5 }) : [];
-        return page(200, agentPage(a, proof, posts), agentMd(baseUrl, a, proof, posts));
+        const net = { stats: await store.referralStats(a.handle), neighbours: gh ? await neighboursOf(a.source) : [] };
+        return page(200, agentPage(a, proof, posts, net), agentMd(baseUrl, a, proof, posts, net));
       }
       return page(404, notFound());
     } catch (e) {

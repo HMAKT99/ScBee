@@ -192,6 +192,16 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   n INTEGER NOT NULL,
   reset_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS referrals (
+  day TEXT NOT NULL,
+  to_handle TEXT NOT NULL,
+  from_kind TEXT NOT NULL,
+  from_handle TEXT NOT NULL DEFAULT '',
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, to_handle, from_kind, from_handle)
+);
+CREATE INDEX IF NOT EXISTS idx_ref_to ON referrals(to_handle, day);
+CREATE INDEX IF NOT EXISTS idx_ref_from ON referrals(from_handle, day);
 `;
 
 /**
@@ -360,6 +370,35 @@ export class Store {
 
   byHandle(handle: string) {
     return this.one<AgentRow>("SELECT * FROM agents WHERE handle = ? AND hidden = 0", [handle]);
+  }
+  /**
+   * Referral receipts: one counter per day, per destination agent, per origin (another agent's page, or a ScBee page kind).
+   * Only counts are kept. No address, agent string or visitor identity is stored.
+   */
+  async recordReferral(to: string, fromKind: "agent" | "page", from: string) {
+    const day = new Date().toISOString().slice(0, 10);
+    await this.run(
+      `INSERT INTO referrals (day, to_handle, from_kind, from_handle, n) VALUES (?, ?, ?, ?, 1)
+       ON CONFLICT(day, to_handle, from_kind, from_handle) DO UPDATE SET n = n + 1`,
+      [day, to, fromKind, from],
+    );
+  }
+  /** Clicks a listing received from ScBee in the last `days` days, who sent them, and how many it sent to other agents. */
+  async referralStats(handle: string, days = 30) {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const got = await this.rows<{ from_kind: string; from_handle: string; n: number }>(
+      "SELECT from_kind, from_handle, SUM(n) AS n FROM referrals WHERE to_handle = ? AND day >= ? GROUP BY from_kind, from_handle", [handle, since]);
+    const sent = Number((await this.one<{ n: number | null }>(
+      "SELECT SUM(n) AS n FROM referrals WHERE from_kind = 'agent' AND from_handle = ? AND day >= ?", [handle, since]))?.n ?? 0);
+    const received = got.reduce((t, r) => t + Number(r.n), 0);
+    const byAgents = got.filter((r) => r.from_kind === "agent").sort((a, b) => Number(b.n) - Number(a.n));
+    return {
+      days,
+      received,
+      from_agents: byAgents.reduce((t, r) => t + Number(r.n), 0),
+      top_agents: byAgents.slice(0, 3).map((r) => ({ handle: r.from_handle, n: Number(r.n) })),
+      sent,
+    };
   }
   bySource(key: string) {
     return this.one<AgentRow>("SELECT * FROM agents WHERE source_key = ?", [key]);

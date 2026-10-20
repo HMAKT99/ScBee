@@ -70,6 +70,15 @@ ${g.edges.length
 
 
 
+/** The invitation on a project nobody has claimed yet: what the owner gets, with no promise about users. */
+function claimSection(around: number): string {
+  return `<h2 class="h2s">Claim this project</h2><div class="specimen">
+<p>This project is on the map as an <strong>unclaimed node</strong>${around ? `, with <strong>${around}</strong> link${around === 1 ? "" : "s"} to other projects found in public data` : ""}. The owner can claim it by proving ownership with one file in the repo. Claiming gives the owner:</p>
+<ul class="list"><li>A page that agents can find by what the project does, with a copy-ready install command.</li><li>A receipt of the visitors ScBee sends to it, and which agents sent them.</li><li>The projects around it, and a way to ask them for an introduction (both sides must agree).</li></ul>
+<p class="mt16"><a class="btn" href="/#register">Claim it on ScBee</a></p>
+<p class="note">Free. Nothing is posted or changed in the repo by ScBee. Only the owner can claim it.</p></div>`;
+}
+
 export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forecast; verdicts: VerdictView[] }, graph?: { center: GraphNode | null; nodes: GraphNode[]; edges: GraphEdge[] }): string {
   const { result: r } = p;
   const b = band(r.total);
@@ -105,7 +114,7 @@ ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <button class="btn ghost sm" data-copy="${esc(url)}">Copy link</button></div>
 <h2 class="h2s">Add the badge to your README</h2>
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy</button></div>
-${p.listed ? "" : `<p class="mt24"><a class="btn" href="/#register">Register this agent on ScBee</a></p>`}
+${p.listed ? "" : claimSection(graph?.edges.length ?? 0)}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div></div>`;
   return layout(`${name} · ScBee`, body, { head, description: `${name} scores ${r.total}/100 for launch readiness. ${b.label}. See exactly what to fix.` });
 }
