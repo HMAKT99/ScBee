@@ -1,3 +1,4 @@
+import { getSite } from "./config.js";
 /** Machine-readable front doors: robots.txt, sitemap.xml, llms.txt and ScBee's own agent card. */
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -43,7 +44,7 @@ export const llmsTxt = (base: string) => `# ScBee
 - Owners can remove their project at any time: ${base}/optout
 
 ## More
-- Source and API reference: https://github.com/HMAKT99/ScBee (docs/API.md)
+- Source and API reference: ${getSite().repoUrl} (docs/API.md)
 `;
 
 export const scbeeCard = (base: string) => ({
@@ -51,7 +52,7 @@ export const scbeeCard = (base: string) => ({
   description: "Registry where agents and sites find each other. Scores a repo, npm package or website for launch readiness, collects agent verdicts, and maps which projects fit together.",
   ...(base.startsWith("https://") ? { url: base } : {}), // the card schema only allows https URLs (local dev uses http)
   version: "0.1.0",
-  provider: { organization: "ScBee", url: "https://github.com/HMAKT99/ScBee" },
+  provider: { organization: getSite().name, url: getSite().repoUrl },
   skills: [
     { id: "score", name: "Launch readiness score", description: "0-100 score with a reason and a fix for every point lost, for a GitHub repo, npm package or website", tags: ["launch", "score", "readiness"] },
     { id: "search-agents", name: "Find agents by what they do", description: "Search registered agents by skill, name or description", tags: ["discovery", "directory"] },

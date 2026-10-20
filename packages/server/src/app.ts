@@ -5,6 +5,7 @@ import {
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
+import { configureSite, getSite, type SiteConfig } from "./config.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
 import { needWords, rankForNeed } from "./handoff.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
@@ -31,6 +32,8 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Registrations allowed per IP per hour (default 10). */
   registerPerHour?: number;
+  /** Who runs this copy: name, source repo, security contact, example project. Defaults to the original site. */
+  site?: Partial<SiteConfig>;
   /** Fresh scores per visitor per hour (default 30). Cached results are not limited. */
   scorePerHour?: number;
   /** Optional GitHub token for api.github.com (60 requests/hour per IP without one). */
@@ -123,6 +126,7 @@ const str = (v: unknown, max: number, name: string): string => {
 
 export function createApp(opts: AppOptions) {
   const { store, baseUrl } = opts;
+  configureSite(opts.site);
   const stats = () => store.stats();
 
   /** Score a public website or agent endpoint: same caching and limits as repos. */
@@ -187,12 +191,12 @@ export function createApp(opts: AppOptions) {
 
   /** ScBee's own readiness result, shown on the home page as a live specimen (null until it has been scored once). */
   async function specimen(): Promise<Specimen | null> {
-    const c = await store.getProject("github:hmakt99/scbee");
+    const c = await store.getProject(`github:${getSite().specimen.toLowerCase()}`);
     if (!c) return null;
     try {
       const r = JSON.parse(c.result_json) as ScoreResult;
       const fixes = r.components.flatMap((k) => k.items.filter((i) => i.fix && i.points < i.max)).sort((x, y) => (y.max - y.points) - (x.max - x.points)).slice(0, 3).map((i) => i.fix!);
-      return { name: "HMAKT99/ScBee", path: "github.com/HMAKT99/ScBee", total: r.total, band: band(r.total).label, fixes };
+      return { name: getSite().specimen, path: `github.com/${getSite().specimen}`, total: r.total, band: band(r.total).label, fixes };
     } catch { return null; }
   }
 
@@ -912,14 +916,14 @@ export function createApp(opts: AppOptions) {
         return void res.end(png);
       }
       if (p === "/og/site.png") {
-        const png = await renderSiteCard();
+        const png = await renderSiteCard(new URL(baseUrl).host, getSite().name);
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });
         return void res.end(png);
       }
       if (p === "/site.webmanifest")
-        return send(res, 200, JSON.stringify({ name: "ScBee", short_name: "ScBee", description: "Where agents find each other, and send users their way.", start_url: "/", display: "browser", background_color: "#ffffff", theme_color: "#ffffff", icons: [{ src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] }), "application/manifest+json", "public, max-age=86400");
+        return send(res, 200, JSON.stringify({ name: getSite().name, short_name: getSite().name, description: "Where agents find each other, and send users their way.", start_url: "/", display: "browser", background_color: "#ffffff", theme_color: "#ffffff", icons: [{ src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] }), "application/manifest+json", "public, max-age=86400");
       if (p === "/.well-known/security.txt")
-        return send(res, 200, `Contact: https://github.com/HMAKT99/ScBee/security/advisories/new\nExpires: ${new Date(Date.now() + 330 * 86_400_000).toISOString()}\nPreferred-Languages: en\nCanonical: ${baseUrl}/.well-known/security.txt\nPolicy: https://github.com/HMAKT99/ScBee/blob/main/SECURITY.md\n`, "text/plain", "public, max-age=86400");
+        return send(res, 200, `Contact: ${getSite().securityUrl}\nExpires: ${new Date(Date.now() + 330 * 86_400_000).toISOString()}\nPreferred-Languages: en\nCanonical: ${baseUrl}/.well-known/security.txt\nPolicy: ${getSite().policyUrl}\n`, "text/plain", "public, max-age=86400");
       if (p === "/go") {
         const to = goTarget(url.searchParams.get("q") ?? "");
         if (!to) return page(400, notFound("Enter owner/repo, an npm package, or a website"));

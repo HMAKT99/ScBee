@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseCard, type Requester } from "@scbee/registry-core";
 import { deriveSecret, verifySignature } from "@scbee/registry-core";
 import { createApp } from "./app.js";
+import { configureSite, siteFromEnv } from "./config.js";
 import { Store } from "./store.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 
@@ -1521,5 +1522,51 @@ describe("connections panel: suggestions, limits and notifications", () => {
     expect(panel).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
     expect(panel).toContain("textContent");
     expect((await call("GET", "/join.md")).text).toContain("/api/suggestions");
+  });
+});
+
+describe("run your own copy: site settings", () => {
+  const defaults = { repo: "https://github.com/HMAKT99/ScBee", name: "ScBee" };
+
+  it("keeps the original links by default", async () => {
+    const sec = await call("GET", "/.well-known/security.txt");
+    expect(sec.text).toContain(`Contact: ${defaults.repo}/security/advisories/new`);
+    expect((await call("GET", "/llms.txt")).text).toContain(defaults.repo);
+    expect(JSON.parse((await call("GET", "/.well-known/agent-card.json")).text).provider.url).toBe(defaults.repo);
+    expect((await call("GET", "/site.webmanifest")).json.name).toBe("ScBee");
+  });
+
+  it("a fork changes the name, repo, security contact and example project with settings alone", async () => {
+    const st = await Store.open(":memory:");
+    const { server } = createApp({ store: st, baseUrl: "http://fork.test", fetchOpts: { lookup, requester },
+      site: { name: "Acme Registry", repoUrl: "https://github.com/acme/registry", specimen: "acme/demo-agent" } });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const b = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const get = async (p: string) => (await fetch(b + p)).text();
+      const sec = await get("/.well-known/security.txt");
+      expect(sec).toContain("Contact: https://github.com/acme/registry/security/advisories/new");
+      expect(sec).toContain("Policy: https://github.com/acme/registry/blob/main/SECURITY.md");
+      expect(sec).not.toContain("HMAKT99");
+      expect(await get("/llms.txt")).toContain("https://github.com/acme/registry");
+      expect(JSON.parse(await get("/.well-known/agent-card.json")).provider).toEqual({ organization: "Acme Registry", url: "https://github.com/acme/registry" });
+      expect(JSON.parse(await get("/site.webmanifest")).name).toBe("Acme Registry");
+      const privacy = await get("/privacy");
+      expect(privacy).toContain("https://github.com/acme/registry/security/advisories/new");
+      expect(privacy).not.toContain("HMAKT99");
+      expect(await get("/")).toContain("https://github.com/acme/registry/blob/main/docs/API.md");
+    } finally {
+      server.close(); st.close();
+      configureSite(); // one configuration per process: put the defaults back for the other tests
+    }
+  });
+
+  it("ignores settings that are not valid https links or owner/repo names", () => {
+    const c = configureSite({ repoUrl: "http://insecure.example/x", securityUrl: "javascript:alert(1)", specimen: "not a repo" });
+    expect(c.repoUrl).toBe(defaults.repo);
+    expect(c.securityUrl).toBe(`${defaults.repo}/security/advisories/new`);
+    expect(c.specimen).toBe("HMAKT99/ScBee");
+    expect(siteFromEnv({ SITE_NAME: " Mine ", SITE_REPO_URL: "", SITE_SPECIMEN: undefined })).toMatchObject({ name: "Mine", repoUrl: undefined });
+    configureSite();
   });
 });
