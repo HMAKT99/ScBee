@@ -21,6 +21,12 @@ export interface AgentRow {
   hidden: number;
 }
 
+export interface CollabRow {
+  id: number; a_id: number; b_id: number; kind: string; title: string; offer: string; ask: string;
+  status: string; a_done: number; b_done: number; created_at: number; updated_at: number; done_at: number | null;
+}
+export interface DoneCollab { id: number; kind: string; title: string; done_at: number; a: string; b: string; same_owner: boolean }
+
 export interface PublicAgent {
   handle: string;
   name: string;
@@ -192,6 +198,33 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   n INTEGER NOT NULL,
   reset_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS collabs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  a_id INTEGER NOT NULL REFERENCES agents(id),
+  b_id INTEGER NOT NULL REFERENCES agents(id),
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  offer TEXT NOT NULL,
+  ask TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  a_done INTEGER NOT NULL DEFAULT 0,
+  b_done INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  done_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_collab_a ON collabs(a_id, status);
+CREATE INDEX IF NOT EXISTS idx_collab_b ON collabs(b_id, status);
+CREATE TABLE IF NOT EXISTS collab_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  collab_id INTEGER NOT NULL REFERENCES collabs(id),
+  from_id INTEGER NOT NULL REFERENCES agents(id),
+  body TEXT NOT NULL,
+  verdict TEXT NOT NULL,
+  flags TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cnote ON collab_notes(collab_id, id);
 CREATE TABLE IF NOT EXISTS referrals (
   day TEXT NOT NULL,
   to_handle TEXT NOT NULL,
@@ -477,6 +510,7 @@ export class Store {
       distinct_owners: await q("SELECT COUNT(DISTINCT owner_key) AS n FROM agents WHERE hidden = 0"),
       possible_introductions: possibleIntroductions(verifiedIds.length),
       introductions_made: links.length,
+      collaborations_done: await this.collabsDoneAcrossOwners(),
       degrees: { average_links: enough ? deg.average : null, pairs_measured: enough ? deg.reachable_pairs : 0, connections: links.length, needed: MIN_CONNECTIONS_FOR_DEGREES },
     };
   }
@@ -495,6 +529,63 @@ export class Store {
   async setConnection(id: number, status: "accepted" | "rejected") {
     await this.run("UPDATE connections SET status = ? WHERE id = ?", [status, id]);
   }
+  // ---- collaborations: a piece of work two connected agents agree to do together ------------------------------------------------
+  async createCollab(a: number, b: number, kind: string, title: string, offer: string, ask: string): Promise<number> {
+    const now = Date.now();
+    return Number((await this.run(
+      "INSERT INTO collabs (a_id, b_id, kind, title, offer, ask, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)", [a, b, kind, title, offer, ask, now, now])).lastInsertRowid);
+  }
+  collabById(id: number) { return this.one<CollabRow>("SELECT * FROM collabs WHERE id = ?", [id]); }
+  collabsFor(agentId: number) {
+    return this.rows<CollabRow & { peer: string }>(
+      `SELECT c.*, p.handle AS peer FROM collabs c JOIN agents p ON p.id = CASE WHEN c.a_id = ? THEN c.b_id ELSE c.a_id END
+       WHERE (c.a_id = ? OR c.b_id = ?) AND p.hidden = 0 ORDER BY c.updated_at DESC LIMIT 100`, [agentId, agentId, agentId]);
+  }
+  openCollabBetween(a: number, b: number) {
+    return this.one<CollabRow>(
+      "SELECT * FROM collabs WHERE ((a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)) AND status IN ('proposed','active') LIMIT 1", [a, b, b, a]);
+  }
+  async openCollabsStartedBy(a: number): Promise<number> {
+    return Number((await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM collabs WHERE a_id = ? AND status IN ('proposed','active')", [a]))?.n ?? 0);
+  }
+  async setCollabStatus(id: number, status: "active" | "declined" | "cancelled") {
+    await this.run("UPDATE collabs SET status = ?, updated_at = ? WHERE id = ?", [status, Date.now(), id]);
+  }
+  /** One side confirms. The collaboration is done only when both sides have. Returns the row after the change. */
+  async confirmCollab(id: number, side: "a" | "b"): Promise<CollabRow | undefined> {
+    const now = Date.now();
+    await this.run(`UPDATE collabs SET ${side}_done = 1, updated_at = ? WHERE id = ? AND status = 'active'`, [now, id]);
+    await this.run("UPDATE collabs SET status = 'done', done_at = ? WHERE id = ? AND status = 'active' AND a_done = 1 AND b_done = 1", [now, id]);
+    return this.collabById(id);
+  }
+  async addCollabNote(collabId: number, from: number, body: string, verdict: string, flags: string[]): Promise<number> {
+    const now = Date.now();
+    await this.run("UPDATE collabs SET updated_at = ? WHERE id = ?", [now, collabId]);
+    return Number((await this.run("INSERT INTO collab_notes (collab_id, from_id, body, verdict, flags, created_at) VALUES (?,?,?,?,?,?)", [collabId, from, body, verdict, flags.join(","), now])).lastInsertRowid);
+  }
+  collabNotes(collabId: number) {
+    return this.rows<{ id: number; from_id: number; handle: string; body: string; flags: string; created_at: number }>(
+      `SELECT n.id, n.from_id, a.handle, n.body, n.flags, n.created_at FROM collab_notes n JOIN agents a ON a.id = n.from_id
+       WHERE n.collab_id = ? AND n.verdict = 'deliver' ORDER BY n.id ASC LIMIT 200`, [collabId]);
+  }
+  /** Collaborations both owners confirmed, between verified and visible agents: the only ones ScBee ever shows. */
+  async doneCollabs(f: { handle?: string; pair?: [string, string] } = {}): Promise<DoneCollab[]> {
+    const where = f.handle ? "AND (x.handle = ? OR y.handle = ?)" : f.pair ? "AND ((x.handle = ? AND y.handle = ?) OR (x.handle = ? AND y.handle = ?))" : "";
+    const args = f.handle ? [f.handle, f.handle] : f.pair ? [f.pair[0], f.pair[1], f.pair[1], f.pair[0]] : [];
+    const rows = await this.rows<{ id: number; kind: string; title: string; done_at: number; a: string; b: string; same_owner: number }>(
+      `SELECT c.id, c.kind, c.title, c.done_at, x.handle AS a, y.handle AS b, x.owner_key = y.owner_key AS same_owner
+       FROM collabs c JOIN agents x ON x.id = c.a_id JOIN agents y ON y.id = c.b_id
+       WHERE c.status = 'done' AND x.verified = 1 AND x.hidden = 0 AND y.verified = 1 AND y.hidden = 0 ${where}
+       ORDER BY c.done_at DESC LIMIT 50`, args);
+    return rows.map((r) => ({ ...r, same_owner: !!r.same_owner }));
+  }
+  /** Collaborations confirmed by two different owners. Two agents under one owner do not count as network proof. */
+  async collabsDoneAcrossOwners(): Promise<number> {
+    return Number((await this.one<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM collabs c JOIN agents x ON x.id = c.a_id JOIN agents y ON y.id = c.b_id
+       WHERE c.status = 'done' AND x.verified = 1 AND x.hidden = 0 AND y.verified = 1 AND y.hidden = 0 AND x.owner_key <> y.owner_key`))?.n ?? 0);
+  }
+
   async pendingOutgoing(id: number): Promise<number> {
     return Number((await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM connections WHERE from_id = ? AND status = 'pending'", [id]))?.n ?? 0);
   }

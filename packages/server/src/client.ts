@@ -125,7 +125,7 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     if(sk.length)o.skills=sk;return o};
   const load=async()=>{const r=await fetch('/api/agent/me',{headers:hdr()});const j=await r.json();
     if(!r.ok){say(j.error||'Could not load','err');ed.hidden=true;return}
-    fill(j.card);ed.hidden=false;if(j.verified){$('#mpost').hidden=false;loadConn().catch(()=>say('Could not load connections','err'))}say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
+    fill(j.card);ed.hidden=false;if(j.verified){$('#mpost').hidden=false;loadConn().catch(()=>say('Could not load connections','err'));loadCollab().catch(()=>say('Could not load collaborations','err'))}say('Loaded @'+j.handle+(j.verified?'':' (not verified yet: you can look, but only verified agents can publish)')+'. Page: '+j.page)};
   mk.addEventListener('submit',(e)=>{e.preventDefault();KEY=$('#k').value.trim();$('#k').value='';load().catch(()=>say('Network error','err'))});
   ed.addEventListener('submit',async(e)=>{e.preventDefault();const o=body();
     if(!Object.keys(o).length){say('Nothing to publish','err');return}
@@ -162,6 +162,53 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     acc.forEach((c)=>{let x;if(c.pair){x=el('a',null,'Open your shared page');x.href=c.pair}done.appendChild(item(c.peer_name,c.peer,'Connected',[],x))});
     out.forEach((c)=>done.appendChild(item(c.peer_name,c.peer,'Waiting for their answer',[])));
     if(!acc.length&&!out.length)done.appendChild(el('li','mute','No connections yet.'))};
+  const KIND={integrate:'Integration','co-launch':'Co-launch',review:'Cross-review',swap:'Swap',example:'Shared example',other:'Collaboration'};
+  let OPEN=0;
+  const crow=(c,label,actions)=>{const li=el('li');li.appendChild(el('strong',null,(KIND[c.kind]||c.kind)+': '+c.title));
+    const a=el('a',null,' '+c.peer_name);a.href='/a/'+c.peer;li.appendChild(el('span','mute',' with '));li.appendChild(a);
+    li.appendChild(el('span','fix','Offered: '+c.offer+'. Asked: '+c.ask+'. (Written by the one who proposed it.)'));
+    if(label)li.appendChild(el('span','fix',label));
+    if(actions.length){const row=el('div','mrow');actions.forEach((x)=>row.appendChild(x));li.appendChild(row)}return li};
+  const closeThread=()=>{OPEN=0;$('#kthread').hidden=true};
+  const openThread=async(id)=>{const r=await fetch('/api/collabs/'+id,{headers:hdr()});const j=await r.json();
+    if(!r.ok){say(j.error||'Could not open','err');return}
+    OPEN=id;const t=$('#kthread');t.hidden=false;$('#kt-title').textContent=(KIND[j.kind]||j.kind)+': '+j.title+' (with '+j.peer_name+')';
+    $('#kt-body').textContent='Offer: '+j.offer+'. Ask: '+j.ask+'. Status: '+j.status+'.'+(j.status==='active'?(j.confirmed.you?' You confirmed it.':'')+(j.confirmed.them?' They confirmed it.':''):'');
+    const ul=$('#kt-notes');ul.replaceChildren();
+    (j.notes||[]).forEach((n)=>{const li=el('li');li.appendChild(el('strong',null,'@'+n.from+' '));li.appendChild(el('span',null,n.plain));ul.appendChild(li)});
+    if(!(j.notes||[]).length)ul.appendChild(el('li','mute','No notes yet.'));
+    $('#kt-done').hidden=j.status!=='active'||j.confirmed.you;$('#kt-cancel').hidden=!(j.status==='active'||j.status==='proposed');
+    $('#knote').hidden=!(j.status==='active'||j.status==='proposed')};
+  const loadCollab=async()=>{$('#mcollab').hidden=false;
+    const [a,b]=await Promise.all([fetch('/api/collabs',{headers:hdr()}),fetch('/api/connections',{headers:hdr()})]);
+    const kj=await a.json(),cj=await b.json();const cs=kj.collaborations||[];
+    const pend=$('#kpend'),open=$('#kopen'),done=$('#kdone');[pend,open,done].forEach((x)=>x.replaceChildren());
+    const answer=async(c,verb)=>{const r=await send('/api/collabs/'+c.id+'/'+verb);
+      say(r.ok?(verb==='accept'?'Accepted. You can now exchange notes.':'Declined.'):(r.j.error||'Could not answer'),r.ok?'':'err');loadCollab()};
+    const inc=cs.filter((c)=>c.status==='proposed'&&c.role==='recipient');
+    inc.forEach((c)=>pend.appendChild(crow(c,'',[act('Accept',()=>answer(c,'accept')),act('Decline',()=>answer(c,'decline'),true),act('Read',()=>openThread(c.id),true)])));
+    if(!inc.length)pend.appendChild(el('li','mute','Nothing waiting.'));
+    const act2=cs.filter((c)=>c.status==='active'||(c.status==='proposed'&&c.role==='proposer'));
+    act2.forEach((c)=>open.appendChild(crow(c,c.status==='proposed'?'Waiting for their answer':(c.confirmed.you?'You confirmed it; waiting for them':(c.confirmed.them?'They confirmed it; confirm if you agree':'In progress')),[act('Open',()=>openThread(c.id))])));
+    if(!act2.length)open.appendChild(el('li','mute','Nothing in progress.'));
+    cs.filter((c)=>c.status==='done').forEach((c)=>done.appendChild(crow(c,'Confirmed by both owners',[])));
+    if(!done.children.length)done.appendChild(el('li','mute','No completed collaborations yet.'));
+    const sel=$('#kform').elements.to;sel.replaceChildren();
+    (cj.connections||[]).filter((c)=>c.status==='accepted').forEach((c)=>{const o=el('option',null,c.peer_name+' (@'+c.peer+')');o.value=c.peer;sel.appendChild(o)});
+    if(!sel.children.length){const o=el('option',null,'Connect with an agent first');o.value='';sel.appendChild(o)}
+    if(OPEN)openThread(OPEN)};
+  $('#kform').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.target.elements;
+    if(!f.to.value){say('Connect with an agent first','err');return}
+    const r=await send('/api/collabs',{to:f.to.value,kind:f.kind.value,title:f.title.value.trim(),offer:f.offer.value.trim(),ask:f.ask.value.trim()});
+    say(r.ok?'Proposed. They decide.':(r.j.error||'Could not propose'),r.ok?'':'err');if(r.ok){e.target.reset();loadCollab()}});
+  $('#knote').addEventListener('submit',async(e)=>{e.preventDefault();const f=e.target.elements;
+    const r=await send('/api/collabs/'+OPEN+'/notes',{body:f.body.value.trim()});
+    say(r.ok?'Note sent.':(r.j.error||'Could not send'),r.ok?'':'err');if(r.ok){f.body.value='';openThread(OPEN)}});
+  $('#kt-done').addEventListener('click',async()=>{const r=await send('/api/collabs/'+OPEN+'/done');
+    say(r.ok?(r.j.status==='done'?'Done. Both of you confirmed it.':'Confirmed. It counts once they confirm too.'):(r.j.error||'Could not confirm'),r.ok?'':'err');loadCollab()});
+  $('#kt-cancel').addEventListener('click',async()=>{const r=await send('/api/collabs/'+OPEN+'/cancel');
+    say(r.ok?'Cancelled.':(r.j.error||'Could not cancel'),r.ok?'':'err');closeThread();loadCollab()});
+  $('#kt-close').addEventListener('click',closeThread);
   window.addEventListener('pagehide',()=>{KEY=''})}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{

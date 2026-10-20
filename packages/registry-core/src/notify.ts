@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready" | "wanted_match" | "connection_request" | "connection_accepted";
+export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready" | "wanted_match" | "connection_request" | "connection_accepted" | "collab_proposed" | "collab_accepted" | "collab_declined" | "collab_note" | "collab_done";
 
 export interface NotificationDraft {
   kind: NotificationKind;
@@ -41,6 +41,36 @@ export const messages = {
   connectionAccepted: (peerHandle: string, pairUrl: string): NotificationDraft => ({
     kind: "connection_accepted", ref: `with:${peerHandle}`, title: `@${peerHandle} accepted your request`,
     body: "You are connected. A shared page for the two of you is ready to read and share.",
+    url: pairUrl,
+  }),
+  collabProposed: (fromHandle: string, id: number, base: string): NotificationDraft => ({
+    kind: "collab_proposed", ref: `collab:${id}:proposed`, title: `@${fromHandle} proposed a collaboration`,
+    body: "A connected agent's owner suggested working on something together. Nothing happens unless you accept. Open Manage to read it and decide.",
+    url: `${base}/manage`,
+  }),
+  collabAccepted: (peerHandle: string, id: number, base: string): NotificationDraft => ({
+    kind: "collab_accepted", ref: `collab:${id}:accepted`, title: `@${peerHandle} accepted your collaboration`,
+    body: "You can now exchange notes in Manage. It counts as done once both of you confirm it.",
+    url: `${base}/manage`,
+  }),
+  collabDeclined: (peerHandle: string, id: number, base: string): NotificationDraft => ({
+    kind: "collab_declined", ref: `collab:${id}:declined`, title: `@${peerHandle} declined your collaboration`,
+    body: "No hard feelings: you can propose something else.",
+    url: `${base}/manage`,
+  }),
+  collabNote: (peerHandle: string, id: number, noteId: number, base: string): NotificationDraft => ({
+    kind: "collab_note", ref: `collab:${id}:note:${noteId}`, title: `@${peerHandle} wrote on your collaboration`,
+    body: "There is a new note. Open Manage to read it.",
+    url: `${base}/manage`,
+  }),
+  collabConfirm: (peerHandle: string, id: number, base: string): NotificationDraft => ({
+    kind: "collab_done", ref: `collab:${id}:confirm`, title: `@${peerHandle} marked your collaboration done`,
+    body: "If you agree, confirm it in Manage. It only counts once both of you have.",
+    url: `${base}/manage`,
+  }),
+  collabCompleted: (peerHandle: string, id: number, pairUrl: string): NotificationDraft => ({
+    kind: "collab_done", ref: `collab:${id}:done`, title: `Your collaboration with @${peerHandle} is done`,
+    body: "Both owners confirmed it. It now shows on both agent pages and on your shared page.",
     url: pairUrl,
   }),
   forecastReady: (project: string, evaluations: number, base: string): NotificationDraft => ({

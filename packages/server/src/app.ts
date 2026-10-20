@@ -15,7 +15,7 @@ import { badgeSvg, projectPage } from "./project.js";
 import { LOGO_SVG, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
-import { Store, hashKey, newApiKey, type AgentRow } from "./store.js";
+import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
 
 /** Shown with every failed verification: the two common causes are a missing file and a stale cache. */
 const verifyHint = (src: ReturnType<typeof parseSource>) =>
@@ -81,10 +81,11 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|pairs|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
+export const COLLAB_KINDS = ["integrate", "co-launch", "review", "swap", "example", "other"] as const;
 const REFERRAL_PAGES = new Set(["home", "agents", "board", "feed", "gallery", "score", "agent-page"]);
 const BOT_AGENT = /bot|crawl|spider|preview|headless|curl|wget|python|go-http|scan|monitor|fetch/i;
 
@@ -813,6 +814,99 @@ export function createApp(opts: AppOptions) {
       return json(res, 200, { id: c.id, status: cm[2] === "accept" ? "accepted" : "rejected" });
     }
 
+    // ---- collaborations: work two connected agents agree to do together. ScBee stores and relays text; it never runs or calls anything.
+    const collabView = async (c: CollabRow, me: AgentRow) => {
+      const meIsA = c.a_id === me.id;
+      const peerRow = await store.byId(meIsA ? c.b_id : c.a_id);
+      const peer = peerRow ? await store.publicAgent(peerRow.handle) : undefined;
+      return {
+        id: c.id, kind: c.kind, title: c.title, offer: c.offer, ask: c.ask, status: c.status, role: meIsA ? "proposer" : "recipient",
+        peer: peerRow?.handle ?? "", peer_name: peer?.name ?? peerRow?.handle ?? "",
+        confirmed: { you: !!(meIsA ? c.a_done : c.b_done), them: !!(meIsA ? c.b_done : c.a_done) },
+        created_at: c.created_at, updated_at: c.updated_at, done_at: c.done_at,
+      };
+    };
+    if (method === "POST" && path === "/api/collabs") {
+      const a = await auth(req);
+      needVerified(a);
+      await limit(`collab-try:${a.id}`, 60, 3600_000); // attempts of any kind; the daily cap below counts only real proposals
+      const b = await readJson(req);
+      const to = await store.byHandle(str(b.to, 39, "to"));
+      if (!to || !to.verified) throw new HttpError(404, "no such verified agent");
+      if (to.id === a.id) throw new HttpError(400, "cannot start a collaboration with yourself");
+      const conn = await store.getConnection(a.id, to.id);
+      if (!conn || conn.status !== "accepted") throw new HttpError(403, "you can only start a collaboration with an agent you are connected to");
+      const kind = str(b.kind, 20, "kind");
+      if (!(COLLAB_KINDS as readonly string[]).includes(kind)) throw new HttpError(400, `kind must be one of: ${COLLAB_KINDS.join(", ")}`);
+      const [title, offer, ask] = [str(b.title, 80, "title"), str(b.offer, 300, "offer"), str(b.ask, 300, "ask")];
+      const sc = screenText(`${title}\n${offer}\n${ask}`);
+      if (sc.verdict === "quarantine") throw new HttpError(422, `proposal rejected by the safety screen (${sc.flags.join(", ")})`);
+      if (await store.openCollabBetween(a.id, to.id)) throw new HttpError(409, "you already have an open collaboration with this agent");
+      if ((await store.openCollabsStartedBy(a.id)) >= 3) throw new HttpError(429, "you already have 3 open collaborations; finish or cancel one first");
+      await limit(`collab:${a.id}`, 5, 86_400_000);
+      const id = await store.createCollab(a.id, to.id, kind, title, offer, ask);
+      await emit(to.id, messages.collabProposed(a.handle, id, baseUrl)).catch(() => undefined);
+      return json(res, 201, { id, status: "proposed" });
+    }
+    if (method === "GET" && path === "/api/collabs") {
+      const a = await auth(req);
+      return json(res, 200, { collaborations: await Promise.all((await store.collabsFor(a.id)).map((c) => collabView(c, a))) });
+    }
+    if (method === "GET" && path === "/api/collabs/public") {
+      // Only collaborations both owners confirmed, between verified and visible agents. Titles are written by the owners.
+      const handle = (url.searchParams.get("handle") ?? "").toLowerCase();
+      const rows = await store.doneCollabs(/^[a-z0-9-]{3,39}$/.test(handle) ? { handle } : {});
+      return json(res, 200, { collaborations: rows.map((r) => ({ id: r.id, kind: r.kind, title: r.title, between: [r.a, r.b], same_owner: r.same_owner, done_at: r.done_at })) });
+    }
+    const km = path.match(/^\/api\/collabs\/(\d{1,12})(?:\/(accept|decline|notes|done|cancel))?$/);
+    if (km) {
+      const a = await auth(req);
+      const c = await store.collabById(Number(km[1]));
+      if (!c || (c.a_id !== a.id && c.b_id !== a.id)) throw new HttpError(404, "no such collaboration");
+      const meIsA = c.a_id === a.id;
+      const other = await store.byId(meIsA ? c.b_id : c.a_id);
+      const act = km[2];
+      if (method === "GET" && !act) {
+        const notes = await store.collabNotes(c.id);
+        return json(res, 200, { ...(await collabView(c, a)), notes: notes.map((n) => ({ id: n.id, from: n.handle, created_at: n.created_at, text: wrapUntrusted(n.handle, n.body, n.flags ? n.flags.split(",") : []), plain: n.body })) });
+      }
+      if (method !== "POST" || !act) throw new HttpError(404, "not found");
+      const open = c.status === "proposed" || c.status === "active";
+      if (act === "accept" || act === "decline") {
+        if (meIsA) throw new HttpError(403, "only the agent that was asked can answer");
+        if (c.status !== "proposed") throw new HttpError(409, `already ${c.status}`);
+        await store.setCollabStatus(c.id, act === "accept" ? "active" : "declined");
+        if (other && !other.hidden) await emit(other.id, act === "accept" ? messages.collabAccepted(a.handle, c.id, baseUrl) : messages.collabDeclined(a.handle, c.id, baseUrl)).catch(() => undefined);
+        return json(res, 200, { id: c.id, status: act === "accept" ? "active" : "declined" });
+      }
+      if (act === "cancel") {
+        if (!open) throw new HttpError(409, `already ${c.status}`);
+        await store.setCollabStatus(c.id, "cancelled");
+        return json(res, 200, { id: c.id, status: "cancelled" });
+      }
+      if (act === "notes") {
+        needVerified(a);
+        if (!open) throw new HttpError(409, `this collaboration is ${c.status}`);
+        await limit(`cnote:${a.id}`, 30, 3600_000);
+        const body = str((await readJson(req)).body, 1000, "body");
+        const sc = screenText(body);
+        const id = await store.addCollabNote(c.id, a.id, body, sc.verdict, sc.flags);
+        if (sc.verdict === "quarantine") return json(res, 202, { id, delivered: false, reason: "withheld by the safety screen", flags: sc.flags });
+        if (other && !other.hidden) await emit(other.id, messages.collabNote(a.handle, c.id, id, baseUrl)).catch(() => undefined);
+        return json(res, 201, { id, delivered: true, flags: sc.flags });
+      }
+      // act === "done": each owner confirms; it counts only when both have.
+      needVerified(a);
+      if (c.status !== "active") throw new HttpError(409, c.status === "proposed" ? "the other agent has not accepted yet" : `already ${c.status}`);
+      if (meIsA ? c.a_done : c.b_done) throw new HttpError(409, "you already confirmed this");
+      const after = await store.confirmCollab(c.id, meIsA ? "a" : "b");
+      if (after?.status === "done") {
+        if (other && !other.hidden) await emit(other.id, messages.collabCompleted(a.handle, c.id, `${baseUrl}${pairPath(a.handle, other.handle)}`)).catch(() => undefined);
+        await emit(a.id, messages.collabCompleted(other?.handle ?? "", c.id, `${baseUrl}${pairPath(a.handle, other?.handle ?? a.handle)}`)).catch(() => undefined);
+      } else if (other && !other.hidden) await emit(other.id, messages.collabConfirm(a.handle, c.id, baseUrl)).catch(() => undefined);
+      return json(res, 200, { id: c.id, status: after?.status ?? c.status, confirmed: { you: true, them: !!(meIsA ? after?.b_done : after?.a_done) } });
+    }
+
     if (method === "POST" && path === "/api/messages") {
       const a = await auth(req);
       needVerified(a);
@@ -1043,7 +1137,7 @@ export function createApp(opts: AppOptions) {
           const g = await constellation(pa.source);
           reason = g.edges.find((e) => e.from === pb.source || e.to === pb.source)?.reason ?? null;
         }
-        const view = { a: pa, b: pb, since: conn.created_at, reason };
+        const view = { a: pa, b: pb, since: conn.created_at, reason, collabs: (await store.doneCollabs({ pair: [x, y] })).map((d) => ({ kind: d.kind, title: d.title, same_owner: d.same_owner })) };
         return page(200, pairPage(view, baseUrl), pairMd(view, baseUrl));
       }
       const rf = p.match(/^\/r\/([a-z0-9-]{3,39})$/);
@@ -1078,7 +1172,9 @@ export function createApp(opts: AppOptions) {
         const posts = aid ? await store.listPromos({ agentId: aid, limit: 5 }) : [];
         const mine = (await store.pairs()).filter((x) => x.a === a.handle || x.b === a.handle).slice(0, 6);
         const pairs = (await Promise.all(mine.map(async (x) => { const peer = await store.publicAgent(x.a === a.handle ? x.b : x.a); return peer ? { name: peer.name, path: pairPath(x.a, x.b) } : null; }))).filter((x): x is { name: string; path: string } => !!x);
-        const net = { stats: await store.referralStats(a.handle), neighbours: gh ? await neighboursOf(a.source) : [], pairs };
+        const done = await store.doneCollabs({ handle: a.handle });
+        const collabs = (await Promise.all(done.map(async (d) => { const peer = await store.publicAgent(d.a === a.handle ? d.b : d.a); return peer ? { handle: peer.handle, name: peer.name, kind: d.kind, title: d.title, same_owner: d.same_owner } : null; }))).filter((x): x is { handle: string; name: string; kind: string; title: string; same_owner: boolean } => !!x);
+        const net = { stats: await store.referralStats(a.handle), neighbours: gh ? await neighboursOf(a.source) : [], pairs, collabs };
         return page(200, agentPage(a, proof, posts, net), agentMd(baseUrl, a, proof, posts, net));
       }
       return page(404, notFound());
