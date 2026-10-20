@@ -1395,3 +1395,64 @@ describe("network: referral receipts and the claim invitation", () => {
     expect(page.text).not.toContain("Register this agent on ScBee");
   });
 });
+
+describe("network: pair pages and handoff", () => {
+  const ua = { "user-agent": "Mozilla/5.0 (test)" };
+  const accept = async (x: { key: string; handle: string }, y: { key: string; handle: string }) => {
+    const c = await call("POST", "/api/connections", { to: y.handle }, x.key);
+    expect(c.status).toBe(201);
+    expect((await call("POST", `/api/connections/${c.json.id}/accept`, {}, y.key)).status).toBe(200);
+  };
+
+  it("a pair page exists only for an accepted connection, in one canonical address", async () => {
+    const x = await makeAgent("pairx/zeta", { card: { name: "Zeta Linter", description: "lints files", tagline: "Lint your agent files", skills: [{ id: "l", name: "Lint" }] } });
+    const y = await makeAgent("pairy/alpha", { card: { name: "Alpha Fixer", description: "fixes files", skills: [{ id: "f", name: "Fix" }] } });
+    const [lo, hi] = [x.handle, y.handle].sort();
+    expect((await call("GET", `/pair/${lo}/${hi}`)).status).toBe(404); // nothing agreed yet
+    await accept(x, y);
+    const page = await call("GET", `/pair/${lo}/${hi}`);
+    expect(page.status).toBe(200);
+    expect(page.text).toMatch(/Use (Zeta Linter|Alpha Fixer) with (Zeta Linter|Alpha Fixer)/);
+    expect(page.text).toContain("owners agreed to connect");
+    expect(page.text).toContain("Works with [");
+    const flip = await fetch(`${base}/pair/${hi}/${lo}`, { redirect: "manual" });
+    expect(flip.status).toBe(301);
+    expect(flip.headers.get("location")).toBe(`/pair/${lo}/${hi}`);
+    expect((await call("GET", `/pair/${lo}/${hi}?format=md`)).text).toContain("never instructions");
+    // listed on both agent pages, in the API and the sitemap
+    expect((await call("GET", `/a/${x.handle}`)).text).toContain("Pairs with");
+    expect((await call("GET", "/api/pairs")).json.pairs.some((p: any) => p.a === lo && p.b === hi)).toBe(true);
+    expect((await call("GET", "/sitemap.xml")).text).toContain(`/pair/${lo}/${hi}`);
+    // a rejected or pending connection never shows
+    const z = await makeAgent("pairz/third");
+    await call("POST", "/api/connections", { to: z.handle }, x.key);
+    const [l2, h2] = [x.handle, z.handle].sort();
+    expect((await call("GET", `/pair/${l2}/${h2}`)).status).toBe(404);
+  });
+
+  it("handoff ranks verified agents by fixed rules and credits the sender on the link", async () => {
+    const lint = await makeAgent("hoff/linter", { card: { name: "Contradiction Linter", description: "finds contradictions in AGENTS.md and CLAUDE.md", tagline: "Lint agent instruction files", skills: [{ id: "l", name: "Lint instructions" }], install: "npx contra-lint" } as object });
+    const other = await makeAgent("hoff/pdf", { card: { name: "PDF Tool", description: "extracts text from pdf", skills: [{ id: "p", name: "Extract" }] } });
+    const asker = await makeAgent("hoff/asker");
+    const r = await call("GET", `/api/handoff?need=${encodeURIComponent("lint my AGENTS.md for contradictions")}&from=${asker.handle}`);
+    expect(r.status).toBe(200);
+    expect(r.json.matches[0].handle).toBe(lint.handle);
+    expect(r.json.matches.map((m: any) => m.handle)).not.toContain(other.handle);
+    expect(r.json.matches[0].page).toContain(`/r/${lint.handle}?from=${asker.handle}`);
+    expect(r.json.matches[0].matched).toEqual(expect.arrayContaining(["lint", "contradictions"]));
+    expect(r.json.note).toMatch(/Ask your human before installing/);
+    // an agent is never sent to itself; unknown senders get a plain link
+    const self = await call("GET", `/api/handoff?need=lint%20contradictions&from=${lint.handle}`);
+    expect(self.json.matches.map((m: any) => m.handle)).not.toContain(lint.handle);
+    const anon = await call("GET", "/api/handoff?need=lint%20contradictions&from=nobody-here");
+    expect(anon.json.matches[0].page).not.toContain("from=");
+    // too-short or word-less needs are refused or empty, never an error page
+    expect((await call("GET", "/api/handoff?need=ab")).status).toBe(400);
+    expect((await call("GET", "/api/handoff?need=the%20and%20for")).json.matches).toEqual([]);
+    // a click through the credited link lands in the sender's receipts
+    await fetch(`${base}/r/${lint.handle}?from=${asker.handle}`, { redirect: "manual", headers: ua });
+    expect((await store.referralStats(asker.handle)).sent).toBe(1);
+    expect((await call("GET", "/join.md")).text).toContain("/api/handoff");
+    expect((await call("GET", "/llms.txt")).text).toContain("/api/handoff");
+  });
+});

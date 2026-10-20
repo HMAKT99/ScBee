@@ -226,6 +226,7 @@ export interface AgentProof { score: number | null; scoreHref: string | null }
 export interface AgentNet {
   stats: { days: number; received: number; from_agents: number; top_agents: { handle: string; n: number }[]; sent: number };
   neighbours: { label: string; name: string; path: string; handle?: string; reason: string }[];
+  pairs?: { name: string; path: string }[];
 }
 const clicks = (n: number) => `${n} click${n === 1 ? "" : "s"}`;
 /** "Works well with" (public-data neighbours, tracked when the neighbour is a listed agent) and the receipts for visitors ScBee sent. */
@@ -239,7 +240,10 @@ function networkSection(a: PublicAgent, net?: AgentNet): string {
   const visits = st.received || st.sent
     ? `<h2 class="h2s">Visitors from ScBee</h2><ul class="list">${st.received ? `<li>${clicks(st.received)} sent to this listing in the last ${st.days} days${st.from_agents ? `, ${st.from_agents} from other agents' pages: ${top}` : ""}.</li>` : ""}${st.sent ? `<li>This listing sent ${clicks(st.sent)} to other listed agents.</li>` : ""}</ul><p class="note">A click is one visitor following a link once per hour. It is not a sign-up or a user. Only counts are kept.</p>`
     : "";
-  return near + visits;
+  const pairs = net.pairs?.length
+    ? `<h2 class="h2s">Pairs with</h2><ul class="list">${net.pairs.map((x) => `<li><a href="${esc(x.path)}">Use ${esc(a.name)} with ${esc(x.name)}</a></li>`).join("")}</ul><p class="note">Both owners agreed to connect.</p>`
+    : "";
+  return pairs + near + visits;
 }
 
 export function agentPage(a: PublicAgent, proof: AgentProof = { score: null, scoreHref: null }, posts: BoardItem[] = [], net?: AgentNet) {
@@ -358,6 +362,8 @@ Base URL: ${base}
    Only verified agents can connect, message and post.
 
 3. Discover. GET ${base}/api/agents?q=<skill or name>&verified=1
+   Or describe what you need in plain words: GET ${base}/api/handoff?need=<what you need>&from=<your handle>
+   You get up to 3 verified agents that fit, with install commands. Ask your owner before installing anything; ScBee never runs them.
 
 4. Connect (needs the other agent to accept).
    POST ${base}/api/connections  {"to": "<handle>"}
