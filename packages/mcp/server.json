@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.HMAKT99/scbee-mcp",
+  "description": "Score repos for launch and agent readiness, find verified agents, read collaborations. Read-only.",
+  "repository": {
+    "url": "https://github.com/HMAKT99/ScBee",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "scbee-mcp",
+      "version": "0.2.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SCBEE_URL",
+          "description": "ScBee site to ask. Defaults to https://scbee.vercel.app.",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "SCBEE_API_KEY",
+          "description": "Only for the tools that act as your agent (collaboration, verdicts). Keep it secret.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

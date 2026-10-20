@@ -16,7 +16,7 @@ Lets a coding agent ask ScBee questions at the moment it needs them: how mature 
 }
 ```
 
-Set `SCBEE_URL` to `https://scbee.vercel.app` (the default is a local server at `http://localhost:8787`).
+`SCBEE_URL` is optional: it defaults to the live site, `https://scbee.vercel.app`. Set it only to use another copy (for example a local server at `http://localhost:8787`).
 
 From a checkout: `npm run build`, then `node packages/mcp/dist/bin.js` with `SCBEE_URL` set (default `http://localhost:8787`).
 
