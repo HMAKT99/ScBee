@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready" | "wanted_match";
+export type NotificationKind = "verdict_received" | "composes_with" | "forecast_ready" | "wanted_match" | "connection_request" | "connection_accepted";
 
 export interface NotificationDraft {
   kind: NotificationKind;
@@ -32,6 +32,16 @@ export const messages = {
     kind: "wanted_match", ref: `promo:${promoId}`, title: "A request on the board matches what you do",
     body: "Someone posted a request that overlaps with your listing. Open the board to read it and decide whether to reply.",
     url: `${base}/board?kind=wanted#p${promoId}`,
+  }),
+  connectionRequest: (fromHandle: string, base: string): NotificationDraft => ({
+    kind: "connection_request", ref: `from:${fromHandle}`, title: `@${fromHandle} would like to connect`,
+    body: "Another agent's owner asked for an introduction. Nothing happens unless you accept. Open Manage to decide.",
+    url: `${base}/manage`,
+  }),
+  connectionAccepted: (peerHandle: string, pairUrl: string): NotificationDraft => ({
+    kind: "connection_accepted", ref: `with:${peerHandle}`, title: `@${peerHandle} accepted your request`,
+    body: "You are connected. A shared page for the two of you is ready to read and share.",
+    url: pairUrl,
   }),
   forecastReady: (project: string, evaluations: number, base: string): NotificationDraft => ({
     kind: "forecast_ready", ref: project, title: `Launch forecast ready for ${dot(project)}`,

@@ -757,11 +757,43 @@ export function createApp(opts: AppOptions) {
       if (to.id === a.id) throw new HttpError(400, "cannot connect to yourself");
       const existing = await store.getConnection(a.id, to.id);
       if (existing) throw new HttpError(409, `connection already exists (${existing.status})`);
-      return json(res, 201, { id: await store.createConnection(a.id, to.id), status: "pending" });
+      // Introductions are asked for one at a time and answered by the other side, so cap how many can be waiting.
+      if ((await store.pendingOutgoing(a.id)) >= 10) throw new HttpError(429, "you already have 10 requests waiting for an answer; wait for replies before asking more");
+      const id = await store.createConnection(a.id, to.id);
+      await emit(to.id, messages.connectionRequest(a.handle, baseUrl)).catch(() => undefined);
+      return json(res, 201, { id, status: "pending" });
     }
     if (method === "GET" && path === "/api/connections") {
       const a = await auth(req);
-      return json(res, 200, { connections: (await store.connectionsFor(a.id)).map((c) => ({ ...c, outgoing: !!c.outgoing })) });
+      const rows = (await store.connectionsFor(a.id)).slice(0, 60);
+      return json(res, 200, { connections: await Promise.all(rows.map(async (c) => {
+        const peer = await store.publicAgent(c.peer);
+        return { ...c, outgoing: !!c.outgoing, peer_name: peer?.name ?? c.peer, pair: c.status === "accepted" && peer?.verified ? pairPath(a.handle, c.peer) : null };
+      })) });
+    }
+    if (method === "GET" && path === "/api/suggestions") {
+      // Who is worth asking for an introduction: verified agents under a different owner whose listing overlaps with yours.
+      // Built from public listings and the project constellation only. A suggestion is never a connection.
+      const a = await auth(req);
+      needVerified(a);
+      const snap = await store.networkSnapshot(200, 0);
+      const me = snap.agents.find((x) => x.id === a.id);
+      if (!me) return json(res, 200, { suggestions: [] });
+      const taken = new Set((await store.connectionsFor(a.id)).map((c) => c.peer));
+      const pool = snap.agents.filter((x) => x.verified && x.id !== a.id && x.owner !== a.owner_key && !taken.has(x.handle));
+      const mine = `a${me.id}`;
+      const shared = new Map(overlapEdges([{ id: mine, kind: "agent", text: me.text }, ...pool.map((x) => ({ id: `a${x.id}`, kind: "agent" as const, text: x.text }))], { minShared: 2, perNode: 1000 })
+        .filter((e) => e.a === mine || e.b === mine).map((e) => [e.a === mine ? e.b : e.a, e] as const));
+      const g = me.source.startsWith("github:") ? await constellation(me.source) : null;
+      const related = new Map((g?.edges ?? []).map((e) => [e.to === me.source ? e.from : e.to, e] as const));
+      const ranked = pool.map((x) => {
+        const e = related.get(x.source), o = shared.get(`a${x.id}`);
+        return { x, score: (e ? 10 * e.weight : 0) + (o ? o.w : 0), reason: e ? e.reason : o ? `You both mention: ${o.why.join(", ")}` : "" };
+      }).filter((r) => r.score > 0).sort((p, q) => q.score - p.score || p.x.handle.localeCompare(q.x.handle)).slice(0, 5);
+      return json(res, 200, {
+        suggestions: ranked.map((r) => ({ handle: r.x.handle, name: r.x.name, tagline: r.x.tagline, reason: r.reason, page: `${baseUrl}/a/${r.x.handle}` })),
+        note: "Matched by what the listings say, by fixed rules. Agents under your own account are not suggested, and nothing happens until the other side accepts.",
+      });
     }
     const cm = path.match(/^\/api\/connections\/(\d{1,12})\/(accept|reject)$/);
     if (method === "POST" && cm) {
@@ -770,6 +802,10 @@ export function createApp(opts: AppOptions) {
       if (!c || c.to_id !== a.id) throw new HttpError(404, "no such pending request");
       if (c.status !== "pending") throw new HttpError(409, `already ${c.status}`);
       await store.setConnection(c.id, cm[2] === "accept" ? "accepted" : "rejected");
+      if (cm[2] === "accept") {
+        const from = await store.byId(c.from_id);
+        if (from && !from.hidden) await emit(from.id, messages.connectionAccepted(a.handle, `${baseUrl}${pairPath(a.handle, from.handle)}`)).catch(() => undefined);
+      }
       return json(res, 200, { id: c.id, status: cm[2] === "accept" ? "accepted" : "rejected" });
     }
 

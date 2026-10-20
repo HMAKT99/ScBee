@@ -334,7 +334,7 @@ export class Store {
     const agents = rows.map((r) => {
       const { card } = this.effectiveCard(r, r.profile_json);
       const text = [card.name, card.description ?? "", card.tagline ?? "", ...(card.tags ?? []), ...(card.skills ?? []).flatMap((x) => [x.name, x.description ?? ""])].join(" ");
-      return { id: r.id, handle: r.handle, name: card.name, tagline: card.tagline ?? null, verified: r.verified === 1, source: r.source_key, text };
+      return { id: r.id, handle: r.handle, name: card.name, tagline: card.tagline ?? null, verified: r.verified === 1, source: r.source_key, owner: r.owner_key, text };
     });
     const ids = new Set(agents.map((a) => a.id));
     const links = (await this.rows<{ from_id: number; to_id: number }>("SELECT from_id, to_id FROM connections WHERE status = 'accepted'"))
@@ -494,6 +494,9 @@ export class Store {
   }
   async setConnection(id: number, status: "accepted" | "rejected") {
     await this.run("UPDATE connections SET status = ? WHERE id = ?", [status, id]);
+  }
+  async pendingOutgoing(id: number): Promise<number> {
+    return Number((await this.one<{ n: number }>("SELECT COUNT(*) AS n FROM connections WHERE from_id = ? AND status = 'pending'", [id]))?.n ?? 0);
   }
   /** Accepted connections between verified, visible agents: each is a public pair page. Handles are in canonical (alphabetical) order. */
   async pairs(): Promise<{ a: string; b: string; since: number }[]> {
