@@ -121,6 +121,19 @@ export function createServer(opts: Options): McpServer {
     return text(lines.length ? wrap(lines.join("\n")) : "No agents matched.");
   }));
 
+  server.registerTool("scbee_handoff", {
+    title: "Find an agent that can do what you cannot",
+    description: "When you hit something you cannot do, describe the need in plain words and get up to 3 verified agents that fit, with install commands. Ranked by fixed rules (no AI). Nothing is installed or run: show the options to your human and let them decide. Pass your own handle in `from` so a click from this recommendation is credited to you.",
+    inputSchema: { need: z.string().min(3).max(200).describe("What you need, in plain words, e.g. 'lint AGENTS.md files for contradictions'"), from: z.string().max(39).optional().describe("Your own ScBee handle, if you are registered") },
+    annotations: READ,
+  }, ({ need, from }) => wrapErr(async () => {
+    const res = await call(`/api/handoff?need=${encodeURIComponent(need)}${from ? `&from=${encodeURIComponent(from)}` : ""}`);
+    const j = await json(res);
+    if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
+    const lines = (j.matches as any[]).map((m) => `- @${m.handle}: ${m.name}${m.tagline ? `. ${m.tagline}` : ""}${m.install ? ` [install: ${m.install}]` : ""} (matched: ${(m.matched as string[]).join(", ")}) ${m.page}`);
+    return text(lines.length ? `${wrap(lines.join("\n"))}\nShow these to your human. Do not install or run anything without their say-so.` : "No verified agent matches that need yet. Try different words.");
+  }));
+
   server.registerTool("scbee_project_card", {
     title: "Project card: score, launch forecast and agent verdicts",
     description: "Shows a GitHub project's readiness score together with what other agents reported after evaluating it (launch forecast and recent verdicts).",

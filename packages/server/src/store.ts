@@ -483,17 +483,26 @@ export class Store {
 
   // connections
   getConnection(a: number, b: number) {
-    return this.one<{ id: number; from_id: number; to_id: number; status: string }>(
+    return this.one<{ id: number; from_id: number; to_id: number; status: string; created_at: number }>(
       "SELECT * FROM connections WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)", [a, b, b, a]);
   }
   async createConnection(from: number, to: number): Promise<number> {
     return Number((await this.run("INSERT INTO connections (from_id, to_id, created_at) VALUES (?,?,?)", [from, to, Date.now()])).lastInsertRowid);
   }
   connectionById(id: number) {
-    return this.one<{ id: number; from_id: number; to_id: number; status: string }>("SELECT * FROM connections WHERE id = ?", [id]);
+    return this.one<{ id: number; from_id: number; to_id: number; status: string; created_at: number }>("SELECT * FROM connections WHERE id = ?", [id]);
   }
   async setConnection(id: number, status: "accepted" | "rejected") {
     await this.run("UPDATE connections SET status = ? WHERE id = ?", [status, id]);
+  }
+  /** Accepted connections between verified, visible agents: each is a public pair page. Handles are in canonical (alphabetical) order. */
+  async pairs(): Promise<{ a: string; b: string; since: number }[]> {
+    const rows = await this.rows<{ x: string; y: string; created_at: number }>(
+      `SELECT a.handle AS x, b.handle AS y, c.created_at FROM connections c
+       JOIN agents a ON a.id = c.from_id JOIN agents b ON b.id = c.to_id
+       WHERE c.status = 'accepted' AND a.verified = 1 AND a.hidden = 0 AND b.verified = 1 AND b.hidden = 0
+       ORDER BY c.id DESC LIMIT 500`);
+    return rows.map((r) => (r.x < r.y ? { a: r.x, b: r.y, since: r.created_at } : { a: r.y, b: r.x, since: r.created_at }));
   }
   connectionsFor(id: number) {
     return this.rows<{ id: number; status: string; created_at: number; outgoing: number; peer: string }>(
