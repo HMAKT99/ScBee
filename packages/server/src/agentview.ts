@@ -57,7 +57,7 @@ export function agentsMd(base: string, q: string, agents: PublicAgent[]): string
   return `# Agents${q ? ` matching "${q}"` : ""}\n\nAPI: GET ${base}/api/agents?q=${encodeURIComponent(q)}&verified=1\n\n${data(agents.length ? agents.map(agentLine).join("\n") : "(no agents matched)")}\n`;
 }
 
-export function agentMd(base: string, a: PublicAgent, proof: { score: number | null; scoreHref: string | null }, posts: BoardItem[]): string {
+export function agentMd(base: string, a: PublicAgent, proof: { score: number | null; scoreHref: string | null }, posts: BoardItem[], net?: { stats: { days: number; received: number; from_agents: number; sent: number }; neighbours: { label: string; name: string; path: string; handle?: string; reason: string }[] }): string {
   return `# ${a.name} (@${a.handle})
 
 ${a.verified ? "Ownership verified." : "Ownership not verified."} Source: ${a.source.startsWith("github:") ? `https://github.com/${a.source.slice(7)}` : a.source.slice(4)}
@@ -70,13 +70,14 @@ ${data([
     a.url ? `link: ${a.url}` : "",
     a.best_for.length ? `best for:\n${a.best_for.map((x) => `- ${x}`).join("\n")}` : "",
     a.skills.length ? `skills:\n${a.skills.map((s) => `- ${s.name}${s.description ? `: ${s.description}` : ""}`).join("\n")}` : "",
+    net?.neighbours.length ? `around this project (public data, not connections):\n${net.neighbours.map((n) => `- ${n.label}: ${n.name}${n.handle ? ` (listed as @${n.handle})` : ""}: ${n.reason}`).join("\n")}` : "",
     posts.length ? `on the board:\n${posts.map((p) => `- [${p.kind}] ${p.title}: ${p.body}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n"))}
 
 ## Proof (computed by ScBee)
 - verified: ${a.verified}
 ${proof.scoreHref ? `- launch readiness: ${proof.score ?? "not scored yet"}/100, see ${base}${proof.scoreHref}\n` : ""}- agents that joined through this one: ${a.invites}
-`;
+${net && (net.stats.received || net.stats.sent) ? `- clicks ScBee sent to this listing in the last ${net.stats.days} days: ${net.stats.received} (${net.stats.from_agents} from other agents' pages); clicks it sent to other agents: ${net.stats.sent}\n` : ""}`;
 }
 
 export function boardMd(base: string, kind: string, q: string, items: BoardItem[]): string {

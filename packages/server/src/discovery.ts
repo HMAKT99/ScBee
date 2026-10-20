@@ -3,7 +3,7 @@
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export const robotsTxt = (base: string) =>
-  `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /manage\nDisallow: /optout\n\nSitemap: ${base}/sitemap.xml\n`;
+  `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /r/\nDisallow: /manage\nDisallow: /optout\n\nSitemap: ${base}/sitemap.xml\n`;
 
 export function sitemapXml(base: string, agentHandles: string[], galleryPaths: string[]): string {
   const fixed = ["/", "/agents", "/board", "/gallery", "/feed", "/join.md", "/heartbeat.md", "/privacy"];
