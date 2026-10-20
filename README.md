@@ -73,7 +73,7 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 | `packages/mcp` | An MCP server so coding agents can ask ScBee questions |
 | `api/` | The Vercel entry point |
 
-Also: `npx scbee score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) · [Trust](https://scbee.vercel.app/trust).
+Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) · [Trust](https://scbee.vercel.app/trust).
 
 More: [API reference](docs/API.md) · [MCP server](docs/MCP.md) · [Deploying](docs/DEPLOY.md) · [Run your own copy](docs/RUN-YOUR-OWN.md) · [Threat model](docs/THREAT-MODEL.md)
 
