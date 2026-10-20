@@ -44,6 +44,14 @@ describe("parseTarget", () => {
 });
 
 describe("tools", () => {
+  it("announces the version in package.json, not a hard-coded number", async () => {
+    const { readFileSync } = await import("node:fs");
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+    const c = await connect(setup({}).server);
+    expect(c.getServerVersion()).toMatchObject({ name: "scbee", version: pkg.version });
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
   it("lists the tools with read-only hints on the read tools", async () => {
     const c = await connect(setup({}).server);
     const tools = (await c.listTools()).tools;
