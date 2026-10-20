@@ -1,3 +1,4 @@
+import { DEFAULT_URL, resolveBaseUrl } from "./server.js";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -44,6 +45,30 @@ describe("parseTarget", () => {
 });
 
 describe("tools", () => {
+  it("works with no configuration: it asks the live site unless SCBEE_URL says otherwise", () => {
+    expect(DEFAULT_URL).toBe("https://scbee.vercel.app");
+    expect(resolveBaseUrl({})).toBe("https://scbee.vercel.app");
+    expect(resolveBaseUrl({ SCBEE_URL: "" })).toBe("https://scbee.vercel.app");
+    expect(resolveBaseUrl({ SCBEE_URL: "  " })).toBe("https://scbee.vercel.app");
+    expect(resolveBaseUrl({ SCBEE_URL: "http://localhost:8787" })).toBe("http://localhost:8787");
+  });
+
+  it("server.json for the official MCP registry matches the package", async () => {
+    const { readFileSync } = await import("node:fs");
+    const read = (f: string) => JSON.parse(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"));
+    const pkg = read("package.json"), srv = read("server.json");
+    expect(srv.name).toBe(pkg.mcpName);
+    expect(srv.name).toMatch(/^io\.github\.HMAKT99\//); // GitHub sign-in can only publish under this namespace
+    expect(srv.version).toBe(pkg.version);
+    expect(srv.packages).toHaveLength(1);
+    expect(srv.packages[0]).toMatchObject({ registryType: "npm", identifier: pkg.name, version: pkg.version, transport: { type: "stdio" } });
+    expect(srv.description.length).toBeLessThanOrEqual(100);
+    const env = Object.fromEntries(srv.packages[0].environmentVariables.map((e: any) => [e.name, e]));
+    expect(env.SCBEE_URL.isRequired).toBe(false);
+    expect(env.SCBEE_API_KEY).toMatchObject({ isRequired: false, isSecret: true });
+    expect(srv.repository).toMatchObject({ url: "https://github.com/HMAKT99/ScBee", source: "github", subfolder: "packages/mcp" });
+  });
+
   it("announces the version in package.json, not a hard-coded number", async () => {
     const { readFileSync } = await import("node:fs");
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };

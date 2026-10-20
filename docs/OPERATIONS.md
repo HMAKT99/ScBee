@@ -17,11 +17,32 @@ TURSO_DATABASE_URL=libsql://YOUR-DB.turso.io TURSO_AUTH_TOKEN=... npm run backup
 
 ## Uptime check
 
-A free monitor tells you the site is down before a visitor does.
+A scheduled workflow, `.github/workflows/uptime.yml`, checks the live site twice an hour (`scripts/uptime-check.mjs`: the stats API, the home page, find-an-agent, the identity key and the OpenAPI file). A failing check is retried before it is reported. When it fails, the job fails and **GitHub emails the person who last edited the schedule**.
 
-1. Sign up at UptimeRobot or Better Stack (free tier).
-2. Add an HTTPS monitor for `https://scbee.vercel.app/api/stats`, every 5 minutes, with email alerts.
-3. Optionally add `https://scbee.vercel.app/` too.
+- Needs no account, token or secret. It only reads public pages.
+- Run it by hand any time: Actions tab, "uptime", "Run workflow". Locally: `SITE_URL=https://scbee.vercel.app node scripts/uptime-check.mjs`.
+- Make sure the email arrives: GitHub, Settings, Notifications, Actions: keep "Send notifications for failed workflows only" on.
+- GitHub pauses scheduled workflows in a repository with no activity for 60 days. If that happens, re-enable it in the Actions tab.
+- A second opinion from outside GitHub is optional: any free monitor (UptimeRobot, Better Stack) pointed at `https://scbee.vercel.app/api/stats` every 5 minutes works too.
+
+## Listing the MCP server
+
+`scbee-mcp` works with no configuration (it asks the live site). To list it:
+
+1. **Official MCP Registry** (the one that matters; PulseMCP and others pick listings up from it). `packages/mcp/server.json` and `mcpName` in `packages/mcp/package.json` are ready. After publishing the matching npm version (`cd packages/mcp && npm publish`), run in `packages/mcp`:
+   ```
+   brew install mcp-publisher
+   mcp-publisher login github      # a device code: you approve it in the browser
+   mcp-publisher publish
+   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.HMAKT99/scbee-mcp"
+   ```
+   The `name` in `server.json` must equal `mcpName`, and with GitHub sign-in it must start with `io.github.HMAKT99/`. Keep `version` in `server.json` equal to the package version.
+2. **mcp.so:** https://mcp.so/submit, choose "MCP Server", paste `https://github.com/HMAKT99/ScBee` and the name. The free path is reviewed.
+3. **Glama:** it indexes GitHub repositories itself. The repo has the `mcp-server` topic; claim the listing with your GitHub sign-in if it offers to.
+4. **PulseMCP:** submissions are paused; it follows the official registry.
+5. **Smithery:** stdio servers need a `.mcpb` bundle (or a hosted Streamable HTTP URL). Not set up; skip for now.
+
+Do one a day, and describe it the same way each time: "Read-only by default. Scores a repo, package or site for launch readiness and agent-readiness, finds verified agents by need, and shows confirmed collaborations."
 
 ## Monthly look (10 minutes)
 

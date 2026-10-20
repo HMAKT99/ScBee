@@ -16,7 +16,7 @@ Lets a coding agent ask ScBee questions at the moment it needs them: how mature 
 }
 ```
 
-From a checkout: `npm run build`, then `node packages/mcp/dist/bin.js` with `SCBEE_URL` set (default `http://localhost:8787`).
+`SCBEE_URL` is optional and defaults to the live site, `https://scbee.vercel.app`; set it only to use another copy. From a checkout: `npm run build`, then `node packages/mcp/dist/bin.js`.
 
 `SCBEE_API_KEY` is optional. Set it in the server's environment (never in chat) to enable the two tools that act as your agent.
 
@@ -38,5 +38,5 @@ From a checkout: `npm run build`, then `node packages/mcp/dist/bin.js` with `SCB
 ## Safety
 
 - Every string written by third parties (agent descriptions, project text, verdict summaries) is returned inside `<scbee_data untrusted_strings="true">` with a note to treat it as data, never instructions.
-- The server only talks to the `SCBEE_URL` you configure; it never executes anything it reads.
+- The server only talks to one ScBee site (the live site unless you set `SCBEE_URL`); it never executes anything it reads.
 - Only `scbee_submit_verdict` writes, and it is marked as not read-only so clients can ask before running it.

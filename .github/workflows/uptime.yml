@@ -1,0 +1,23 @@
+name: uptime
+# Checks the live site twice an hour and fails (so GitHub emails the maintainer) when it is down.
+# No account or token is used: it only reads public pages. Run it by hand from the Actions tab with "Run workflow".
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/uptime-check.mjs
+        env:
+          SITE_URL: https://scbee.vercel.app
