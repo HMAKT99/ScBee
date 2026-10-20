@@ -1865,3 +1865,69 @@ describe("ScBee's own agent files", () => {
     expect(r.total).toBe(95);
   });
 });
+
+describe("find an agent", () => {
+  const ua = { "user-agent": "Mozilla/5.0 (test)" };
+  const get = async (path: string, headers: Record<string, string> = ua) => { const r = await fetch(base + path, { headers, redirect: "manual" }); return { status: r.status, text: await r.text(), headers: r.headers }; };
+
+  it("ranks verified agents for a plain-words need, with install commands and tracked links", async () => {
+    await makeAgent("findown/lintbot", { card: { name: "Contradiction Linter", description: "finds contradictions in AGENTS.md and CLAUDE.md files", tagline: "Lint agent instruction files", skills: [{ id: "l", name: "Lint instructions" }], install: "npx contra-lint" } as object });
+    await makeAgent("findown/weather", { card: { name: "Rain Bot", description: "forecast rainfall", skills: [{ id: "r", name: "Forecast" }] } });
+    const page = await get(`/find?need=${encodeURIComponent("lint my AGENTS.md for contradictions")}`);
+    expect(page.status).toBe(200);
+    expect(page.text).toContain("What do you need an agent to do?");
+    expect(page.text).toContain("Contradiction Linter");
+    expect(page.text).not.toContain("Rain Bot");
+    expect(page.text).toContain('data-copy="npx contra-lint"');
+    expect(page.text).toMatch(/href="\/r\/findown-lintbot\?from=find"/);
+    expect(page.text).toContain("Matched: ");
+    expect(page.text).toContain("Copy link to these results");
+    expect(page.text).toContain('content="noindex,follow"'); // a search result is not a page to index
+    expect(page.text).toContain("Nothing is installed or run");
+    const md = await get(`/find?need=${encodeURIComponent("lint my AGENTS.md for contradictions")}&format=md`);
+    expect(md.text).toContain("@findown-lintbot");
+    expect(md.text).toContain('<scbee_data untrusted_strings="true">');
+    // the landing page is indexable and suggests needs taken from real listings
+    const land = await get("/find");
+    expect(land.status).toBe(200);
+    expect(land.text).not.toContain("noindex");
+    expect(land.text).toMatch(/Try: <a href="\/find\?need=/);
+    // a click through the result is credited to the "find" page in the receipts
+    await fetch(`${base}/r/findown-lintbot?from=find`, { redirect: "manual", headers: ua });
+    expect((await store.referralStats("findown-lintbot")).received).toBeGreaterThanOrEqual(1);
+  });
+
+  it("an unanswered need says so, counts words only, and shows demand only after 3 misses", async () => {
+    const need = "translate sanskrit manuscripts";
+    const miss = await get(`/find?need=${encodeURIComponent(need)}`);
+    expect(miss.text).toContain("No verified agent matches that yet.");
+    expect((await call("GET", "/api/demand")).json.unmet.map((d: any) => d.word)).not.toContain("sanskrit"); // one miss is not shown
+    // the same visitor and word count once a day, so repeating does not inflate it
+    await get(`/find?need=${encodeURIComponent(need)}`);
+    expect((await store.unmetDemand(30, 1)).find((d) => d.word === "sanskrit")).toMatchObject({ misses: 1 });
+    // two more visitors (days) bring it to 3
+    const day = new Date().toISOString().slice(0, 10);
+    await store.recordNeed(["sanskrit"], false); await store.recordNeed(["sanskrit"], false);
+    const demand = await call("GET", "/api/demand");
+    expect(demand.json.unmet.find((d: any) => d.word === "sanskrit")).toMatchObject({ misses: 3 });
+    expect(JSON.stringify(demand.json)).not.toContain("manuscripts for"); // no search text anywhere
+    expect((await get("/find")).text).toContain("looking for and not finding");
+    expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // bots are not counted
+    const before = (await store.unmetDemand(30, 0)).find((d) => d.word === "zanzibar");
+    await get(`/find?need=${encodeURIComponent("zanzibar cartography")}`, { "user-agent": "Googlebot/2.1" });
+    expect((await store.unmetDemand(30, 0)).find((d) => d.word === "zanzibar")).toEqual(before);
+    // the text of a search is never stored
+    const rows = await store.rows<{ word: string }>("SELECT word FROM demand", []).catch(() => [] as { word: string }[]);
+    expect(rows.every((r) => !r.word.includes(" "))).toBe(true);
+  });
+
+  it("is reachable from the home page, the footer, the sitemap, llms.txt and the OpenAPI file", async () => {
+    expect((await get("/")).text).toContain('<a href="/find">Describe what you need</a>');
+    expect((await get("/")).text).toContain('<a href="/find">Find an agent</a>');
+    expect((await get("/sitemap.xml")).text).toContain("/find");
+    expect((await get("/llms.txt")).text).toContain("/find");
+    expect(Object.keys((await call("GET", "/openapi.json")).json.paths)).toContain("/api/demand");
+    expect((await get("/find?need=ab")).text).not.toContain("No verified agent matches"); // too short: just the form
+  });
+});
