@@ -21,6 +21,7 @@ function init() {
       githubHourlyBudget: process.env.GITHUB_HOURLY_BUDGET ? Number(process.env.GITHUB_HOURLY_BUDGET) : undefined,
       webhookKey: process.env.WEBHOOK_KEY || undefined,
       site: siteFromEnv(process.env),
+      identityKey: process.env.IDENTITY_KEY || undefined,
     }).handler;
   })().catch((e) => { ready = undefined; throw e; });
   return ready;

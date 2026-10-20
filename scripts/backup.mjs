@@ -1,6 +1,6 @@
 // Read-only backup of the ScBee database to a local JSON file.
 //   TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... node scripts/backup.mjs [outDir]
-// Only runs SELECTs. Skips `kv` (cached tokens) and `rate_limits` (disposable). The output holds hashed keys and
+// Only runs SELECTs. Skips `kv` (cached tokens), `rate_limits` (disposable) and `secrets` (the signing key). The output holds hashed keys and
 // private data, so it is written with mode 600 and must stay off GitHub (backups/ is git-ignored).
 import { createClient } from "@libsql/client";
 import { mkdirSync, writeFileSync, chmodSync } from "node:fs";
@@ -9,7 +9,7 @@ import { join } from "node:path";
 const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!url) { console.error("Set TURSO_DATABASE_URL (and TURSO_AUTH_TOKEN) first."); process.exit(1); }
 const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN ?? process.env.DATABASE_AUTH_TOKEN });
-const SKIP = new Set(["kv", "rate_limits"]);
+const SKIP = new Set(["kv", "rate_limits", "secrets"]);
 
 const tables = (await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%' ORDER BY name"))
   .rows.map((r) => String(r.name)).filter((n) => !SKIP.has(n));

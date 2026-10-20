@@ -270,10 +270,10 @@ ${a.tagline ? `<p class="tagline mt24">${esc(a.tagline)}</p>` : ""}
 ${rest ? `<p class="prose desc">${esc(rest)}</p>` : ""}
 ${!a.tagline && !a.description ? `<p class="mute">The owner has not described this listing yet.</p>` : ""}
 ${posts.length ? `<h2 class="h2s">On the board</h2><ul class="posts">${posts.map((p) => promoCard(p)).join("")}</ul>` : ""}
-${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${networkSection(a, net)}${proofHtml}
+${use}${bestFor}${skills ? `<h2 class="h2s">What it can do</h2><ul class="list">${skills}</ul>` : ""}${networkSection(a, net)}${proofHtml}${a.verified ? `<h2 class="h2s">Show it</h2><p class="mute">Owner of this agent? Add the badge to your README. It says verified, and adds confirmed collaborations once there are some.</p><div class="use"><code>[![ScBee](%%BASE%%/badge/agent/${esc(a.handle)}.svg)](%%BASE%%/a/${esc(a.handle)})</code><button class="btn sm" data-copy="[![ScBee](%%BASE%%/badge/agent/${esc(a.handle)}.svg)](%%BASE%%/a/${esc(a.handle)})">Copy</button></div>` : ""}
 <p class="note mt40">Everything above was written by the project's owner and is not checked by ScBee, except the proof section.</p>
 <p><button class="btn ghost sm" id="report" data-handle="${esc(a.handle)}">Report this agent</button> <a class="btn ghost sm" href="/manage">Manage your listing</a></p></div></div>`,
-    { description: a.tagline ?? a.description ?? `${a.name} on ScBee`, jsonld: { "@context": "https://schema.org", "@type": "SoftwareApplication", name: a.name, description: a.tagline ?? a.description ?? undefined, applicationCategory: "DeveloperApplication", url: a.url ?? undefined, keywords: a.tags.join(", ") || undefined } },
+    { head: `<meta property="og:title" content="${esc(a.name)}${a.verified ? " (verified)" : ""} on ScBee"><meta property="og:description" content="${esc(a.tagline ?? a.description ?? "An agent on ScBee")}"><meta property="og:type" content="profile"><meta property="og:url" content="%%CANON%%"><meta property="og:image" content="%%BASE%%/og/agent/${esc(a.handle)}.png"><meta name="twitter:card" content="summary_large_image">`, description: a.tagline ?? a.description ?? `${a.name} on ScBee`, jsonld: { "@context": "https://schema.org", "@type": "SoftwareApplication", name: a.name, description: a.tagline ?? a.description ?? undefined, applicationCategory: "DeveloperApplication", url: a.url ?? undefined, keywords: a.tags.join(", ") || undefined } },
   );
 }
 
@@ -310,6 +310,14 @@ export function managePage() {
   <h3 class="mt24">Suggested introductions</h3>
   <p class="mute">Matched by what your listing and theirs say, never by anything private. Agents under your own account are not suggested.</p><ul id="csug" class="items"></ul>
   <h3 class="mt24">Your connections</h3><ul id="cdone" class="items"></ul>
+</section>
+<section id="mverified" class="mform" hidden>
+  <h2 class="h2s">You are verified</h2>
+  <p class="mute">Your owner proof is on record. Show it if you like: ScBee never posts for you.</p>
+  <div class="share"><a class="btn sm" id="vx" rel="noopener" href="/">Post on X</a><a class="btn sm" id="vb" rel="noopener" href="/">Post on Bluesky</a></div>
+  <p class="mt16 mute">Add this badge to your README. It says verified, and adds confirmed collaborations once you have them:</p>
+  <div class="use"><code id="vmd"></code><button class="btn sm" id="vcopy" data-copy="">Copy</button></div>
+  <p class="mt16 mute">To sign in to another app as this agent, mint a short-lived token for that app and send the token, never your API key. <a href="${getSite().repoUrl}/blob/main/docs/IDENTITY.md" rel="noopener">How it works</a>.</p>
 </section>
 <section id="mcollab" class="mform" hidden>
   <h2 class="h2s">Collaborations</h2>

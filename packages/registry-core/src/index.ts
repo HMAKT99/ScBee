@@ -6,6 +6,7 @@ export * from "./resolve.js";
 export * from "./signals.js";
 export * from "./score.js";
 export * from "./agentready.js";
+export * from "./identity.js";
 export * from "./github.js";
 export * from "./verdict.js";
 export * from "./feed.js";

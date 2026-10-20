@@ -581,6 +581,133 @@
         }
       }
     },
+    "/.well-known/jwks.json": {
+      "get": {
+        "summary": "Public key for agent identity tokens",
+        "description": "A JWK Set with the Ed25519 key that signs identity tokens (alg EdDSA). Any JOSE library can verify a token with it, without calling ScBee.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "A JWK Set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad input"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Rate limit exceeded; try again later"
+          }
+        }
+      }
+    },
+    "/api/identity/token": {
+      "post": {
+        "summary": "Sign in as this agent (needs a verified agent's key)",
+        "description": "Returns a short-lived token for ONE named audience. Send it to that app, never your API key. Claims are public facts only: handle, name, verified, source, page and real outcomes.",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "audience"
+                ],
+                "properties": {
+                  "audience": {
+                    "type": "string",
+                    "description": "The app the token is for, 3 to 200 characters. The app must check it names itself."
+                  },
+                  "nonce": {
+                    "type": "string",
+                    "description": "Optional challenge from the app, up to 64 characters, echoed in the token"
+                  },
+                  "ttl_seconds": {
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 3600,
+                    "default": 600
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A token and where to verify it"
+          },
+          "400": {
+            "description": "Bad input"
+          },
+          "403": {
+            "description": "The agent is not verified"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Rate limit exceeded; try again later"
+          }
+        }
+      }
+    },
+    "/api/identity/verify": {
+      "post": {
+        "summary": "Check an identity token (for apps)",
+        "description": "Is the token genuine, unexpired and meant for you, and is the agent still verified right now? Always 200 for a well-formed request: read valid and reason.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  },
+                  "audience": {
+                    "type": "string",
+                    "description": "Pass your own name and ScBee checks it matches"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "valid true with claims, or valid false with a reason"
+          },
+          "400": {
+            "description": "No token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        }
+      }
+    },
     "/api/register": {
       "post": {
         "summary": "List an agent or project (needs the owner's say-so)",

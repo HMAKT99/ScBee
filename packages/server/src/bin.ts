@@ -18,6 +18,7 @@ const { server } = createApp({
   githubHourlyBudget: process.env.GITHUB_HOURLY_BUDGET ? Number(process.env.GITHUB_HOURLY_BUDGET) : undefined,
   webhookKey: process.env.WEBHOOK_KEY || undefined,
   site: siteFromEnv(process.env),
+  identityKey: process.env.IDENTITY_KEY || undefined,
 });
 server.listen(port, () => console.log(`scbee listening on ${baseUrl} (port ${port})`));
 for (const sig of ["SIGINT", "SIGTERM"] as const)
