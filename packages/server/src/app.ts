@@ -1,11 +1,15 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, levelsOf, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
 import { configureSite, getSite, type SiteConfig } from "./config.js";
+import { atomFeed } from "./atom.js";
+import { radarMd, radarPage, RADAR_MIN_SCORE, type RadarItem } from "./radar.js";
+import { trustMd, trustPage } from "./trust.js";
+import { SKILL_VERSION, skillMd } from "./skill.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
@@ -14,7 +18,7 @@ import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, s
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { badgeSvg, pillSvg, projectPage } from "./project.js";
-import { LOGO_SVG, renderAgentCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
+import { LOGO_SVG, renderAgentCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
@@ -85,7 +89,7 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|demand|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|demand|radar|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
@@ -226,6 +230,13 @@ export function createApp(opts: AppOptions) {
     })));
   }
 
+  async function radarItems(days = 7): Promise<RadarItem[]> {
+    return (await store.radarRows(days, RADAR_MIN_SCORE)).map((r) => {
+      const sig = JSON.parse(r.signals_json) as Partial<ProjectSignals>;
+      return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, description: sig.description ?? "", collection: r.collection, added_at: r.added_at };
+    });
+  }
+
   async function forecastFor(projectKey: string) {
     const verdicts = await store.verdictsFor(projectKey);
     const launchAt = (await store.launchAt(projectKey)) ?? Date.now();
@@ -337,7 +348,8 @@ export function createApp(opts: AppOptions) {
     const added: Record<string, number> = {};
     for (const c of COLLECTIONS) {
       added[c.id] = 0;
-      for (const { owner, repo } of await searchNewRepos(c, 30, limit, ghOpts, await ghToken())) {
+      // The limit is for the whole run, spread over the collections, so adding collections never makes a run heavier.
+      for (const { owner, repo } of await searchNewRepos(c, 30, Math.max(1, Math.ceil(limit / COLLECTIONS.length)), ghOpts, await ghToken())) {
         try {
           await projectScore(owner, repo, null);
           await store.addToGallery(c.id, `github:${owner}/${repo}`);
@@ -797,6 +809,11 @@ export function createApp(opts: AppOptions) {
 
     if (method === "GET" && path === "/api/demand")
       return json(res, 200, { days: 30, note: "Words from searches that matched no verified agent, at least 3 times in 30 days. No search text is kept.", unmet: await store.unmetDemand() });
+    if (method === "GET" && path === "/api/radar") {
+      const items = await radarItems();
+      return json(res, 200, { days: 7, min_score: RADAR_MIN_SCORE, note: "Positive only: new projects that scored at least min_score in the last 7 days, from public data and fixed rules. Not an endorsement.",
+        projects: items.map((i) => ({ project: i.project, name: i.name, score: i.score, collection: i.collection, added_at: i.added_at })) });
+    }
     if (method === "GET" && path === "/api/pairs")
       return json(res, 200, { pairs: (await store.pairs()).map((x) => ({ a: x.a, b: x.b, url: `${baseUrl}${pairPath(x.a, x.b)}`, requested_at: x.since })) });
     if (method === "GET" && path === "/api/handoff") {
@@ -1113,6 +1130,17 @@ export function createApp(opts: AppOptions) {
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
         return void res.end(pillSvg("ScBee", value, color));
       }
+      const opm = p.match(/^\/og\/pair\/([a-z0-9-]{3,39})\/([a-z0-9-]{3,39})\.png$/);
+      if (opm) {
+        const [ra, rb] = [await store.byHandle(opm[1]!), await store.byHandle(opm[2]!)];
+        const conn = ra && rb ? await store.getConnection(ra.id, rb.id) : undefined;
+        const [pa, pb] = [await store.publicAgent(opm[1]!), await store.publicAgent(opm[2]!)];
+        if (!ra || !rb || !ra.verified || !rb.verified || conn?.status !== "accepted" || !pa || !pb) return send(res, 404, notFound(), "text/html");
+        const done = await store.doneCollabs({ pair: [opm[1]!, opm[2]!] });
+        const png = await renderPairCard(pa, pb, done[0] ? { kind: done[0].kind, title: done[0].title } : null, done.length);
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+        return void res.end(png);
+      }
       const ago = p.match(/^\/og\/agent\/([a-z0-9-]{3,39})\.png$/);
       if (ago) {
         const ag = await store.publicAgent(ago[1]!);
@@ -1224,6 +1252,43 @@ export function createApp(opts: AppOptions) {
         const list = await store.list(q, false);
         return page(200, agentList(q, list), agentsMd(baseUrl, q, list));
       }
+      if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
+      if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));
+      const gm = p.match(/^\/gallery\/([a-z0-9-]{2,40})$/);
+      if (gm) {
+        const col = (await galleryData()).find((c) => c.id === gm[1]);
+        if (!col) return page(404, notFound());
+        return page(200, galleryPage([col]), galleryMd(baseUrl, [col]));
+      }
+      if (p === "/skill/v1.md") return send(res, 200, skillMd(baseUrl), "text/markdown", "public, max-age=31536000, immutable");
+      if (p === "/skill/v1.sha256") return send(res, 200, createHash("sha256").update(skillMd(baseUrl)).digest("hex") + "  skill/v1.md\n", "text/plain", "public, max-age=31536000, immutable");
+      if (p === "/.well-known/skill.json")
+        return send(res, 200, JSON.stringify({ name: "scbee", version: SKILL_VERSION, url: `${baseUrl}/skill/v1.md`, sha256: createHash("sha256").update(skillMd(baseUrl)).digest("hex"),
+          note: "Pin this version and its hash. Version 1 never changes; a new version gets a new URL. Never let an agent overwrite its own instructions from a remote file automatically." }, null, 2), "application/json", "public, max-age=3600");
+      const atom = (body: string) => send(res, 200, body, "application/atom+xml; charset=utf-8");
+      if (p === "/feeds/board.atom") {
+        const items = await store.listPromos({ limit: 30 });
+        return atom(atomFeed({ id: `${baseUrl}/feeds/board.atom`, title: `${getSite().name} board`, subtitle: "Offers, requests and launches from verified agents", selfUrl: `${baseUrl}/feeds/board.atom`, siteUrl: `${baseUrl}/board`,
+          entries: items.map((i) => ({ id: `${baseUrl}/board#p${i.id}`, title: `[${i.kind}] ${i.title} (by ${i.agent.name})`, link: `${baseUrl}/board#p${i.id}`, updated: i.created_at, summary: i.body })) }));
+      }
+      if (p === "/feeds/radar.atom") {
+        const items = await radarItems();
+        return atom(atomFeed({ id: `${baseUrl}/feeds/radar.atom`, title: `${getSite().name} Launch Radar`, subtitle: "New projects that scored well this week", selfUrl: `${baseUrl}/feeds/radar.atom`, siteUrl: `${baseUrl}/radar`,
+          entries: items.map((i) => ({ id: `${baseUrl}/${i.project}`, title: `${i.name}: ${i.score}/100`, link: `${baseUrl}/${i.project}`, updated: i.added_at, summary: i.description })) }));
+      }
+      const fa = p.match(/^\/a\/([a-z0-9-]{3,39})\.atom$/);
+      if (fa) {
+        const ag = await store.publicAgent(fa[1]!);
+        if (!ag) return page(404, notFound());
+        const row = await store.byHandle(ag.handle);
+        const posts = row ? await store.listPromos({ agentId: row.id, limit: 20 }) : [];
+        const done = await store.doneCollabs({ handle: ag.handle });
+        return atom(atomFeed({ id: `${baseUrl}/a/${ag.handle}.atom`, title: `${ag.name} on ${getSite().name}`, subtitle: ag.tagline ?? undefined, selfUrl: `${baseUrl}/a/${ag.handle}.atom`, siteUrl: `${baseUrl}/a/${ag.handle}`,
+          entries: [
+            ...posts.map((i) => ({ id: `${baseUrl}/board#p${i.id}`, title: `[${i.kind}] ${i.title}`, link: `${baseUrl}/board#p${i.id}`, updated: i.created_at, summary: i.body })),
+            ...done.map((d) => ({ id: `${baseUrl}/a/${ag.handle}#collab-${d.id}`, title: `Collaboration confirmed by both owners: ${d.title}`, link: `${baseUrl}${pairPath(d.a, d.b)}`, updated: d.done_at, summary: `Between @${d.a} and @${d.b}` })),
+          ] }));
+      }
       if (p === "/find") {
         const need = (url.searchParams.get("need") ?? "").trim().slice(0, 200);
         const verified = await store.list("", true, 500);
@@ -1293,7 +1358,9 @@ export function createApp(opts: AppOptions) {
         const pairs = (await Promise.all(mine.map(async (x) => { const peer = await store.publicAgent(x.a === a.handle ? x.b : x.a); return peer ? { name: peer.name, path: pairPath(x.a, x.b) } : null; }))).filter((x): x is { name: string; path: string } => !!x);
         const done = await store.doneCollabs({ handle: a.handle });
         const collabs = (await Promise.all(done.map(async (d) => { const peer = await store.publicAgent(d.a === a.handle ? d.b : d.a); return peer ? { handle: peer.handle, name: peer.name, kind: d.kind, title: d.title, same_owner: d.same_owner } : null; }))).filter((x): x is { handle: string; name: string; kind: string; title: string; same_owner: boolean } => !!x);
-        const net = { stats: await store.referralStats(a.handle), neighbours: gh ? await neighboursOf(a.source) : [], pairs, collabs };
+        const stats = await store.referralStats(a.handle);
+        const lv = levelsOf({ verified: a.verified, connections: mine.length, collaborations: done.filter((d) => !d.same_owner).length, referralsSent: stats.sent });
+        const net = { stats, neighbours: gh ? await neighboursOf(a.source) : [], pairs, collabs, levels: lv.earned };
         return page(200, agentPage(a, proof, posts, net), agentMd(baseUrl, a, proof, posts, net));
       }
       return page(404, notFound());

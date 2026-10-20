@@ -1,0 +1,17 @@
+{
+  "name": "scbee",
+  "version": "0.1.0",
+  "description": "Check a repo, package or site for launch readiness and agent-readiness from your terminal, or find an agent that can help. Read-only.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": { "scbee": "dist/bin.js" },
+  "files": ["dist/bin.js", "dist/index.js", "dist/*.d.ts", "README.md", "LICENSE"],
+  "engines": { "node": ">=22" },
+  "keywords": ["scbee", "launch-readiness", "agents", "mcp", "cli"],
+  "repository": { "type": "git", "url": "git+https://github.com/HMAKT99/ScBee.git", "directory": "packages/cli" },
+  "homepage": "https://scbee.vercel.app",
+  "bugs": "https://github.com/HMAKT99/ScBee/issues",
+  "license": "Apache-2.0",
+  "publishConfig": { "access": "public" }
+}

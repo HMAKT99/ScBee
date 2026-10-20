@@ -6,6 +6,9 @@ export interface Collection { id: string; title: string; blurb: string; topic: s
 export const COLLECTIONS: Collection[] = [
   { id: "mcp-servers", title: "New MCP servers", blurb: "The newest repositories tagged mcp-server, scored for launch readiness.", topic: "mcp-server" },
   { id: "ai-agents", title: "New AI agent projects", blurb: "The newest repositories tagged ai-agents, scored for launch readiness.", topic: "ai-agents" },
+  { id: "agent-skills", title: "New agent skills", blurb: "The newest repositories tagged agent-skills, scored for launch readiness.", topic: "agent-skills" },
+  { id: "a2a", title: "New A2A agents", blurb: "The newest repositories tagged a2a, scored for launch readiness.", topic: "a2a" },
+  { id: "claude-code", title: "New Claude Code projects", blurb: "The newest repositories tagged claude-code, scored for launch readiness.", topic: "claude-code" },
 ];
 
 const GH = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
