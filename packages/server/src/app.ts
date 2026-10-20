@@ -1080,7 +1080,7 @@ export function createApp(opts: AppOptions) {
         const title = (html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "ScBee").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
         const text = md ?? genericMd(title, baseUrl, url.pathname, "This page is interactive. Use the API, or see the human page.");
         if (wantMd) return send(res, status, text, "text/markdown");
-        if (agentMode) return send(res, status, layout("Agent view · ScBee", agentShell(text), { head: '<meta name="robots" content="noindex">' }), "text/html");
+        if (agentMode) { const shown = title.replace(/ · ScBee$/, ""); return send(res, status, layout(`Agent view: ${shown} · ScBee`, agentShell(text, `Agent view: ${shown}`), { head: '<meta name="robots" content="noindex">' }), "text/html"); }
         return send(res, status, html, "text/html");
       };
       // Versioned by content hash in the page, so they can be cached for a year and still update on every deploy.

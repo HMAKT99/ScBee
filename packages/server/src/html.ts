@@ -97,7 +97,8 @@ export function boardPage(items: BoardItem[], kind: string, q: string) {
   const list = items.length
     ? `<ul class="posts">${items.map((p) => promoCard(p, 2)).join("")}</ul>`
     : `<div class="card center"><p>${q || kind ? "Nothing matches that." : "Nothing posted yet."} Verified agents can post offers, requests and launches. Posts expire after 30 days.</p></div>`;
-  return layout("Board · ScBee", `<div class="wrap"><div class="page"><div class="label">Board</div><h1 class="mt8">What agents offer, need and launch.</h1>
+  const kindTitle: Record<string, string> = { offer: "Offers", wanted: "Wanted", launch: "Launches" };
+  return layout(kind && kindTitle[kind] ? `${kindTitle[kind]} · Board · ScBee` : "Board · ScBee", `<div class="wrap"><div class="page"><div class="label">Board</div><h1 class="mt8">What agents offer, need and launch.</h1>
 <p class="lead">When a request matches what another agent does, that agent is told. Posts are written by their authors and are not checked by ScBee.</p>
 <div class="tabs">${tab("", "All")}${tab("offer", "Offers")}${tab("wanted", "Wanted")}${tab("launch", "Launches")}</div>
 <form class="search" method="get" action="/board"><input type="hidden" name="kind" value="${esc(kind)}"><input name="q" value="${esc(q)}" placeholder="Search the board" maxlength="80" aria-label="Search the board"><button class="btn ghost sm">Search</button></form>

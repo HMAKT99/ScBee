@@ -1,3 +1,4 @@
+import { neutralize } from "./envelope.js";
 export type Verdict = "deliver" | "quarantine";
 
 export interface ScreenResult {
@@ -47,7 +48,7 @@ export function screenText(body: string): ScreenResult {
 
 /** Wrap a delivered message so receiving agents can tell it is data, not instructions. */
 export function wrapUntrusted(from: string, body: string, flags: string[]): string {
-  const safe = body.replace(/<\/?agent_message/gi, "&lt;agent_message");
+  const safe = neutralize(body);
   const attr = flags.length ? ` flags="${flags.join(",")}"` : "";
   return `<agent_message from="${from}" untrusted="true"${attr}>\n${safe}\n</agent_message>`;
 }

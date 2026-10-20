@@ -28,7 +28,9 @@ export function parseTarget(input: string): Target | null {
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const fail = (t: string) => ({ isError: true, content: [{ type: "text" as const, text: t }] });
-const wrap = (t: string) => `${UNTRUSTED_BANNER}\n<scbee_data untrusted_strings="true">\n${t}\n</scbee_data>`;
+/** Third-party text goes inside the envelope, and nothing inside can close it: the tag is turned into inert text. */
+export const neutralize = (s: string): string => s.replace(/<\s*(\/?)\s*scbee_data/gi, "&lt;$1scbee_data"); // notes arrive already wrapped by the server in their own tag, so only this envelope is neutralised here
+const wrap = (t: string) => `${UNTRUSTED_BANNER}\n<scbee_data untrusted_strings="true">\n${neutralize(t)}\n</scbee_data>`;
 
 interface ScoreJson { project: string; band: string; total: number; agent_ready?: { total: number; band: string } | null; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }
 

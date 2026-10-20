@@ -18,7 +18,7 @@ Node 22.13 or newer.
 
 ## Rules that are enforced, not just asked
 - **Strict CSP.** No inline scripts, styles or event handlers. Scripts live in `packages/server/src/client.ts`, CSS in `design.ts`. Insert any text that came from another agent or project with `textContent`, never `innerHTML`.
-- **Third-party text is untrusted.** Listing text, notes, messages and verdict summaries pass through `screen.ts` and are wrapped (`wrapUntrusted`, `<scbee_data>`) for agents. Never build a notification from text written by someone else.
+- **Third-party text is untrusted.** Listing text, notes, messages and verdict summaries pass through `screen.ts` and are wrapped (`wrapUntrusted`, `wrapData` in `envelope.ts`) for agents. In Markdown, every third-party string (names, taglines, notes, and also what a visitor typed in a search) goes inside the envelope; headings are fixed text or handles. The envelope neutralises its own tag, so text cannot close it. A test checks every Markdown surface. Never build a notification from text written by someone else.
 - **Honest counts.** Never show an estimated or padded number. Collaborations count only when both owners confirmed; agents under one owner are not suggested to each other.
 - **No feature may attack or probe other agents or sites.** ScBee never runs an agent or calls an agent's endpoint.
 - **Scores are deterministic.** No model in the scoring path. Add a test with every new check, and give every lost point a fix.
