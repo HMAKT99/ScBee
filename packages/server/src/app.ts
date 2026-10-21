@@ -349,21 +349,32 @@ export function createApp(opts: AppOptions) {
     }
     return { forecasts_checked: forecasts, deliveries_retried: retried };
   }
-  async function refreshGallery(limit: number) {
+  /**
+   * Adds up to `limit` NEW projects across the collections, in parallel and inside a time budget (a Vercel function may run only 15 s).
+   * Projects already in a collection are skipped, so each run moves forward instead of re-reading the same top results.
+   */
+  async function refreshGallery(limit: number, budgetMs = 11_000) {
+    const deadline = Date.now() + budgetMs;
+    const per = Math.max(1, Math.ceil(limit / COLLECTIONS.length));
+    const token = await ghToken();
     const added: Record<string, number> = {};
-    for (const c of COLLECTIONS) {
+    let stop = false;
+    await Promise.all(COLLECTIONS.map(async (c) => {
       added[c.id] = 0;
-      // The limit is for the whole run, spread over the collections, so adding collections never makes a run heavier.
-      for (const { owner, repo } of await searchNewRepos(c, 30, Math.max(1, Math.ceil(limit / COLLECTIONS.length)), ghOpts, await ghToken())) {
+      const have = new Set((await store.galleryRows(c.id, 200)).map((r) => r.source_key));
+      const found = await searchNewRepos(c, 30, Math.min(30, per * 5 + have.size), ghOpts, token);
+      for (const { owner, repo } of found) {
+        if (stop || added[c.id]! >= per || Date.now() > deadline) return;
+        if (have.has(`github:${owner}/${repo}`)) continue;
         try {
           await projectScore(owner, repo, null);
           await store.addToGallery(c.id, `github:${owner}/${repo}`);
           added[c.id]!++;
         } catch (e) {
-          if (e instanceof HttpError && e.status === 429) return added; // GitHub rate limit: stop and try next run
+          if (e instanceof HttpError && e.status === 429) { stop = true; return; } // GitHub rate limit: stop and try next run
         }
       }
-    }
+    }));
     return added;
   }
   const cronAuth = (req: IncomingMessage) => {

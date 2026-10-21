@@ -2082,10 +2082,13 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     for (const r of ["one", "two", "three"]) { const api2 = `https://api.github.com/repos/idxowner/${r}`; files[api2] = JSON.stringify({ full_name: `idxowner/${r}`, description: "x", stargazers_count: 1, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() }); files[`${api2}/contents`] = "[]"; }
     const cr = await fetch(`${base}/api/cron/gallery?limit=5`, { headers: { authorization: "Bearer cron-secret" } });
     expect(Object.keys((await cr.json()).added)).toHaveLength(6);
-    // a limit of 5 over 6 collections still asks GitHub for 1 repository each
+    // a limit of 5 over 6 collections adds at most 1 new project each (it asks for a few extra, to skip ones already listed)
     const asked = searchUrls.slice(-6);
     expect(asked).toHaveLength(6);
-    for (const u of asked) expect(u).toMatch(/per_page=1$/);
+    for (const u of asked) expect(u).toMatch(/per_page=\d+$/);
+    // a second run moves forward: the project already listed is skipped and the next one is added
+    const again = await fetch(`${base}/api/cron/gallery?limit=5`, { headers: { authorization: "Bearer cron-secret" } });
+    expect(Object.values((await again.json()).added)).toEqual([1, 1, 1, 1, 1, 1]);
     // the reverse-engineering collection stays on-theme with fixed extra terms
     expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("mcp in:name,description,topics");
   });
