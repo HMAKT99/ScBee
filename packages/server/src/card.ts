@@ -93,6 +93,31 @@ export async function renderPairCard(a: { name: string }, b: { name: string }, c
   return Buffer.from(new Resvg(svg).render().asPng());
 }
 
+const collectionCards = new Map<string, Buffer>();
+/** Share image for one Index collection: its title, how many projects it lists today, and the domain. */
+export async function renderCollectionCard(title: string, count: number, domain = "scbee.vercel.app"): Promise<Buffer> {
+  const key = `${title}|${count}|${domain}`;
+  const cached = collectionCards.get(key);
+  if (cached) return cached;
+  const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
+  const tree = h("div", { width: 1200, height: 630, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "52px 64px 48px", background: PAPER, color: INK, fontFamily: "Inter" }, [
+    h("div", { display: "flex", width: 1072, justifyContent: "space-between", alignItems: "center" }, [
+      h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 38, fontWeight: 500 }, [h("div", { width: 26, height: 26, background: AMBER, borderRadius: 6, marginRight: 14 }), "ScBee"]),
+      h("div", { fontSize: 20, color: MUTE, letterSpacing: 2 }, "INDEX"),
+    ]),
+    h("div", { display: "flex", position: "absolute", left: 64, top: 190, width: 1072, fontFamily: "Fraunces", fontWeight: 300, fontSize: title.length > 30 ? 76 : 92, lineHeight: 1.05, letterSpacing: -3 }, title),
+    h("div", { display: "flex", position: "absolute", left: 64, bottom: 44, width: 1072, justifyContent: "space-between", borderTop: `1px solid ${INK}`, paddingTop: 18, fontSize: 24, color: MUTE }, [
+      h("div", {}, count > 0 ? `${count} ${count === 1 ? "project" : "projects"} scored by fixed rules` : "Scored by fixed rules"),
+      h("div", { letterSpacing: 2 }, domain.toUpperCase()),
+    ]),
+  ]);
+  const svg = await satori(tree as never, { width: 1200, height: 630, fonts: loadFonts() });
+  const png = Buffer.from(new Resvg(svg).render().asPng());
+  if (collectionCards.size > 50) collectionCards.clear();
+  collectionCards.set(key, png);
+  return png;
+}
+
 /** The brand mark as a standalone SVG (favicon, touch icon). Transparent corners, amber hexagon, three connected points. */
 export const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#0d0d0d" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#0d0d0d"/><circle cx="16" cy="11.5" r="2.3" fill="#0d0d0d"/><circle cx="21.5" cy="18" r="2.3" fill="#0d0d0d"/></svg>`;
 
