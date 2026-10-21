@@ -33,3 +33,30 @@ export function rankForNeed(need: string, agents: PublicAgent[], exclude: string
   }
   return out.sort((x, y) => y.score - x.score || y.agent.created_at - x.agent.created_at).slice(0, max);
 }
+
+export interface ProjectHit { project: string; name: string; score: number; band: string; description: string }
+export interface ProjectMatch { item: ProjectHit; matched: string[]; points: number }
+
+/**
+ * Scored public projects (the Index) that mention a need. These are not verified agents: nobody has claimed them.
+ * Same fixed rule, no model: a word in the name counts 3, in the description 1.
+ */
+export function rankProjects(need: string, items: ProjectHit[], max = 3): ProjectMatch[] {
+  const words = needWords(need);
+  if (!words.length) return [];
+  const seen = new Set<string>();
+  const out: ProjectMatch[] = [];
+  for (const item of items) {
+    if (seen.has(item.project)) continue;
+    seen.add(item.project);
+    const name = item.name.toLowerCase(), desc = item.description.toLowerCase();
+    const matched: string[] = [];
+    let points = 0;
+    for (const w of words) {
+      const pts = name.includes(w) ? 3 : desc.includes(w) ? 1 : 0;
+      if (pts) { points += pts; matched.push(w); }
+    }
+    if (points) out.push({ item, matched, points });
+  }
+  return out.sort((x, y) => y.points - x.points || y.item.score - x.item.score).slice(0, max);
+}

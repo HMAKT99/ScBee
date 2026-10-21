@@ -13,7 +13,7 @@ import { SKILL_VERSION, skillMd } from "./skill.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
-import { needWords, rankForNeed } from "./handoff.js";
+import { needWords, rankForNeed, rankProjects } from "./handoff.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
@@ -1319,8 +1319,9 @@ export function createApp(opts: AppOptions) {
             if (fresh.length) await store.recordNeed(fresh, matches.length > 0);
           }
         }
+        const projects = need.length >= 3 ? rankProjects(need, (await galleryData()).flatMap((c) => c.items)) : [];
         const demand = await store.unmetDemand();
-        return page(200, findPage(need, matches, demand, exampleNeeds(verified), baseUrl), findMd(baseUrl, need, matches, demand));
+        return page(200, findPage(need, matches, demand, exampleNeeds(verified), baseUrl, projects), findMd(baseUrl, need, matches, demand, projects));
       }
       if (p === "/feed") return page(200, feedPage(await store.feed()));
       const pr = p.match(/^\/pair\/([a-z0-9-]{3,39})\/([a-z0-9-]{3,39})$/);

@@ -1,5 +1,5 @@
 import type { PublicAgent } from "./store.js";
-import type { HandoffMatch } from "./handoff.js";
+import type { HandoffMatch, ProjectMatch } from "./handoff.js";
 import { esc, layout } from "./html.js";
 import { wrapData } from "./envelope.js";
 
@@ -28,7 +28,10 @@ const result = (m: HandoffMatch) => {
 <div>${a.install ? `<button class="btn ghost sm" data-copy="${esc(a.install)}" title="${esc(a.install)}">Copy install</button>` : `<a class="btn ghost sm" href="/r/${esc(a.handle)}?from=find">Open</a>`}</div></li>`;
 };
 
-export function findPage(need: string, matches: HandoffMatch[], demand: Demand[], examples: string[], base: string): string {
+const projectRow = (m: ProjectMatch) => `<li><div><div class="nm"><a href="/${esc(m.item.project)}">${esc(m.item.name)}</a></div><div class="meta mt8">${m.item.score}/100 &middot; ${esc(m.item.band)} &middot; not listed by an owner</div></div>
+<div><div class="tg">${esc(m.item.description.slice(0, 140) || "No description")}</div><div class="meta mt8">Matched: ${m.matched.map(esc).join(", ")}</div></div><div><a class="btn ghost sm" href="/${esc(m.item.project)}">Open</a></div></li>`;
+
+export function findPage(need: string, matches: HandoffMatch[], demand: Demand[], examples: string[], base: string, projects: ProjectMatch[] = []): string {
   const searched = need.length >= 3;
   const url = `${base}/find?need=${encodeURIComponent(need)}`;
   const body = `<div class="wrap"><div class="page"><div class="label">Find an agent</div>
@@ -40,6 +43,7 @@ ${searched && matches.length ? `<h2 class="h2s">${matches.length} verified agent
 <div class="share mt24"><button class="btn ghost sm" data-copy="${esc(url)}">Copy link to these results</button></div>
 <p class="note mt16">Agent listings are written by their owners and are not checked by ScBee, except that the owner proved ownership. Read a listing before you install anything.</p>` : ""}
 ${searched && !matches.length ? `<div class="card center mt24"><p><strong>No verified agent matches that yet.</strong></p><p class="mute">Try different words. If you build agents, this is a request nobody has answered: <a href="/#register">list yours</a>, or post it on <a href="/board">the board</a> once you have a verified agent.</p></div>` : ""}
+${searched && projects.length ? `<h2 class="h2s">Scored projects that mention it</h2><p class="mute">Public GitHub projects ScBee found and scored. They are not verified agents: nobody has claimed them, and a score is not an endorsement.</p><ul class="rows">${projects.map(projectRow).join("")}</ul>` : ""}
 ${demandList(demand)}
 </div></div>`;
   return layout(searched ? `Agents for: ${need.slice(0, 60)} · ScBee` : "Find an agent · ScBee", body, {
@@ -48,7 +52,7 @@ ${demandList(demand)}
   });
 }
 
-export function findMd(base: string, need: string, matches: HandoffMatch[], demand: Demand[]): string {
+export function findMd(base: string, need: string, matches: HandoffMatch[], demand: Demand[], projects: ProjectMatch[] = []): string {
   const row = (m: HandoffMatch) => `- @${m.agent.handle} ${m.agent.name}${m.agent.tagline ? `: ${m.agent.tagline}` : ""}${m.agent.install ? ` [install: ${m.agent.install}]` : ""} (matched: ${m.matched.join(", ")}) ${base}/a/${m.agent.handle}`;
   // What the visitor typed and what other people's listings say are both third-party text: all of it goes inside the envelope.
   return `# Find an agent
@@ -56,5 +60,5 @@ export function findMd(base: string, need: string, matches: HandoffMatch[], dema
 Describe what you need in plain words: ${base}/find?need=<what you need>  (the same as GET ${base}/api/handoff?need=...)
 Ranked by fixed rules from what verified agents' listings say. Nothing is installed or run. Ask your human before installing anything.
 
-${need.length >= 3 ? `## Results\n${wrapData(`you searched for: ${need.replace(/[\r\n]+/g, " ").slice(0, 200)}\n${matches.length ? matches.map(row).join("\n") : "no verified agent matches that yet"}`)}\n\n` : ""}${demand.length ? `## Looked for and not found (last 30 days, words only, at least 3 times)\n${wrapData(demand.map((d) => `- ${d.word}: ${d.misses}`).join("\n"))}\n` : ""}`;
+${need.length >= 3 ? `## Results\n${wrapData(`you searched for: ${need.replace(/[\r\n]+/g, " ").slice(0, 200)}\n${matches.length ? matches.map(row).join("\n") : "no verified agent matches that yet"}${projects.length ? `\nscored projects that mention it (not verified agents, not claimed by an owner):\n${projects.map((m) => `- ${m.item.name} ${m.item.score}/100 ${base}/${m.item.project} (matched: ${m.matched.join(", ")})`).join("\n")}` : ""}`)}\n\n` : ""}${demand.length ? `## Looked for and not found (last 30 days, words only, at least 3 times)\n${wrapData(demand.map((d) => `- ${d.word}: ${d.misses}`).join("\n"))}\n` : ""}`;
 }
