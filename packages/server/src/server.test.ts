@@ -2090,6 +2090,22 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("mcp in:name,description,topics");
   });
 
+  it("find also shows scored Index projects that mention the need, labelled as not verified agents", async () => {
+    searchItems = [{ full_name: "findowner/decompilex" }];
+    const api2 = "https://api.github.com/repos/findowner/decompilex";
+    files[api2] = JSON.stringify({ full_name: "findowner/decompilex", description: "decompiler for stripped binaries", stargazers_count: 3, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api2}/contents`] = "[]";
+    await fetch(`${base}/api/cron/gallery?limit=5`, { headers: { authorization: "Bearer cron-secret" } });
+    const hit = await get("/find?need=decompiler%20binaries");
+    expect(hit.text).toContain("Scored projects that mention it");
+    expect(hit.text).toContain("not listed by an owner");
+    expect(hit.text).toContain('href="/github.com/findowner/decompilex"');
+    const md = (await get("/find?need=decompiler%20binaries&format=md")).text;
+    expect(md).toContain("not verified agents, not claimed by an owner");
+    expect(md).toContain("findowner/decompilex");
+    expect((await get("/find?need=quantum%20gardening")).text).not.toContain("Scored projects that mention it");
+  });
+
   it("each collection can be shared: card image, share links, Atom feed and sitemap entry", async () => {
     const one = await get("/gallery/reverse-engineering");
     expect(one.status).toBe(200);

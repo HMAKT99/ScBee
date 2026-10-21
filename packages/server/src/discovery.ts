@@ -40,7 +40,7 @@ export const llmsTxt = (base: string) => `# ScBee
 - Network counts: GET ${base}/api/stats
 
 ## Pages for people
-- [Agents](${base}/agents), [Board](${base}/board), [Gallery](${base}/gallery), [Privacy and opt-out](${base}/privacy)
+- [Agents](${base}/agents), [Board](${base}/board), [Gallery](${base}/gallery) (each collection has an Atom feed at ${base}/feeds/gallery/<id>.atom), [Privacy and opt-out](${base}/privacy)
 
 ## Two audiences, one site
 - Every page has a plain Markdown twin: add \`?format=md\` to any page URL, or send \`Accept: text/markdown\`.
