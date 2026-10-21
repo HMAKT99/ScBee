@@ -778,6 +778,13 @@ export class Store {
        WHERE g.collection = ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [collection, limit]);
   }
 
+  /** Every distinct project in any collection, for aggregate reporting. Opted-out projects are left out. */
+  reportRows(limit = 500) {
+    return this.rows<{ source_key: string; signals_json: string; total: number }>(
+      `SELECT DISTINCT p.source_key, p.signals_json, p.total FROM gallery g JOIN projects p ON p.source_key = g.source_key
+       WHERE g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) LIMIT ?`, [limit]);
+  }
+
   /** Strong results added recently, across all collections. Positive only: nothing below minScore is ever returned. */
   radarRows(days: number, minScore: number, limit = 20) {
     return this.rows<{ source_key: string; signals_json: string; total: number; added_at: number; collection: string }>(

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, levelsOf, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, agentReadyReport, missingFiles, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, levelsOf, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
@@ -14,6 +14,7 @@ import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
 import { needWords, rankForNeed, rankProjects } from "./handoff.js";
+import { fixMd, fixPage, reportMd, reportPage } from "./report.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
@@ -89,7 +90,7 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|demand|radar|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|demand|radar|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|report|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
@@ -218,6 +219,10 @@ export function createApp(opts: AppOptions) {
       const fixes = r.components.flatMap((k) => k.items.filter((i) => i.fix && i.points < i.max)).sort((x, y) => (y.max - y.points) - (x.max - x.points)).slice(0, 3).map((i) => i.fix!);
       return { name: getSite().specimen, path: `github.com/${getSite().specimen}`, total: r.total, band: band(r.total).label, fixes };
     } catch { return null; }
+  }
+
+  async function reportData() {
+    return agentReadyReport((await store.reportRows()).map((r) => ({ signals: JSON.parse(r.signals_json) as ProjectSignals, total: r.total })));
   }
 
   async function galleryData() {
@@ -381,7 +386,7 @@ export function createApp(opts: AppOptions) {
       const sig = JSON.parse(c.signals_json) as ProjectSignals;
       const [o, r] = (sig.fullName ?? "").split("/");
       return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: c.fetched_at,
-        result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee, agentReady: scoreAgentReady(sig) };
+        result: JSON.parse(c.result_json) as ScoreResult, listed: sig.listedOnScbee, agentReady: scoreAgentReady(sig), files: missingFiles(sig) };
     };
     if (fresh) return view(cached);
     if (ip) await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
@@ -392,7 +397,7 @@ export function createApp(opts: AppOptions) {
       await store.saveProject(src.key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, sig.stars);
       if (!cached) await afterFirstScore(src.key).catch(() => undefined);
       const [o, r] = (sig.fullName ?? "").split("/");
-      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row, agentReady: scoreAgentReady(sig) };
+      return { owner: o || src.owner, repo: r || src.repo, description: sig.description, stars: sig.stars, fetchedAt: Date.now(), result, listed: !!row, agentReady: scoreAgentReady(sig), files: missingFiles(sig) };
     } catch (e) {
       if (cached && !(e instanceof ProjectError && e.status === 404)) return view(cached);
       if (e instanceof ProjectError) throw new HttpError(e.status, e.message);
@@ -803,6 +808,9 @@ export function createApp(opts: AppOptions) {
       });
     }
 
+    if (method === "GET" && path === "/api/report") {
+      return json(res, 200, { note: "Totals only, by fixed rules, over the projects in the Index. No project is named.", ...(await reportData()) });
+    }
     if (method === "GET" && path === "/api/gallery") {
       return json(res, 200, { collections: await galleryData() });
     }
@@ -1259,6 +1267,18 @@ export function createApp(opts: AppOptions) {
         const q = (url.searchParams.get("q") ?? "").slice(0, 80);
         const list = await store.list(q, false);
         return page(200, agentList(q, list), agentsMd(baseUrl, q, list));
+      }
+      if (p === "/report") { const r = await reportData(); return page(200, reportPage(r, baseUrl), reportMd(baseUrl, r)); }
+      const fx = p.match(/^\/fix\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
+      if (fx) {
+        try {
+          const v = await projectScore(fx[1]!, fx[2]!, clientIp(req));
+          const path2 = `github.com/${v.owner}/${v.repo}`;
+          return page(200, fixPage(path2, `${v.owner}/${v.repo}`, v.files, baseUrl), fixMd(baseUrl, path2, `${v.owner}/${v.repo}`, v.files));
+        } catch (e) {
+          if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
+          throw e;
+        }
       }
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));

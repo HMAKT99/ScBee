@@ -20,3 +20,5 @@ export * from "./draft.js";
 export * from "./promo.js";
 export * from "./network.js";
 export * from "./githubApp.js";
+export * from "./report.js";
+export * from "./generate.js";
