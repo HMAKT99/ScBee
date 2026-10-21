@@ -45,6 +45,12 @@ describe("file generator", () => {
     expect(f.content.split("\n")[2]!.length).toBeLessThan(220);
     expect(f.content).not.toMatch(/line one\n/);
   });
+  it("cuts a long description at a whole word, never in the middle of one", () => {
+    const f = missingFiles(sig({ description: `${"word ".repeat(60)}holding company building things` }))[0]!;
+    const line = f.content.split("\n")[2]!.replace(/^> /, "");
+    expect(line.length).toBeLessThanOrEqual(200);
+    expect(line.split(" ").every((w) => w === "word")).toBe(true);
+  });
 });
 
 describe("website file generator", () => {
