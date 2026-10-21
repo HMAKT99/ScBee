@@ -18,7 +18,7 @@ import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, s
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { badgeSvg, pillSvg, projectPage } from "./project.js";
-import { LOGO_SVG, renderAgentCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
+import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
@@ -225,7 +225,7 @@ export function createApp(opts: AppOptions) {
       ...c,
       items: (await store.galleryRows(c.id)).map((r) => {
         const sig = JSON.parse(r.signals_json) as Partial<ProjectSignals>;
-        return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, band: band(r.total).label, description: sig.description ?? "", stars: sig.stars ?? 0 };
+        return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, band: band(r.total).label, description: sig.description ?? "", stars: sig.stars ?? 0, updated: r.fetched_at };
       }),
     })));
   }
@@ -1092,6 +1092,14 @@ export function createApp(opts: AppOptions) {
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });
         return void res.end(png);
       }
+      const ogc = p.match(/^\/og\/gallery\/([a-z0-9-]{2,40})\.png$/);
+      if (ogc) {
+        const col = (await galleryData()).find((c) => c.id === ogc[1]);
+        if (!col) return page(404, notFound());
+        const png = await renderCollectionCard(col.title, col.items.length, new URL(baseUrl).host);
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+        return void res.end(png);
+      }
       if (p === "/og/site.png") {
         const png = await renderSiteCard(new URL(baseUrl).host, getSite().name);
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });
@@ -1237,7 +1245,7 @@ export function createApp(opts: AppOptions) {
       if (p === "/sitemap.xml") {
         const handles = (await store.list("", false, 1000)).map((x) => x.handle);
         const gallery = (await galleryData()).flatMap((c) => c.items.map((i) => i.project));
-        return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)], (await store.pairs()).map((x) => pairPath(x.a, x.b))), "application/xml");
+        return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)], (await store.pairs()).map((x) => pairPath(x.a, x.b)), COLLECTIONS.map((c) => c.id)), "application/xml");
       }
       if (p === "/manage") return page(200, managePage());
       if (p === "/gallery") { const cols = await galleryData(); return page(200, galleryPage(cols), galleryMd(baseUrl, cols)); }
@@ -1270,6 +1278,13 @@ export function createApp(opts: AppOptions) {
         const items = await store.listPromos({ limit: 30 });
         return atom(atomFeed({ id: `${baseUrl}/feeds/board.atom`, title: `${getSite().name} board`, subtitle: "Offers, requests and launches from verified agents", selfUrl: `${baseUrl}/feeds/board.atom`, siteUrl: `${baseUrl}/board`,
           entries: items.map((i) => ({ id: `${baseUrl}/board#p${i.id}`, title: `[${i.kind}] ${i.title} (by ${i.agent.name})`, link: `${baseUrl}/board#p${i.id}`, updated: i.created_at, summary: i.body })) }));
+      }
+      const gfa = p.match(/^\/feeds\/gallery\/([a-z0-9-]{2,40})\.atom$/);
+      if (gfa) {
+        const col = (await galleryData()).find((c) => c.id === gfa[1]);
+        if (!col) return page(404, notFound());
+        return atom(atomFeed({ id: `${baseUrl}/feeds/gallery/${col.id}.atom`, title: `${getSite().name}: ${col.title}`, subtitle: col.blurb, selfUrl: `${baseUrl}/feeds/gallery/${col.id}.atom`, siteUrl: `${baseUrl}/gallery/${col.id}`,
+          entries: col.items.map((i) => ({ id: `${baseUrl}/${i.project}`, title: `${i.name}: ${i.score}/100`, link: `${baseUrl}/${i.project}`, updated: i.updated ?? 0, summary: i.description })) }));
       }
       if (p === "/feeds/radar.atom") {
         const items = await radarItems();

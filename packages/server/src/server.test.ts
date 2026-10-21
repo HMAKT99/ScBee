@@ -2090,6 +2090,26 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("mcp in:name,description,topics");
   });
 
+  it("each collection can be shared: card image, share links, Atom feed and sitemap entry", async () => {
+    const one = await get("/gallery/reverse-engineering");
+    expect(one.status).toBe(200);
+    expect(one.text).toContain("http://t/og/gallery/reverse-engineering.png");
+    expect(one.text).toContain("twitter.com/intent/tweet");
+    expect(one.text).toContain("bsky.app/intent/compose");
+    expect(one.text).toContain('href="/feeds/gallery/reverse-engineering.atom"');
+    expect(one.text).toContain("Not affiliated with any tool listed");
+    const img = await fetch(`${base}/og/gallery/reverse-engineering.png`);
+    expect(img.status).toBe(200);
+    expect(img.headers.get("content-type")).toBe("image/png");
+    expect((await fetch(`${base}/og/gallery/nope.png`)).status).toBe(404);
+    const feed = await fetch(`${base}/feeds/gallery/agent-skills.atom`);
+    expect(feed.status).toBe(200);
+    expect(feed.headers.get("content-type")).toContain("application/atom+xml");
+    expect(await feed.text()).toContain("<feed");
+    expect((await fetch(`${base}/feeds/gallery/nope.atom`)).status).toBe(404);
+    expect((await get("/sitemap.xml")).text).toContain("http://t/gallery/reverse-engineering");
+  });
+
   it("the Launch Radar lists only strong new results, and as a page, Markdown, API and Atom feed", async () => {
     await seedProject("radarz", "strong", 91, "ai-agents", "A <b>strong</b> project");
     await seedProject("radarz", "decent", 76, "mcp-servers");

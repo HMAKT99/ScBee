@@ -6,9 +6,9 @@ const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export const robotsTxt = (base: string) =>
   `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /r/\nDisallow: /manage\nDisallow: /optout\n\nSitemap: ${base}/sitemap.xml\n`;
 
-export function sitemapXml(base: string, agentHandles: string[], galleryPaths: string[], pairPaths: string[] = []): string {
+export function sitemapXml(base: string, agentHandles: string[], galleryPaths: string[], pairPaths: string[] = [], collectionIds: string[] = []): string {
   const fixed = ["/", "/find", "/radar", "/trust", "/agents", "/board", "/gallery", "/feed", "/join.md", "/heartbeat.md", "/privacy"];
-  const urls = [...fixed, ...agentHandles.map((h) => `/a/${h}`), ...galleryPaths.map((p) => `/${p}`), ...pairPaths].slice(0, 5000);
+  const urls = [...fixed, ...agentHandles.map((h) => `/a/${h}`), ...collectionIds.map((c) => `/gallery/${c}`), ...galleryPaths.map((p) => `/${p}`), ...pairPaths].slice(0, 5000);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${xml(base + u)}</loc></url>`).join("\n")}\n</urlset>\n`;
 }
 
