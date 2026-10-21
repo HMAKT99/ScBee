@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
-  COLLECTIONS, agentReadyReport, missingFiles, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, levelsOf, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
+  COLLECTIONS, agentReadyReport, missingFiles, missingSiteFiles, overlapEdges, fetchInstallationToken, newOptoutToken, optoutFilePath, readOptoutFile, PROMO_LIMITS, matchAgents, parsePromo, defaultRequester, draftCard, fetchDraftSignals, parseProfile, InputError, ProjectError, UnsafeUrlError, assertPublicUrl, deriveSecret, messages, newNonce, safePostJson, searchNewRepos, signBody, LAUNCH_WINDOW_MS, type NotificationDraft, buildEdges, type GraphEdge, type GraphNode, SiteError, parseHost, SITE_SCORE_VERSION, fetchNpmFacts, fetchSiteSignals, parseNpmInput, scoreSite, type SiteSignals, computeForecast, parseVerdict, rankFeed, levelsOf, SCORE_VERSION, identityKeyFromPem, mintIdentityToken, newIdentityPrivateKey, verifyIdentityToken, type IdentityKey, band, agentBand, scoreAgentReady, scoreAgentReadySite, checkChallenge, fetchGithubSignals, scoreProject, type ProjectSignals, type ScoreResult, isValidHandle, newChallenge, parseSource, resolveAgent, verifyFilePath,
   type FetchOptions,
 } from "@scbee/registry-core";
 import { galleryPage } from "./gallery.js";
@@ -155,11 +155,11 @@ export function createApp(opts: AppOptions) {
     if (await store.isOptedOut(key)) throw new HttpError(410, "removed at the owner's request");
     const ttl = opts.scoreTtlMs ?? 6 * 3600_000;
     const cached = await store.getProject(key);
-    const view = (result: ScoreResult, fetchedAt: number, listed: boolean, agentReady: ScoreResult | null = null) => ({
-      owner: host, repo: "", title: host, path: `web/${host}`, description: null, stars: 0, fetchedAt, result, listed, agentReady });
+    const view = (result: ScoreResult, fetchedAt: number, listed: boolean, agentReady: ScoreResult | null = null, sig?: SiteSignals) => ({
+      owner: host, repo: "", title: host, path: `web/${host}`, description: null, stars: 0, fetchedAt, result, listed, agentReady, files: sig ? missingSiteFiles(sig) : [] });
     if (cached && cached.score_version === SITE_SCORE_VERSION && Date.now() - cached.fetched_at < ttl) {
       const cs = JSON.parse(cached.signals_json) as SiteSignals;
-      return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, cs.listedOnScbee, scoreAgentReadySite(cs));
+      return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, cs.listedOnScbee, scoreAgentReadySite(cs), cs);
     }
     await limit(`score:${ip}`, opts.scorePerHour ?? 30, 3600_000);
     try {
@@ -167,9 +167,9 @@ export function createApp(opts: AppOptions) {
       const sig = await fetchSiteSignals(host, { listed: !!row, verified: row?.verified === 1 }, opts.fetchOpts);
       const result = scoreSite(sig);
       await store.saveProject(key, JSON.stringify(sig), JSON.stringify(result), result.version, result.total, 0);
-      return view(result, Date.now(), !!row, scoreAgentReadySite(sig));
+      return view(result, Date.now(), !!row, scoreAgentReadySite(sig), sig);
     } catch (e) {
-      if (cached && !(e instanceof SiteError && e.status !== 502)) return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, false, scoreAgentReadySite(JSON.parse(cached.signals_json) as SiteSignals));
+      if (cached && !(e instanceof SiteError && e.status !== 502)) return view(JSON.parse(cached.result_json) as ScoreResult, cached.fetched_at, false, scoreAgentReadySite(JSON.parse(cached.signals_json) as SiteSignals), JSON.parse(cached.signals_json) as SiteSignals);
       if (e instanceof SiteError) throw new HttpError(e.status, e.message);
       throw e;
     }
@@ -1290,6 +1290,15 @@ export function createApp(opts: AppOptions) {
           if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
           throw e;
         }
+      }
+      const fw = p.match(/^\/fix\/web\/([A-Za-z0-9.-]{4,253})$/);
+      if (fw) {
+        const host = parseHost(fw[1]!);
+        if (!host) return page(404, notFound());
+        try {
+          const v = await siteScore(host, clientIp(req));
+          return page(200, fixPage(v.path, host, v.files, baseUrl), fixMd(baseUrl, v.path, host, v.files));
+        } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
       }
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));

@@ -88,7 +88,7 @@ function agentReadySection(ar: ScoreResult, path: string, base: string): string 
   const badgeMd = `[![Agent-ready](${base}/badge/agent-ready/${path}.svg)](${base}/${path})`;
   return `<h2 class="h2s">Agent-ready</h2><div class="specimen">
 <p><strong>${ar.total}/100</strong> <span class="band">${esc(b.label)}</span> Can other agents find, install and trust this? Checked from public files by fixed rules (version ${esc(ar.version)}).</p>
-${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points})</span></li>`).join("")}</ol>${path.startsWith("github.com/") ? `<p><a class="btn sm" href="/fix/${esc(path)}">Generate the missing files</a></p>` : ""}` : `<p>Nothing to fix. Agents can find, install and trust this.</p>`}
+${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points})</span></li>`).join("")}</ol>${path.startsWith("github.com/") || path.startsWith("web/") ? `<p><a class="btn sm" href="/fix/${esc(path)}">Generate the missing files</a></p>` : ""}` : `<p>Nothing to fix. Agents can find, install and trust this.</p>`}
 <div class="comps">${renderComps(ar)}</div>
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy badge</button></div></div>`;
 }

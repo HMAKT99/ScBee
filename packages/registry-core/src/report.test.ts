@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { agentReadyReport } from "./report.js";
-import { missingFiles } from "./generate.js";
+import { missingFiles, missingSiteFiles } from "./generate.js";
+import type { SiteSignals } from "./site.js";
 import { analyseReadme, type ProjectSignals } from "./signals.js";
 
 const sig = (over: Partial<ProjectSignals> = {}): ProjectSignals => ({
@@ -43,5 +44,23 @@ describe("file generator", () => {
     const f = missingFiles(sig({ description: `line one\n\n${"x".repeat(500)}` }))[0]!;
     expect(f.content.split("\n")[2]!.length).toBeLessThan(220);
     expect(f.content).not.toMatch(/line one\n/);
+  });
+});
+
+describe("website file generator", () => {
+  const site = (over: Partial<SiteSignals> = {}): SiteSignals => ({
+    host: "shop.example.dev", title: "Shop", description: "Buy things", hasSocialImage: false, hasViewport: false, hasLang: false,
+    agentCard: { found: false, skills: 0 }, llmsTxt: false, mcpManifest: false, aiPlugin: false, robotsOk: true, securityTxt: false,
+    listedOnScbee: false, verifiedOnScbee: false, ...over,
+  });
+  it("writes only what the site is missing, each with where to serve it", () => {
+    const all = missingSiteFiles(site(), Date.UTC(2026, 0, 1));
+    expect(all.map((f) => f.file)).toEqual(["llms.txt", "agent-card.json", "security.txt", "HTML head"]);
+    expect(all.map((f) => f.at)).toEqual(["/llms.txt", "/.well-known/agent-card.json", "/.well-known/security.txt", "your page template"]);
+    expect(all[0]!.content).toContain("> Buy things");
+    expect(JSON.parse(all[1]!.content).url).toBe("https://shop.example.dev");
+    expect(all[2]!.content).toContain("Expires: 2026-11-27");
+    expect(all[3]!.content).toContain("viewport");
+    expect(missingSiteFiles(site({ llmsTxt: true, securityTxt: true, hasViewport: true, hasLang: true, agentCard: { found: true, skills: 1 } }))).toEqual([]);
   });
 });

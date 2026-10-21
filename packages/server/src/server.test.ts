@@ -476,6 +476,19 @@ describe("npm and website ingestion", () => {
     const png = await fetch(`${base}/og/web/shop.example.dev.png`);
     expect(png.headers.get("content-type")).toBe("image/png");
   });
+  it("offers the missing files for a website, and refuses a bad host", async () => {
+    setupSite();
+    const fix = await call("GET", "/fix/web/shop.example.dev");
+    expect(fix.status).toBe(200);
+    expect(fix.text).toContain("agent-card.json");
+    expect(fix.text).toContain("/.well-known/security.txt");
+    expect(fix.text).not.toContain('<h2 class="h2s">llms.txt</h2>'); // the shop already has one
+    const md = (await call("GET", "/fix/web/shop.example.dev?format=md")).text;
+    expect(md).toContain("<scbee_data");
+    expect(md).toContain("at /.well-known/agent-card.json");
+    expect((await call("GET", "/web/shop.example.dev")).text).toContain("/fix/web/shop.example.dev");
+    expect((await call("GET", "/fix/web/not_a_host")).status).toBe(404);
+  });
   it("respects robots.txt and refuses non-public hosts", async () => {
     files["https://blocked.example.dev/robots.txt"] = "User-agent: *\nDisallow: /";
     const blocked = await call("GET", "/api/score/web/blocked.example.dev");
