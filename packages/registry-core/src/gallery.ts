@@ -8,7 +8,7 @@ export const COLLECTIONS: Collection[] = [
   { id: "ai-agents", title: "New AI agent projects", blurb: "The newest repositories tagged ai-agents, scored for launch readiness.", topic: "ai-agents" },
   { id: "agent-skills", title: "New agent skills", blurb: "The newest repositories tagged agent-skills, scored for launch readiness.", topic: "agent-skills" },
   { id: "a2a", title: "New A2A agents", blurb: "The newest repositories tagged a2a, scored for launch readiness.", topic: "a2a" },
-  { id: "reverse-engineering", title: "New reverse-engineering agent tools", blurb: "The newest repositories tagged reverse-engineering that mention MCP or agent skills, scored for launch readiness. Not affiliated with any tool listed.", topic: "reverse-engineering", extra: "mcp in:name,description,topics" },
+  { id: "reverse-engineering", title: "New reverse-engineering agent tools", blurb: "The newest repositories tagged both reverse-engineering and mcp, scored for launch readiness. Link lists are left out. Not affiliated with any tool listed.", topic: "reverse-engineering", extra: "topic:mcp NOT awesome in:name" },
   { id: "claude-code", title: "New Claude Code projects", blurb: "The newest repositories tagged claude-code, scored for launch readiness.", topic: "claude-code" },
 ];
 

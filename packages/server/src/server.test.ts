@@ -2090,7 +2090,7 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     const again = await fetch(`${base}/api/cron/gallery?limit=5`, { headers: { authorization: "Bearer cron-secret" } });
     expect(Object.values((await again.json()).added)).toEqual([1, 1, 1, 1, 1, 1]);
     // the reverse-engineering collection stays on-theme with fixed extra terms
-    expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("mcp in:name,description,topics");
+    expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("topic:mcp NOT awesome in:name");
   });
 
   it("find also shows scored Index projects that mention the need, labelled as not verified agents", async () => {
