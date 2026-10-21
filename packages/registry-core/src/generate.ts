@@ -3,7 +3,14 @@ import type { SiteSignals } from "./site.js";
 
 export interface MissingFile { file: string; why: string; content: string; /** Where to put it on a website, e.g. /.well-known/security.txt. Repo files go at the repo root. */ at?: string }
 
-const oneLine = (s: string | null | undefined, max = 200) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+/** One line, cut at the last whole word (never in the middle of one) when it is longer than max. */
+const oneLine = (s: string | null | undefined, max = 200) => {
+  const t = (s ?? "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const at = cut.lastIndexOf(" ");
+  return (at > max / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:\-]+$/, "");
+};
 
 /**
  * Starting points for the files an agent looks for, written only for checks the project currently fails.

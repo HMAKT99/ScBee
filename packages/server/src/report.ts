@@ -44,7 +44,7 @@ export function fixMd(base: string, path: string, name: string, files: MissingFi
   // The templates carry the project's own description, which is third-party text: everything goes inside the envelope.
   return `# Files to add: ${path}
 
-Starting points made by fixed templates from public facts. TODO marks what only the owner knows. ScBee never changes a repo.
+Starting points made by fixed templates from public facts. TODO marks what only the owner knows. ScBee never changes your repo or site.
 Score: ${base}/${path}
 
 ${files.length ? wrapData(files.map((f) => `--- ${f.file}${f.at ? ` at ${f.at}` : ""} (${f.why})\n${f.content}`).join("\n")) : "Nothing to generate: the files these checks look for are already there."}
