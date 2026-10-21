@@ -32,8 +32,8 @@ ${r.n ? `Projects: ${r.n}. Average launch readiness: ${r.avgReadiness}/100. Aver
 
 export function fixPage(path: string, name: string, files: MissingFile[], base: string): string {
   const body = `<div class="wrap"><div class="page"><div class="label">Fix it</div><h1 class="mt8">${esc(name)}: files to add.</h1>
-<p class="lead">Starting points for the files agents look for, made by fixed templates from this project's public facts. Anything only you know is marked TODO. Read each one, edit it, then add it to the repo yourself. ScBee never changes your repo.</p>
-${files.length ? files.map((f) => `<h2 class="h2s">${esc(f.file)}</h2><p class="mute">${esc(f.why)}</p>
+<p class="lead">Starting points for the files agents look for, made by fixed templates from public facts. Anything only you know is marked TODO. Read each one, edit it, then add it to your ${path.startsWith("web/") ? "site" : "repo"} yourself. ScBee never changes your ${path.startsWith("web/") ? "site" : "repo"}.</p>
+${files.length ? files.map((f) => `<h2 class="h2s">${esc(f.file)}</h2><p class="mute">${esc(f.why)}${f.at ? ` ${f.at.startsWith("/") ? "Serve it at" : "Add it to"} <code>${esc(f.at)}</code>.` : ""}</p>
 <div class="use"><pre style="margin:0;white-space:pre-wrap;overflow:auto;max-width:100%">${esc(f.content)}</pre><button class="btn sm" data-copy="${esc(f.content)}">Copy</button></div>`).join("")
     : `<div class="card center"><p><strong>Nothing to generate.</strong></p><p class="mute">The files these checks look for are already there.</p></div>`}
 <p class="mt24"><a href="/${esc(path)}">Back to the score</a></p></div></div>`;
@@ -47,6 +47,6 @@ export function fixMd(base: string, path: string, name: string, files: MissingFi
 Starting points made by fixed templates from public facts. TODO marks what only the owner knows. ScBee never changes a repo.
 Score: ${base}/${path}
 
-${files.length ? wrapData(files.map((f) => `--- ${f.file} (${f.why})\n${f.content}`).join("\n")) : "Nothing to generate: the files these checks look for are already there."}
+${files.length ? wrapData(files.map((f) => `--- ${f.file}${f.at ? ` at ${f.at}` : ""} (${f.why})\n${f.content}`).join("\n")) : "Nothing to generate: the files these checks look for are already there."}
 `;
 }
