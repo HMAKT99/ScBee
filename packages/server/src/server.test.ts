@@ -2067,11 +2067,11 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     await store.addToGallery(collection, key);
   };
 
-  it("the index has five collections, each with its own page, and a refresh spreads its limit across them", async () => {
+  it("the index has six collections, each with its own page, and a refresh spreads its limit across them", async () => {
     const api = await call("GET", "/api/gallery");
-    expect(api.json.collections.map((c: any) => c.id)).toEqual(["mcp-servers", "ai-agents", "agent-skills", "a2a", "claude-code"]);
+    expect(api.json.collections.map((c: any) => c.id)).toEqual(["mcp-servers", "ai-agents", "agent-skills", "a2a", "reverse-engineering", "claude-code"]);
     const page = await get("/gallery");
-    for (const id of ["mcp-servers", "agent-skills", "a2a", "claude-code"]) expect(page.text, id).toContain(`href="/gallery/${id}"`);
+    for (const id of ["mcp-servers", "agent-skills", "a2a", "reverse-engineering", "claude-code"]) expect(page.text, id).toContain(`href="/gallery/${id}"`);
     expect(page.text).toContain('href="/radar"');
     const one = await get("/gallery/agent-skills");
     expect(one.status).toBe(200);
@@ -2081,11 +2081,13 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     searchItems = [{ full_name: "idxowner/one" }, { full_name: "idxowner/two" }, { full_name: "idxowner/three" }];
     for (const r of ["one", "two", "three"]) { const api2 = `https://api.github.com/repos/idxowner/${r}`; files[api2] = JSON.stringify({ full_name: `idxowner/${r}`, description: "x", stargazers_count: 1, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() }); files[`${api2}/contents`] = "[]"; }
     const cr = await fetch(`${base}/api/cron/gallery?limit=5`, { headers: { authorization: "Bearer cron-secret" } });
-    expect(Object.keys((await cr.json()).added)).toHaveLength(5);
-    // a limit of 5 over 5 collections asks GitHub for 1 repository each, so more collections never make a run heavier
-    const asked = searchUrls.slice(-5);
-    expect(asked).toHaveLength(5);
+    expect(Object.keys((await cr.json()).added)).toHaveLength(6);
+    // a limit of 5 over 6 collections still asks GitHub for 1 repository each
+    const asked = searchUrls.slice(-6);
+    expect(asked).toHaveLength(6);
     for (const u of asked) expect(u).toMatch(/per_page=1$/);
+    // the reverse-engineering collection stays on-theme with fixed extra terms
+    expect(decodeURIComponent(asked.find((u) => u.includes("reverse-engineering"))!)).toContain("mcp in:name,description,topics");
   });
 
   it("the Launch Radar lists only strong new results, and as a page, Markdown, API and Atom feed", async () => {
