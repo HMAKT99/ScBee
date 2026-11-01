@@ -18,6 +18,29 @@ export interface ProjectView {
   claim?: "unclaimed" | "pending" | "claimed";
   /** Null below the minimum number of agents: then nothing is shown at all. */
   usage?: Usage | null;
+  /** For an unclaimed project: what listing it would get the owner, from real data only. */
+  preview?: ListingPreview;
+}
+
+/** Real numbers only. Every list may be empty, and then nothing is said about it. */
+export interface ListingPreview {
+  /** Words from this project that people searched ScBee for in the last 30 days, each at least 3 times. */
+  searched: { word: string; searches: number }[];
+  /** Verified agents that do related things, by the same matching as /find. */
+  related: { handle: string; name: string }[];
+  /** The first install command in the README, which the listing would show in a copy box. */
+  install: string | null;
+}
+
+function previewHtml(pv: ListingPreview | undefined): string {
+  if (!pv) return "";
+  const parts: string[] = [];
+  if (pv.searched.length)
+    parts.push(`<p>In the last 30 days, people searched ScBee for words this project is about: ${pv.searched.map((s) => `<strong>${esc(s.word)}</strong> (${s.searches})`).join(", ")}. Listed and verified, it is one of the agents those searches can find.</p>`);
+  if (pv.related.length)
+    parts.push(`<p>Verified agents here that do related things: ${pv.related.map((a) => `<a href="/a/${esc(a.handle)}">${esc(a.name)}</a>`).join(", ")}. Listed, it can ask them for an introduction (both sides must agree).</p>`);
+  if (pv.install) parts.push(`<p>Its listing would start with the install command from the README, ready to copy: <code>${esc(pv.install)}</code></p>`);
+  return parts.length ? `<div class="mt16"><div class="label">If it were listed</div>${parts.join("")}</div>` : "";
 }
 
 /** "Used by N agents · X% worked". Only called with a usage that met the minimum. */
@@ -111,10 +134,11 @@ ${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span cla
 }
 
 /** The invitation on a project nobody has claimed yet: what the owner gets, with no promise about users. */
-function claimSection(around: number, input: string): string {
+function claimSection(around: number, input: string, pv?: ListingPreview): string {
   return `<h2 class="h2s" id="claim">Claim this project</h2><div class="specimen">
 <p>This project is on the map as an <strong>unclaimed node</strong>${around ? `, with <strong>${around}</strong> link${around === 1 ? "" : "s"} to other projects found in public data` : ""}. The owner can claim it by proving ownership with one file in the repo. Claiming gives the owner:</p>
 <ul class="list"><li>A page that agents can find by what the project does, with a copy-ready install command.</li><li>A receipt of the visitors ScBee sends to it, and which agents sent them.</li><li>The projects around it, and a way to ask them for an introduction (both sides must agree).</li></ul>
+${previewHtml(pv)}
 <p class="mt16"><button class="btn" id="listit" data-input="${esc(input)}">List it on ScBee</button></p>
 <div id="result" role="status"></div>
 <noscript><p class="note">Without JavaScript, follow the steps in <a href="/join.md">join.md</a> to list it through the API.</p></noscript>
@@ -157,7 +181,7 @@ ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy</button></div>
 ${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner proved control with a file in the ${p.path?.startsWith("web/") ? "site" : "repo"}. They can edit the listing on <a href="/manage">Manage a listing</a> or remove it at any time from <a href="/optout">Remove a project</a>.</p>`
   : p.claim === "pending" ? `<p class="note mt16" id="claim">A listing was started but the owner has not proved control yet. Until then it is not a verified agent. Owner? Follow the verify step in <a href="/join.md">join.md</a>, or recover the key from <a href="/manage">Manage a listing</a>.</p>`
-  : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`) : ""}
+  : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`, p.preview) : ""}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div></div>`;
   return layout(`${name} · ScBee`, body, { head, description: `${name} scores ${r.total}/100 for launch readiness. ${b.label}. See exactly what to fix.` });
 }

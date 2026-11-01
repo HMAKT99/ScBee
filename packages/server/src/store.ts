@@ -605,6 +605,15 @@ export class Store {
         `INSERT INTO demand (day, word, searches, misses) VALUES (?, ?, 1, ?)
          ON CONFLICT(day, word) DO UPDATE SET searches = searches + 1, misses = misses + excluded.misses`, [day, w, matched ? 0 : 1]);
   }
+  /** Which of these words people searched for in the window, each at least `min` times (the same floor as public demand). */
+  async searchedWords(words: string[], days = 30, min = 3, limit = 6): Promise<{ word: string; searches: number }[]> {
+    if (!words.length) return [];
+    const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const rows = await this.rows<{ word: string; searches: number }>(
+      `SELECT word, SUM(searches) AS searches FROM demand WHERE day >= ? AND word IN (${words.map(() => "?").join(",")})
+       GROUP BY word HAVING SUM(searches) >= ? ORDER BY SUM(searches) DESC, word ASC LIMIT ?`, [since, ...words, min, limit]);
+    return rows.map((r) => ({ word: r.word, searches: Number(r.searches) }));
+  }
   async unmetDemand(days = 30, minMisses = 3, limit = 12): Promise<{ word: string; searches: number; misses: number }[]> {
     const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
     const rows = await this.rows<{ word: string; searches: number; misses: number }>(
