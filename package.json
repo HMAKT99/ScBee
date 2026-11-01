@@ -13,7 +13,8 @@
     "demo": "npm run build && node scripts/demo-local.mjs",
     "preview": "npm run build && node scripts/preview.mjs",
     "backup": "node scripts/backup.mjs",
-    "agent-files": "node scripts/agent-files.mjs"
+    "agent-files": "node scripts/agent-files.mjs",
+    "onboarding": "node scripts/onboarding.mjs"
   },
   "engines": {
     "node": ">=22"

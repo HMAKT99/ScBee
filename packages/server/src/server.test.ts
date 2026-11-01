@@ -2616,3 +2616,44 @@ describe("listing preview on an unclaimed project", () => {
     expect((await call("GET", "/github.com/prevz/pdfkit")).text).not.toContain("If it were listed");
   });
 });
+
+describe("operator onboarding report", () => {
+  const report = async () => {
+    const r = await fetch(`${base}/api/admin/onboarding?days=30`, { headers: { "x-admin-token": "adm-secret" } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    return r.json() as Promise<any>;
+  };
+  it("is admin-only, counts each onboarding outcome, lists stalled registrations, and never shows keys or tokens", async () => {
+    expect((await fetch(`${base}/api/admin/onboarding`)).status).toBe(403);
+    expect((await fetch(`${base}/api/admin/onboarding`, { headers: { "x-admin-token": "wrong-secret" } })).status).toBe(403);
+    const before = await report();
+    const ev = (r: any, k: string) => r.events[k] ?? 0;
+    // A: registers, fails to verify once, verifies, describes itself
+    files["https://raw.githubusercontent.com/funnelz/alpha/HEAD/agent.json"] = JSON.stringify({ name: "Alpha", skills: [] });
+    const a = await call("POST", "/api/register", { input: "github.com/funnelz/alpha" });
+    expect((await call("POST", "/api/verify", {}, a.json.api_key)).status).toBe(422);
+    files["https://raw.githubusercontent.com/funnelz/alpha/HEAD/scbee-verify.txt"] = a.json.verify.token;
+    expect((await call("POST", "/api/verify", {}, a.json.api_key)).json.verified).toBe(true);
+    expect((await call("PUT", "/api/agent/profile", { tagline: "Does one thing well" }, a.json.api_key)).status).toBe(200);
+    // B: registers and stalls; a second attempt inside the hour is held
+    files["https://raw.githubusercontent.com/funnelz/beta/HEAD/agent.json"] = JSON.stringify({ name: "Beta", skills: [] });
+    const b = await call("POST", "/api/register", { input: "github.com/funnelz/beta" });
+    expect((await call("POST", "/api/register", { input: "github.com/funnelz/beta" })).status).toBe(409);
+    await store.db.execute({ sql: "UPDATE agents SET created_at = ? WHERE source_key = ?", args: [Date.now() - 2 * 3600_000, "github:funnelz/beta"] });
+    const after = await report();
+    expect(after.funnel.registered).toBe(before.funnel.registered + 2);
+    expect(after.funnel.verified).toBe(before.funnel.verified + 1);
+    expect(after.funnel.described).toBe(before.funnel.described + 1);
+    expect(ev(after, "register_ok") - ev(before, "register_ok")).toBe(2);
+    expect(ev(after, "register_held") - ev(before, "register_held")).toBe(1);
+    expect(ev(after, "verify_fail") - ev(before, "verify_fail")).toBe(1);
+    expect(ev(after, "verify_ok") - ev(before, "verify_ok")).toBe(1);
+    expect(ev(after, "profile_set") - ev(before, "profile_set")).toBe(1);
+    expect(after.median_minutes_to_verify).not.toBeNull();
+    expect(after.stalled.map((s: any) => s.handle)).toContain(b.json.handle);
+    expect(after.stalled.map((s: any) => s.handle)).not.toContain(a.json.handle);
+    const text = JSON.stringify(after);
+    for (const secret of [a.json.api_key, b.json.api_key, a.json.verify.token, b.json.verify.token]) expect(text).not.toContain(secret);
+  });
+});
