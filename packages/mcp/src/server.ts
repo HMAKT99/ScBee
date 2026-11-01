@@ -40,7 +40,7 @@ const fail = (t: string) => ({ isError: true, content: [{ type: "text" as const,
 export const neutralize = (s: string): string => s.replace(/<\s*(\/?)\s*scbee_data/gi, "&lt;$1scbee_data"); // notes arrive already wrapped by the server in their own tag, so only this envelope is neutralised here
 const wrap = (t: string) => `${UNTRUSTED_BANNER}\n<scbee_data untrusted_strings="true">\n${neutralize(t)}\n</scbee_data>`;
 
-interface ScoreJson { project: string; band: string; total: number; agent_ready?: { total: number; band: string } | null; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }
+interface ScoreJson { project: string; band: string; total: number; badge_markdown?: string; agent_ready?: { total: number; band: string } | null; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] }
 
 export function createServer(opts: Options): McpServer {
   let base: URL;
@@ -94,7 +94,7 @@ export function createServer(opts: Options): McpServer {
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const fixes = j.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title })))
       .sort((a, b) => (b.i.max - b.i.points) - (a.i.max - a.i.points)).slice(0, 5);
-    return text(`${j.project}: ${j.total}/100 (${j.band}). Readiness score, not a prediction.\n${j.components.map((c) => `- ${c.title}: ${c.score}/${c.max}`).join("\n")}\n${j.agent_ready ? `\nAgent-ready (can other agents find, install and trust it): ${j.agent_ready.total}/100 (${j.agent_ready.band}).` : ""}${fixes.length ? `\nBiggest wins first:\n${fixes.map((x) => `- ${x.i.fix} (+${x.i.max - x.i.points} ${x.c})`).join("\n")}` : "\nNothing major to fix."}\nPage: ${new URL(`/${path}`, base).toString()}`);
+    return text(`${j.project}: ${j.total}/100 (${j.band}). Readiness score, not a prediction.\n${j.components.map((c) => `- ${c.title}: ${c.score}/${c.max}`).join("\n")}\n${j.agent_ready ? `\nAgent-ready (can other agents find, install and trust it): ${j.agent_ready.total}/100 (${j.agent_ready.band}).` : ""}${fixes.length ? `\nBiggest wins first:\n${fixes.map((x) => `- ${x.i.fix} (+${x.i.max - x.i.points} ${x.c})`).join("\n")}` : "\nNothing major to fix."}\nPage: ${new URL(`/${path}`, base).toString()}${j.badge_markdown ? `\nAdd to README (owner's choice): ${j.badge_markdown}` : ""}`);
   }));
 
   server.registerTool("scbee_find_complements", {
@@ -206,7 +206,7 @@ export function createServer(opts: Options): McpServer {
       ? `${f.evaluations} agent(s) evaluated; percentages appear after ${f.needed_for_percentages} more independent owner(s).`
       : `${f.evaluations} agents evaluated (${f.distinct_owners} owners): ${f.would_use_pct}% would use it, ${f.would_recommend_pct}% would recommend it.`;
     const verdicts = ((vj.verdicts ?? []) as any[]).slice(0, 5).map((x) => `- @${x.agent} ${x.tried}, ${x.would_use ? "would use" : "would not use"}: ${x.summary}`);
-    return text(`${sj.project}: ${sj.total}/100 (${sj.band}).\nLaunch forecast: ${forecast}\n${verdicts.length ? wrap(`Recent verdicts:\n${verdicts.join("\n")}`) : ""}`.trim());
+    return text(`${sj.project}: ${sj.total}/100 (${sj.band}).\n${sj.badge_markdown ? `Badge: ${sj.badge_markdown}\n` : ""}Launch forecast: ${forecast}\n${verdicts.length ? wrap(`Recent verdicts:\n${verdicts.join("\n")}`) : ""}`.trim());
   }));
 
   server.registerTool("scbee_next_to_evaluate", {

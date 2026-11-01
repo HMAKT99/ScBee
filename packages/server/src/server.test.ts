@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
-import { analyseReadme, scoreAgentReady, type ProjectSignals } from "@scbee/registry-core";
+import { analyseReadme, band, scoreAgentReady, type ProjectSignals } from "@scbee/registry-core";
+import { badgeSvg } from "./project.js";
 import { openapi } from "./openapi.js";
 import { llmsTxt, scbeeCard } from "./discovery.js";
 import { skillMd } from "./skill.js";
@@ -309,13 +310,30 @@ describe("project score pages", () => {
     expect(b.total).toBe(a.total);
   });
 
-  it("badge is an SVG with the score; unknown repos give a grey 'unknown' badge", async () => {
+  it("badge is an SVG with the score; unknown repos give a grey 'not scored' badge, not an error", async () => {
     setup();
     const ok = await fetch(`${base}/badge/github.com/zed/widget.svg`);
     expect(ok.headers.get("content-type")).toMatch(/svg/);
-    expect(await ok.text()).toMatch(/\/100/);
-    const miss = await (await fetch(`${base}/badge/github.com/nobody/nothing.svg`)).text();
-    expect(miss).toMatch(/unknown/);
+    expect(ok.headers.get("cache-control")).toMatch(/s-maxage=86400/);
+    const svg = await ok.text();
+    expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"[\s\S]*<\/svg>$/);
+    expect(svg).toMatch(/<title>ScBee readiness: \d+\/100<\/title>/);
+    const total = Number(svg.match(/(\d+)\/100/)![1]);
+    expect(svg).toContain(`fill="${band(total).color}"`);
+    const missRes = await fetch(`${base}/badge/github.com/nobody/nothing.svg`);
+    expect(missRes.status).toBe(200);
+    const miss = await missRes.text();
+    expect(miss).toContain("not scored");
+    expect(miss).toContain('fill="#9f9f9f"');
+    const api = await (await fetch(`${base}/api/score/github.com/zed/widget`)).json();
+    expect(api.badge_markdown).toBe("[![ScBee readiness](http://t/badge/github.com/zed/widget.svg)](http://t/github.com/zed/widget)");
+    const md = await (await fetch(`${base}/github.com/zed/widget?format=md`)).text();
+    expect(md).toContain(`Add to README: ${api.badge_markdown}`);
+  });
+
+  it("badge colours follow the readiness bands", () => {
+    for (const t of [0, 39, 40, 59, 60, 79, 80, 100]) expect(badgeSvg(t)).toContain(`fill="${band(t).color}"`);
+    expect(badgeSvg(null)).toContain("not scored");
   });
 
   it("share card is a PNG", async () => {
@@ -1013,7 +1031,7 @@ describe("opt-out, privacy and machine-readable front doors", () => {
     expect((await call("GET", "/github.com/optown/proj")).status).toBe(410);
     expect((await call("GET", "/api/graph/github.com/optown/proj")).status).toBe(404);
     expect((await call("POST", "/api/register", { input: "github.com/optown/proj" })).status).toBe(403);
-    expect((await call("GET", "/badge/github.com/optown/proj.svg")).text).toMatch(/unknown/);
+    expect((await call("GET", "/badge/github.com/optown/proj.svg")).text).toMatch(/not scored/);
     // cannot be undone while the file exists, then can
     expect((await call("POST", "/api/optin", { input: "github.com/optown/proj" })).status).toBe(422);
     delete files[optFile("optown", "proj")];
@@ -1798,7 +1816,7 @@ describe("agent-ready score", () => {
     expect(badge.headers.get("content-type")).toMatch(/image\/svg/);
     expect(badge.text).toContain("agent-ready:");
     expect(badge.text).toMatch(/\d+\/100/);
-    expect((await call("GET", "/badge/agent-ready/github.com/nobody-zz/not-real-zz.svg")).text).toContain("unknown");
+    expect((await call("GET", "/badge/agent-ready/github.com/nobody-zz/not-real-zz.svg")).text).toContain("not scored");
   });
 
   it("scores a website too, and a result stored before the facts existed is read again", async () => {
@@ -2035,7 +2053,7 @@ describe("verified agent identity", () => {
     files["https://raw.githubusercontent.com/idshare/agent/HEAD/agent.json"] = JSON.stringify({ name: "Share Agent", tagline: "Shows it off", skills: [] });
     const reg = await call("POST", "/api/register", { input: "github.com/idshare/agent" });
     const handle = reg.json.handle as string;
-    expect((await call("GET", `/badge/agent/${handle}.svg`)).text).toContain("unverified");
+    expect((await call("GET", `/badge/agent/${handle}.svg`)).text).toContain("not listed");
     files["https://raw.githubusercontent.com/idshare/agent/HEAD/scbee-verify.txt"] = reg.json.verify.token;
     const v = await call("POST", "/api/verify", {}, reg.json.api_key);
     expect(v.json.verified).toBe(true);
@@ -2045,9 +2063,10 @@ describe("verified agent identity", () => {
     expect(v.json.share.text).not.toContain("@"); // never tags anyone
     const badge = await call("GET", `/badge/agent/${handle}.svg`);
     expect(badge.headers.get("content-type")).toMatch(/image\/svg/);
-    expect(badge.text).toContain("verified");
-    expect(badge.text).not.toContain("unverified");
-    expect((await call("GET", "/badge/agent/no-such-agent.svg")).text).toContain("unverified"); // an unknown agent is not distinguishable from an unverified one
+    expect(badge.text).toContain("listed \u00b7 verified");
+    expect(badge.text).not.toContain("not listed");
+    expect((await call("GET", `/a/${handle}?format=md`)).text).toContain(`Add to README: [![ScBee](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
+    expect((await call("GET", "/badge/agent/no-such-agent.svg")).text).toContain("not listed"); // an unknown agent is not distinguishable from an unverified one
     const png = await fetch(`${base}/og/agent/${handle}.png`);
     expect(png.status).toBe(200);
     expect(png.headers.get("content-type")).toBe("image/png");

@@ -80,6 +80,7 @@ export function openapi(base: string): Json {
             project: { type: "string" }, band: { type: "string" }, total: { type: "integer", minimum: 0, maximum: 100 }, version: { type: "string" },
             components: { type: "array", items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, score: { type: "integer" }, max: { type: "integer" },
               items: { type: "array", items: { type: "object", properties: { label: { type: "string" }, points: { type: "integer" }, max: { type: "integer" }, reason: { type: "string" }, fix: { type: "string" } } } } } } },
+            badge_markdown: { type: "string", description: "README snippet: the readiness badge linking back to the score page (repo and website scores)" },
             note: { type: "string" },
           },
         },

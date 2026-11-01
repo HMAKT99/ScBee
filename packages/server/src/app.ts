@@ -18,7 +18,7 @@ import { fixMd, fixPage, reportMd, reportPage } from "./report.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
-import { badgeSvg, pillSvg, projectPage } from "./project.js";
+import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage } from "./project.js";
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
@@ -548,6 +548,7 @@ export function createApp(opts: AppOptions) {
     if (method === "GET" && sm) {
       const v = await projectScore(sm[1]!, sm[2]!, ip);
       return json(res, 200, { project: `github.com/${v.owner}/${v.repo}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
+        badge_markdown: badgeMarkdown(baseUrl, `github.com/${v.owner}/${v.repo}`),
         agent_ready: v.agentReady ? { total: v.agentReady.total, band: agentBand(v.agentReady.total).label, version: v.agentReady.version } : null,
         note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
@@ -634,6 +635,7 @@ export function createApp(opts: AppOptions) {
       if (!host) throw new HttpError(400, "enter a public hostname like example.com");
       const v = await siteScore(host, ip);
       return json(res, 200, { project: `web/${host}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
+        badge_markdown: badgeMarkdown(baseUrl, `web/${host}`),
         note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
 
@@ -1148,13 +1150,14 @@ export function createApp(opts: AppOptions) {
       const agb = p.match(/^\/badge\/agent\/([a-z0-9-]{3,39})\.svg$/);
       if (agb) {
         const ag = await store.byHandle(agb[1]!);
-        let value = "unverified", color = "#9f9f9f";
+        // Only a verified agent is "listed". Unknown and unverified look the same, so the badge reveals nothing.
+        let value = "not listed", color = "#9f9f9f";
         if (ag?.verified) {
           const c = (await outcomesOf(ag.handle)).collaborations;
-          value = c ? `verified \u00b7 ${c} collab${c === 1 ? "" : "s"}` : "verified";
+          value = c ? `listed \u00b7 verified \u00b7 ${c} collab${c === 1 ? "" : "s"}` : "listed \u00b7 verified";
           color = "#2da44e";
         }
-        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
         return void res.end(pillSvg("ScBee", value, color));
       }
       const opm = p.match(/^\/og\/pair\/([a-z0-9-]{3,39})\/([a-z0-9-]{3,39})\.png$/);
@@ -1186,7 +1189,7 @@ export function createApp(opts: AppOptions) {
           const v = abm[3] ? (h ? await siteScore(h, ip) : null) : await projectScore(abm[1]!, abm[2]!, ip);
           total = v?.agentReady?.total ?? null;
         } catch { /* unknown badge */ }
-        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
         return void res.end(badgeSvg(total, "agent-ready"));
       }
       const wm = p.match(/^\/(?:(badge|og)\/)?web\/([A-Za-z0-9.-]{4,253}?)(?:\.(svg|png))?\/?$/);
@@ -1196,7 +1199,7 @@ export function createApp(opts: AppOptions) {
         if (kind === "badge" && ext === "svg") {
           let total: number | null = null;
           try { total = (await siteScore(wHost, ip)).result.total; } catch { /* unknown badge */ }
-          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
           return void res.end(badgeSvg(total));
         }
         if (kind === "og" && ext === "png") {
@@ -1219,7 +1222,7 @@ export function createApp(opts: AppOptions) {
         if (kind === "badge" && ext === "svg") {
           let total: number | null = null;
           try { total = (await projectScore(owner, repo, ip)).result.total; } catch { /* unknown badge */ }
-          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": "public, max-age=3600" });
+          res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
           return void res.end(badgeSvg(total));
         }
         if (kind === "og" && ext === "png") {

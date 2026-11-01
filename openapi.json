@@ -964,6 +964,10 @@
               }
             }
           },
+          "badge_markdown": {
+            "type": "string",
+            "description": "README snippet: the readiness badge linking back to the score page (repo and website scores)"
+          },
           "note": {
             "type": "string"
           }
