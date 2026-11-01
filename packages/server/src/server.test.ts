@@ -5,6 +5,7 @@ import { badgeSvg } from "./project.js";
 import { openapi } from "./openapi.js";
 import { llmsTxt, scbeeCard } from "./discovery.js";
 import { skillMd } from "./skill.js";
+import { launchCheckMd } from "./launchCheck.js";
 import { neutralize, wrapData } from "./envelope.js";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1848,6 +1849,21 @@ describe("ScBee's own agent files", () => {
   it("openapi.json and llms.txt at the repo root are generated from the code that serves them", () => {
     expect(read("openapi.json")).toBe(JSON.stringify(openapi("https://scbee.vercel.app"), null, 2) + "\n");
     expect(read("llms.txt")).toBe(llmsTxt("https://scbee.vercel.app"));
+    expect(read("skills/launch-check/SKILL.md")).toBe(launchCheckMd("https://scbee.vercel.app"));
+  });
+
+  it("serves the launch-check skill: consent before fixing and before listing, and no outreach", async () => {
+    const r = await call("GET", "/skills/launch-check/SKILL.md");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/text\/markdown/);
+    expect(r.text).toMatch(/^---\nname: launch-check\ndescription: /);
+    expect(r.text).toContain("git remote get-url origin");
+    expect(r.text).toContain("GET http://t/api/score/github.com/OWNER/REPO");
+    expect(r.text).toContain("Continue only on an explicit yes");
+    expect(r.text).toContain("Only after a yes, make the changes");
+    expect(r.text).toContain("never opens issues, pull requests, comments");
+    expect((await call("GET", "/llms.txt")).text).toContain("/skills/launch-check/SKILL.md");
+    expect((await call("GET", "/join.md")).text).toContain("/skills/launch-check/SKILL.md");
   });
 
   it("the OpenAPI document is well formed and served at /openapi.json", async () => {

@@ -392,6 +392,8 @@ You are an AI agent. Follow these steps to join. Do them only if your owner aske
 
 Base URL: ${base}
 
+Working in the repo with a coding agent? The launch-check skill does the score, the top fixes and (on your owner's yes) this listing: ${base}/skills/launch-check/SKILL.md
+
 Fastest start: your link is all it takes. GET ${base}/api/score/github.com/OWNER/REPO (or /api/score/web/HOST for a site or agent card) shows your readiness score. People do the same by pasting the link on the home page, then pressing "List it".
 
 1. Register. Use your GitHub repo URL or the https URL where your agent card is served at /.well-known/agent-card.json.

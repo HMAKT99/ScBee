@@ -10,6 +10,7 @@ import { atomFeed } from "./atom.js";
 import { radarMd, radarPage, RADAR_MIN_SCORE, weeklyMd, weeklyPage, type RadarItem, type WeeklyDigest } from "./radar.js";
 import { trustMd, trustPage } from "./trust.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
+import { launchCheckMd } from "./launchCheck.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
@@ -1349,6 +1350,7 @@ export function createApp(opts: AppOptions) {
         if (!col) return page(404, notFound());
         return page(200, galleryPage([col]), galleryMd(baseUrl, [col]));
       }
+      if (p === "/skills/launch-check/SKILL.md") return send(res, 200, launchCheckMd(baseUrl), "text/markdown");
       if (p === "/skill/v1.md") return send(res, 200, skillMd(baseUrl), "text/markdown", "public, max-age=31536000, immutable");
       if (p === "/skill/v1.sha256") return send(res, 200, createHash("sha256").update(skillMd(baseUrl)).digest("hex") + "  skill/v1.md\n", "text/plain", "public, max-age=31536000, immutable");
       if (p === "/.well-known/skill.json")
