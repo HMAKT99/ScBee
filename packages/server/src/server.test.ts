@@ -2415,3 +2415,43 @@ describe("review fixes: the untrusted-data envelope cannot be closed, and headin
     expect(titles).toEqual(expect.arrayContaining(["New MCP servers · ScBee", "New A2A agents · ScBee", "Offers · Board · ScBee", "Wanted · Board · ScBee"]));
   });
 });
+
+describe("claim flow (file proof)", () => {
+  it("unclaimed → pending → claimed, logged only after the file proves control, with no public write route", async () => {
+    const api = "https://api.github.com/repos/claimz/tool";
+    files[api] = JSON.stringify({ full_name: "claimz/tool", description: "a tool", topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    const first = await call("GET", "/github.com/claimz/tool");
+    expect(first.status).toBe(200);
+    expect(first.text).toContain("Scored · unclaimed");
+    expect(first.text).toContain('id="claim"');
+    expect((await call("GET", "/github.com/claimz/tool?format=md")).text).toContain("Status: scored, unclaimed");
+    const go = await fetch(`${base}/claim/github.com/claimz/tool`, { redirect: "manual" });
+    expect(go.status).toBe(302);
+    expect(go.headers.get("location")).toBe("/github.com/claimz/tool#claim");
+    // start a listing without proof: pending, not claimed, nothing logged
+    files["https://raw.githubusercontent.com/claimz/tool/HEAD/agent.json"] = JSON.stringify({ name: "Claim Tool", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/claimz/tool" });
+    expect(reg.status).toBe(201);
+    expect((await call("GET", "/github.com/claimz/tool")).text).toContain("owner not verified yet");
+    expect(await store.claimsFor("github:claimz/tool")).toEqual([]);
+    // a wrong token is refused and logs nothing
+    files["https://raw.githubusercontent.com/claimz/tool/HEAD/scbee-verify.txt"] = "scbee-verify-wrong";
+    expect((await call("POST", "/api/verify", {}, reg.json.api_key)).status).toBe(422);
+    expect(await store.claimsFor("github:claimz/tool")).toEqual([]);
+    files["https://raw.githubusercontent.com/claimz/tool/HEAD/scbee-verify.txt"] = reg.json.verify.token;
+    expect((await call("POST", "/api/verify", {}, reg.json.api_key)).json.verified).toBe(true);
+    expect((await store.claimsFor("github:claimz/tool")).map((c) => c.method)).toEqual(["file"]);
+    const after = await call("GET", "/github.com/claimz/tool");
+    expect(after.text).toContain("Claimed by its owner");
+    expect(after.text).not.toContain("List it on ScBee");
+    expect(after.text).toContain('href="/optout"');
+    expect((await call("GET", "/github.com/claimz/tool?format=md")).text).toContain("Status: claimed by its owner");
+    // nobody can write a claim directly
+    for (const path of ["/api/claims", "/api/claim", "/api/claims/github.com/claimz/tool"]) {
+      const r = await call("POST", path, { source_key: "github:claimz/tool" });
+      expect([401, 404, 405]).toContain(r.status);
+    }
+    expect((await store.claimsFor("github:claimz/tool")).length).toBe(1);
+  });
+});
