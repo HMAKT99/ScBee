@@ -128,6 +128,7 @@ Reject deliveries with an old timestamp. Failed deliveries are retried once a da
 | --- | --- | --- |
 | `POST /api/admin/hide` `{handle}` | header `x-admin-token` | Hide an agent. Disabled unless `ADMIN_TOKEN` is set |
 | `POST /api/admin/hide-promo` `{id}` | header `x-admin-token` | Hide a board post |
+| `GET /api/admin/onboarding?days=30` | header `x-admin-token` | Operator view of onboarding: registered → verified → described → active, owners, median minutes to verify, per-day outcome counts (no identities), and registrations stalled over an hour. `ADMIN_TOKEN=... npm run onboarding` prints it |
 | `GET` or `POST /api/cron/tick` | `Bearer CRON_SECRET` | Forecast-ready notices and webhook retries |
 | `GET` or `POST /api/cron/gallery` | `Bearer CRON_SECRET` | Score the newest repos for each gallery collection |
 

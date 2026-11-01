@@ -23,7 +23,7 @@ import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage, type Listin
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
-import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
+import { Store, hashKey, newApiKey, type AgentRow, type CollabRow, type FunnelEvent } from "./store.js";
 
 /** How long an unproven registration is held for whoever started it before someone else may start over. */
 export const UNVERIFIED_HOLD_MS = 3600_000;
@@ -424,6 +424,16 @@ export function createApp(opts: AppOptions) {
     }));
     return added;
   }
+  /** Count an onboarding outcome for the operator's funnel. Never fails the request it is counting. */
+  const funnel = (e: FunnelEvent) => store.bumpFunnel(e).catch(() => undefined);
+  /** Operator-only routes: a configured ADMIN_TOKEN sent as x-admin-token. Without one configured, they do not exist. */
+  const adminAuth = (req: IncomingMessage) => {
+    const tok = opts.adminToken;
+    if (!tok) throw new HttpError(404, "not found");
+    const given = Buffer.from(String(req.headers["x-admin-token"] ?? ""));
+    const want = Buffer.from(tok);
+    if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+  };
   const cronAuth = (req: IncomingMessage) => {
     if (!opts.cronSecret) throw new HttpError(404, "not found");
     const given = Buffer.from(String(req.headers.authorization ?? "").replace(/^Bearer /, ""));
@@ -505,22 +515,26 @@ export function createApp(opts: AppOptions) {
       const r = await cardFor(input);
       const existing = await store.bySource(r.source.key);
       const fileAt = verifyFilePath(r.source);
-      if (existing?.verified === 1 || existing?.hidden === 1)
+      if (existing?.verified === 1 || existing?.hidden === 1) {
+        await funnel("register_taken");
         throw new HttpError(409, `this project is already listed and verified. If it is yours and you lost the API key, keep the token file (${fileAt}) in place and POST ${baseUrl}/api/recover {"input": "${input}"} for a new key. If it is not yours, the real owner can remove it at ${baseUrl}/optout`);
+      }
       // An unproven registration holds no privileges. After an hour anyone may start over, so a stranger (or an abandoned
       // attempt) cannot lock the real owner out; the hour stops a squatter from snatching it back while the owner verifies.
       if (existing && Date.now() - existing.created_at < UNVERIFIED_HOLD_MS) {
         const mins = Math.ceil((existing.created_at + UNVERIFIED_HOLD_MS - Date.now()) / 60_000);
+        await funnel("register_held");
         throw new HttpError(409, `someone started a listing for this less than an hour ago and has not proved control yet. If that was you, finish it: put the token in ${fileAt} and POST /api/verify with that API key. Otherwise try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
       }
       const key = newApiKey();
       const challenge = newChallenge();
       const card = { name: r.card.name, description: r.card.description, card_json: JSON.stringify(r.card), card_url: r.cardUrl, card_found: r.cardFound, challenge, key_hash: hashKey(key), invited_by: refHandle?.id ?? null };
       let handle: string;
-      if (existing) { await store.reissueUnverified(existing.id, card); handle = existing.handle; }
+      if (existing) { await store.reissueUnverified(existing.id, card); handle = existing.handle; await funnel("register_replaced"); }
       else {
         handle = await store.uniqueHandle(r.handleBase);
         await store.createAgent({ handle, source_key: r.source.key, owner_key: r.source.ownerKey, kind: r.source.kind, ...card });
+        await funnel("register_ok");
       }
       return json(res, 201, {
         handle, api_key: key, verified: false, card_found: r.cardFound,
@@ -543,8 +557,11 @@ export function createApp(opts: AppOptions) {
       const b = await readJson(req);
       const src = parseSource(str(b.input, 300, "input"));
       const row = await store.bySource(src.key);
-      if (!row || !(await checkChallenge(src, row.challenge, opts.fetchOpts)))
+      if (!row || !(await checkChallenge(src, row.challenge, opts.fetchOpts))) {
+        await funnel("recover_fail");
         throw new HttpError(403, `could not prove control: the verification token was not found. ${verifyHint(src)}`);
+      }
+      await funnel("recover_ok");
       const key = newApiKey();
       await store.rotateKey(row.id, hashKey(key));
       await store.logClaim(row.source_key, row.id, "file-recover");
@@ -555,9 +572,12 @@ export function createApp(opts: AppOptions) {
       const a = await auth(req);
       await limit(`ver:${a.id}`, 10, 3600_000);
       if (a.verified) return json(res, 200, { verified: true });
-      if (!(await checkChallenge(srcOf(a), a.challenge, opts.fetchOpts)))
+      if (!(await checkChallenge(srcOf(a), a.challenge, opts.fetchOpts))) {
+        await funnel("verify_fail");
         throw new HttpError(422, `token not found in ${verifyFilePath(srcOf(a))}. ${verifyHint(srcOf(a))}`);
+      }
       await store.setVerified(a.id);
+      await funnel("verify_ok");
       await store.logClaim(a.source_key, a.id, "file");
       const pa = await store.publicAgent(a.handle);
       return json(res, 200, { verified: true, share: {
@@ -753,11 +773,7 @@ export function createApp(opts: AppOptions) {
       return json(res, 200, { opted_out: false });
     }
     if (method === "POST" && path === "/api/admin/optout") {
-      const tok = opts.adminToken;
-      if (!tok) throw new HttpError(404, "not found");
-      const given = Buffer.from(String(req.headers["x-admin-token"] ?? ""));
-      const want = Buffer.from(tok);
-      if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+      adminAuth(req);
       const src = parseSource(str((await readJson(req)).input, 300, "input"));
       await store.startOptout(src.key, newOptoutToken());
       await store.confirmOptout(src.key);
@@ -803,11 +819,7 @@ export function createApp(opts: AppOptions) {
       return json(res, 200, { ok: true });
     }
     if (method === "POST" && path === "/api/admin/hide-promo") {
-      const tok = opts.adminToken;
-      if (!tok) throw new HttpError(404, "not found");
-      const given = Buffer.from(String(req.headers["x-admin-token"] ?? ""));
-      const want = Buffer.from(tok);
-      if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+      adminAuth(req);
       const id = Number((await readJson(req)).id);
       if (!Number.isInteger(id) || !(await store.getPromo(id))) throw new HttpError(404, "no such post");
       await store.removePromo(id);
@@ -836,6 +848,7 @@ export function createApp(opts: AppOptions) {
       const s = screenText(shown);
       if (s.verdict === "quarantine") throw new HttpError(422, `listing text rejected by the safety screen (${s.flags.join(", ")})`);
       await store.setProfile(a.id, p.profile);
+      await funnel("profile_set");
       return json(res, 200, { ok: true, page: `${baseUrl}/a/${a.handle}`, card: store.effectiveCard(a, JSON.stringify(p.profile)).card });
     }
     if (method === "POST" && path === "/api/agent/refresh") {
@@ -1142,12 +1155,13 @@ export function createApp(opts: AppOptions) {
       return json(res, 202, { ok: true });
     }
 
+    if (method === "GET" && path === "/api/admin/onboarding") {
+      adminAuth(req);
+      const days = Math.min(Math.max(Number(url.searchParams.get("days") ?? 30) || 30, 1), 365);
+      return json(res, 200, { note: "Operator view. Real counts from the database; events are per-day counts with no identities.", ...(await store.onboardingReport(days)) });
+    }
     if (method === "POST" && path === "/api/admin/hide") {
-      const tok = opts.adminToken;
-      if (!tok) throw new HttpError(404, "not found");
-      const given = Buffer.from(String(req.headers["x-admin-token"] ?? ""));
-      const want = Buffer.from(tok);
-      if (given.length !== want.length || !timingSafeEqual(given, want)) throw new HttpError(403, "forbidden");
+      adminAuth(req);
       const t = await store.byHandle(str((await readJson(req)).handle, 39, "handle"));
       if (!t) throw new HttpError(404, "no such agent");
       await store.hide(t.id);

@@ -246,6 +246,12 @@ CREATE TABLE IF NOT EXISTS verdict_usage (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (project_key, owner_key)
 );
+CREATE TABLE IF NOT EXISTS funnel_events (
+  day TEXT NOT NULL,
+  event TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, event)
+);
 CREATE TABLE IF NOT EXISTS claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_key TEXT NOT NULL,
@@ -271,6 +277,8 @@ CREATE INDEX IF NOT EXISTS idx_ref_from ON referrals(from_handle, day);
  * Turso database (`libsql://...` + auth token). Every query is parameterised; secrets never leave this file.
  */
 export type ClaimStatus = "unclaimed" | "pending" | "claimed";
+/** Onboarding outcomes counted per day for the operator's funnel. */
+export type FunnelEvent = "register_ok" | "register_replaced" | "register_held" | "register_taken" | "verify_ok" | "verify_fail" | "recover_ok" | "recover_fail" | "profile_set";
 
 export class Store {
   private constructor(readonly db: Client) {}
@@ -598,6 +606,41 @@ export class Store {
     await this.run("INSERT OR IGNORE INTO secrets (name, value, created_at) VALUES (?, ?, ?)", [name, make(), Date.now()]); // another instance may win the race: read back
     return (await read())!.value;
   }
+  /** One more of an onboarding outcome today. Counts only: no handle, source, address or text is kept. */
+  async bumpFunnel(event: FunnelEvent) {
+    await this.run("INSERT INTO funnel_events (day, event, n) VALUES (?, ?, 1) ON CONFLICT(day, event) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), event]);
+  }
+
+  /** For the operator only (admin token): how newcomers move from registering to being useful, over the last `days`. */
+  async onboardingReport(days: number) {
+    const since = Date.now() - days * 86_400_000;
+    const sinceDay = new Date(since).toISOString().slice(0, 10);
+    const n = async (sql: string, args: InValue[] = []) => Number((await this.one<{ n: number }>(sql, args))?.n ?? 0);
+    const inWindow = "FROM agents a WHERE a.created_at >= ? AND a.hidden = 0";
+    const registered = await n(`SELECT COUNT(*) AS n ${inWindow}`, [since]);
+    const verified = await n(`SELECT COUNT(*) AS n ${inWindow} AND a.verified = 1`, [since]);
+    const described = await n(`SELECT COUNT(*) AS n ${inWindow} AND a.verified = 1 AND (a.card_found = 1 OR EXISTS (SELECT 1 FROM profiles p WHERE p.agent_id = a.id))`, [since]);
+    const active = await n(`SELECT COUNT(*) AS n ${inWindow} AND a.verified = 1 AND (
+        EXISTS (SELECT 1 FROM verdicts v WHERE v.agent_id = a.id) OR EXISTS (SELECT 1 FROM promos p WHERE p.agent_id = a.id)
+        OR EXISTS (SELECT 1 FROM connections c WHERE c.from_id = a.id OR c.to_id = a.id) OR EXISTS (SELECT 1 FROM collabs k WHERE k.a_id = a.id OR k.b_id = a.id))`, [since]);
+    const newOwners = await n(`SELECT COUNT(DISTINCT a.owner_key) AS n ${inWindow}`, [since]);
+    const verifiedOwners = await n("SELECT COUNT(DISTINCT owner_key) AS n FROM agents WHERE verified = 1 AND hidden = 0");
+    // Time from registering to proving control, from the claims log (first proof per listing).
+    const waits = (await this.rows<{ ms: number }>(
+      `SELECT MIN(c.created_at) - a.created_at AS ms FROM claims c JOIN agents a ON a.id = c.agent_id
+       WHERE c.method = 'file' AND c.created_at >= ? GROUP BY c.agent_id`, [since])).map((r) => Number(r.ms)).filter((x) => x >= 0).sort((a, z) => a - z);
+    const median = waits.length ? waits[Math.floor((waits.length - 1) / 2)]! : null;
+    const stalled = (await this.rows<{ handle: string; source_key: string; created_at: number; card_found: number }>(
+      `SELECT handle, source_key, created_at, card_found FROM agents WHERE verified = 0 AND hidden = 0 AND created_at >= ? AND created_at <= ? ORDER BY created_at DESC LIMIT 20`,
+      [since, Date.now() - 3600_000])).map((r) => ({ handle: r.handle, source: r.source_key, hours_waiting: Math.round((Date.now() - Number(r.created_at)) / 3600_000), card_found: r.card_found === 1 }));
+    const events = Object.fromEntries((await this.rows<{ event: string; n: number }>(
+      "SELECT event, SUM(n) AS n FROM funnel_events WHERE day >= ? GROUP BY event ORDER BY event", [sinceDay])).map((r) => [r.event, Number(r.n)]));
+    return {
+      days, funnel: { registered, verified, described, active }, owners: { new_in_window: newOwners, with_a_verified_agent: verifiedOwners },
+      median_minutes_to_verify: median === null ? null : Math.round(median / 60_000), events, stalled,
+    };
+  }
+
   async recordNeed(words: string[], matched: boolean) {
     const day = new Date().toISOString().slice(0, 10);
     for (const w of words.slice(0, 12))
