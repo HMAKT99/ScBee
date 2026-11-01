@@ -2471,3 +2471,41 @@ describe("claim flow (file proof)", () => {
     expect((await store.claimsFor("github:claimz/tool")).length).toBe(1);
   });
 });
+
+describe("usage signal on verdicts", () => {
+  it("shows 'Used by N agents · X% worked' only from 5 verified agents (one per owner), one report per day, nothing below that", async () => {
+    const api = "https://api.github.com/repos/usagez/tool";
+    files[api] = JSON.stringify({ full_name: "usagez/tool", description: "a tool", topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    expect((await call("GET", "/api/score/github.com/usagez/tool")).status).toBe(200);
+    const verdict = (outcome: string) => ({ project: "github.com/usagez/tool", tried: "integrated", would_use: true, would_recommend_to_human: true, summary: "Used it.", outcome, task_category: "code-review" });
+    const agents = [];
+    for (let i = 1; i <= 5; i++) agents.push(await makeAgent(`usageowner${i}/agent`));
+    for (const [i, a] of agents.slice(0, 4).entries()) expect((await call("POST", "/api/verdicts", verdict(i === 3 ? "failed" : "worked"), a.key)).status).toBe(201);
+    // four agents: nothing shown anywhere
+    expect((await call("GET", "/api/projects/github.com/usagez/tool/verdicts")).json.usage).toBeNull();
+    expect((await call("GET", "/github.com/usagez/tool")).text).not.toContain("Used by");
+    expect((await call("GET", "/github.com/usagez/tool?format=md")).text).not.toContain("Usage:");
+    // same agent, same day: refused before anything is written
+    const again = await call("POST", "/api/verdicts", verdict("failed"), agents[0]!.key);
+    expect(again.status).toBe(429);
+    // an invalid outcome is rejected
+    expect((await call("POST", "/api/verdicts", verdict("amazing"), agents[4]!.key)).status).toBe(400);
+    expect((await call("POST", "/api/verdicts", verdict("worked"), agents[4]!.key)).status).toBe(201);
+    const v = (await call("GET", "/api/projects/github.com/usagez/tool/verdicts")).json;
+    expect(v.usage).toMatchObject({ agents: 5, worked: 4, failed: 1, worked_pct: 80 });
+    expect(v.usage_min_agents).toBe(5);
+    expect((await call("GET", "/github.com/usagez/tool")).text).toContain("Used by 5 agents · 80% worked");
+    expect((await call("GET", "/github.com/usagez/tool?format=md")).text).toContain("Usage: used by 5 agents · 80% worked");
+    // an unverified agent cannot report, and a row from a hidden or unverified agent never counts
+    files["https://raw.githubusercontent.com/usageowner6/agent/HEAD/agent.json"] = JSON.stringify({ name: "U6", skills: [] });
+    const unv = await call("POST", "/api/register", { input: "github.com/usageowner6/agent" });
+    expect((await call("POST", "/api/verdicts", verdict("worked"), unv.json.api_key)).status).toBe(403);
+    const row = await store.bySource("github:usageowner6/agent");
+    await store.upsertUsage({ project_key: "github:usagez/tool", owner_key: "github:usageowner6", agent_id: row!.id, outcome: "worked", task_category: "" });
+    expect((await call("GET", "/api/projects/github.com/usagez/tool/verdicts")).json.usage.agents).toBe(5);
+    // the owner's own agent cannot report on its own project
+    const own = await makeAgent("usagez/helper");
+    expect((await call("POST", "/api/verdicts", verdict("worked"), own.key)).status).toBe(403);
+  });
+});

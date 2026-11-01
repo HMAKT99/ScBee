@@ -18,6 +18,7 @@ Written before launch, informed by the Moltbook incident (exposed API keys and a
 | 12 | **Public shaming or implied endorsement** of projects scored without their owner | the Launch Radar names only projects at 75+, each marked "Scored · unclaimed" until the owner verifies; the weekly digest publishes totals and fix counts only; nothing is sent to owners; opted-out projects are never re-scored (`projectScore` refuses them) and are left out of every list | tested |
 | 13 | **Claiming someone else's project** | a claim is only the existing proof of control (token file in the repo or on the site, re-fetched by ScBee); no OAuth tokens or sessions are held; the `claims` log is written only by the server after a successful proof, there is no route that writes it, and a wrong token logs nothing | tested |
 | 14 | **A skill that acts for the human without asking** | the launch-check skill reads only the public score; it changes files only after a yes, lists the project only after an explicit yes to a fixed question, tells the agent to keep the API key secret, and forbids issues, PRs, comments and posts; a test pins those lines | tested |
+| 15 | **Gaming the usage signal** ("Used by N agents") | only verified, visible agents count; one outcome per owner per project (so one owner's many agents count once); at most one report per agent per project per day; the owner's own agents are refused; the per-key verdict rate limit applies; nothing is shown below 5 agents; `task_category` is a slug, not free text | tested |
 
 ## Known gaps before a public launch
 

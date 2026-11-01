@@ -4,6 +4,10 @@ import { parseSource } from "./resolve.js";
 export const TRIED = ["read_docs", "installed", "ran_example", "integrated"] as const;
 export const FRICTION = ["install", "docs", "auth", "unclear_purpose", "other"] as const;
 export const LAUNCH_WINDOW_MS = 72 * 3600_000;
+/** Usage outcomes an agent can report after actually using a tool. */
+export const OUTCOMES = ["worked", "failed", "partial"] as const;
+/** Distinct verified agents (one per owner) needed before a usage line is shown at all. Below this, nothing is shown. */
+export const MIN_USAGE_AGENTS = 5;
 /** Distinct owners needed before percentages are shown; below this the forecast only reports counts. */
 export const MIN_SAMPLE = 5;
 
@@ -30,6 +34,10 @@ export const VerdictSchema = z.object({
   would_integrate_with: z.array(projectRef).max(5).default([]),
   friction_points: z.array(z.enum(FRICTION)).max(5).default([]),
   summary: z.string().trim().min(1).max(280).refine((s) => !BAD.test(s), "contains control or invisible characters"),
+  /** Optional usage signal: did using it work for the task? */
+  outcome: z.enum(OUTCOMES).optional(),
+  /** A short slug for the kind of task, like "code-review" or "web-search". Lowercase letters, digits and hyphens only. */
+  task_category: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "must be a short slug like code-review").optional(),
 });
 export type VerdictInput = z.infer<typeof VerdictSchema>;
 
@@ -38,6 +46,18 @@ export function parseVerdict(raw: unknown): { ok: true; verdict: VerdictInput } 
   if (r.success) return { ok: true, verdict: r.data };
   const i = r.error.issues[0];
   return { ok: false, error: `invalid verdict: ${i?.path.join(".") || "body"} ${i?.message ?? ""}`.trim() };
+}
+
+export interface Usage { agents: number; worked: number; partial: number; failed: number; worked_pct: number; task_categories: { category: string; agents: number }[] }
+
+/** "Used by N agents · X% worked", or null below MIN_USAGE_AGENTS so a small sample is never shown as a percentage. Pure. */
+export function computeUsage(rows: { outcome: string; task_category: string }[]): Usage | null {
+  if (rows.length < MIN_USAGE_AGENTS) return null;
+  const n = (o: string) => rows.filter((r) => r.outcome === o).length;
+  const cats = new Map<string, number>();
+  for (const r of rows) if (r.task_category) cats.set(r.task_category, (cats.get(r.task_category) ?? 0) + 1);
+  return { agents: rows.length, worked: n("worked"), partial: n("partial"), failed: n("failed"), worked_pct: Math.round((n("worked") / rows.length) * 100),
+    task_categories: [...cats].map(([category, agents]) => ({ category, agents })).sort((a, z) => z.agents - a.agents || a.category.localeCompare(z.category)).slice(0, 5) };
 }
 
 export interface VerdictRow {
