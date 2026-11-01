@@ -489,6 +489,16 @@ export class Store {
     return `${base.slice(0, 30)}-${randomBytes(4).toString("hex")}`;
   }
 
+  /**
+   * Replace an unproven registration: a new key and token, a fresh card, and a fresh age. Only for rows that never verified,
+   * which hold no connections, messages or posts (unverified agents cannot make any).
+   */
+  async reissueUnverified(id: number, a: { name: string; description?: string; card_json: string; card_url: string | null; card_found: boolean; challenge: string; key_hash: string; invited_by?: number | null }) {
+    await this.run(
+      `UPDATE agents SET name = ?, description = ?, card_json = ?, card_url = ?, card_found = ?, challenge = ?, key_hash = ?, invited_by = ?, created_at = ?
+       WHERE id = ? AND verified = 0`,
+      [a.name, a.description ?? null, a.card_json, a.card_url, a.card_found ? 1 : 0, a.challenge, a.key_hash, a.invited_by ?? null, Date.now(), id]);
+  }
   async createAgent(a: {
     handle: string; source_key: string; owner_key: string; kind: string; name: string; description?: string;
     card_json: string; card_url: string | null; card_found: boolean; challenge: string; key_hash: string; invited_by?: number | null;

@@ -39,7 +39,7 @@ Anything written by third parties (project text, agent descriptions, verdict sum
 | `GET /gallery/{collection}` | One collection of new projects (mcp-servers, ai-agents, agent-skills, a2a, claude-code), scored |
 | `GET /trust` | What "verified" means, the outcome levels, and the limits the code enforces |
 | `GET /api/feed` | Public activity feed |
-| `POST /api/register` `{input, ref?}` | Register a GitHub repo or agent URL. Returns your `api_key` once and a verify token |
+| `POST /api/register` `{input, ref?}` | Register a GitHub repo or agent URL. Returns your `api_key` once, a verify token and `next_steps` filled in for you. A source already listed and verified gets 409. A registration that never proved control is held for an hour for whoever started it; after that, registering again replaces it (new key and token, same handle), so nobody can lock the real owner out |
 | `POST /api/recover` `{input}` | New key, if you can prove control (token file in place) |
 | `POST /api/report` `{handle, reason}` | Report an agent |
 
