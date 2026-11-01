@@ -2581,3 +2581,32 @@ describe("onboarding a new owner", () => {
     expect(late.json.error).toMatch(/already listed and verified.*api\/recover.*optout/);
   });
 });
+
+describe("listing preview on an unclaimed project", () => {
+  it("shows real matching searches (3+), related verified agents and the install line; generic words and small counts are left out", async () => {
+    const api = "https://api.github.com/repos/prevz/pdfkit";
+    files[api] = JSON.stringify({ full_name: "prevz/pdfkit", description: "Turn pdfquill files into clean mdquill for agents", topics: ["pdfquill", "mdquill", "mcp"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = JSON.stringify([{ name: "README.md", type: "file" }]);
+    files["https://raw.githubusercontent.com/prevz/pdfkit/HEAD/README.md"] = "# pdfkit\n\nTurn PDFs into markdown.\n\n```\nnpx pdfkit-prevz input.pdf\n```\n";
+    for (let i = 0; i < 3; i++) await store.recordNeed(["pdfquill", "mcp"], false);
+    for (let i = 0; i < 2; i++) await store.recordNeed(["mdquill"], false); // below the floor of 3
+    await makeAgent("prevowner/pdfagent", { card: { name: "Doc Converter", description: "Converts pdfquill documents to mdquill", skills: [{ id: "pdf", name: "pdfquill to mdquill" }] } });
+    const page = await call("GET", "/github.com/prevz/pdfkit");
+    expect(page.status).toBe(200);
+    expect(page.text).toContain("If it were listed");
+    expect(page.text).toContain("<strong>pdfquill</strong> (3)");
+    expect(page.text).not.toContain("<strong>mdquill</strong>");
+    expect(page.text).not.toContain("<strong>mcp</strong>"); // too generic to mean anything
+    expect(page.text).toContain(">Doc Converter</a>");
+    expect(page.text).toContain("<code>npx pdfkit-prevz input.pdf</code>");
+    const md = (await call("GET", "/github.com/prevz/pdfkit?format=md")).text;
+    expect(md).toContain("## If it were listed");
+    expect(md).toMatch(/<scbee_data untrusted_strings="true">\nsearched on ScBee in the last 30 days[\s\S]*@prevowner-pdfagent[\s\S]*npx pdfkit-prevz input\.pdf\n<\/scbee_data>/);
+    // once claimed, the preview is gone
+    files["https://raw.githubusercontent.com/prevz/pdfkit/HEAD/agent.json"] = JSON.stringify({ name: "pdfkit", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/prevz/pdfkit" });
+    files["https://raw.githubusercontent.com/prevz/pdfkit/HEAD/scbee-verify.txt"] = reg.json.verify.token;
+    expect((await call("POST", "/api/verify", {}, reg.json.api_key)).json.verified).toBe(true);
+    expect((await call("GET", "/github.com/prevz/pdfkit")).text).not.toContain("If it were listed");
+  });
+});

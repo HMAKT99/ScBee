@@ -2,6 +2,7 @@ import { esc } from "./html.js";
 import { wrapData } from "./envelope.js";
 import type { PublicAgent } from "./store.js";
 import type { BoardItem } from "./html.js";
+import type { ListingPreview } from "./project.js";
 
 /**
  * Agent view: the same pages, as the plain Markdown an agent receives. `?format=md` (or `Accept: text/markdown`) returns it
@@ -93,7 +94,18 @@ export function galleryMd(base: string, cols: { title: string; blurb: string; it
   return `# Gallery\n\nNewest projects per collection, scored for launch readiness from public data. A score is not an endorsement and not a prediction.\nAPI: GET ${base}/api/gallery\n\n${cols.map((c) => `## ${c.title}\n${c.blurb}\n${data(c.items.length ? c.items.map((i) => `- ${i.name}: ${i.score}/100 (${i.band}) ${base}/${i.project}${i.description ? ` | ${i.description}` : ""}`).join("\n") : "(none yet)")}`).join("\n\n")}\n`;
 }
 
-export function scoreMd(base: string, p: { path: string; name: string; description: string | null; claim?: "unclaimed" | "pending" | "claimed"; usage?: { agents: number; worked_pct: number } | null; agentReady?: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
+/** What listing would get an unclaimed project. Search words and agent names are third-party text, so they go in the envelope. */
+function previewMd(pv: ListingPreview | undefined): string {
+  if (!pv || (!pv.searched.length && !pv.related.length && !pv.install)) return "";
+  const lines = [
+    pv.searched.length ? `searched on ScBee in the last 30 days (each at least 3 times): ${pv.searched.map((s) => `${s.word} (${s.searches})`).join(", ")}` : "",
+    pv.related.length ? `verified agents that do related things: ${pv.related.map((a) => `@${a.handle}`).join(", ")}` : "",
+    pv.install ? `install line the listing would show: ${pv.install}` : "",
+  ].filter(Boolean);
+  return `## If it were listed\nReal data only. Listing is free and needs the owner's say-so.\n${data(lines.join("\n"))}\n\n`;
+}
+
+export function scoreMd(base: string, p: { path: string; name: string; description: string | null; preview?: ListingPreview; claim?: "unclaimed" | "pending" | "claimed"; usage?: { agents: number; worked_pct: number } | null; agentReady?: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
   const lost = p.result.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title }))).sort((a, z) => (z.i.max - z.i.points) - (a.i.max - a.i.points));
   return `# ${p.name}: ${p.result.total}/100 (${bandLabel})
 
@@ -102,7 +114,7 @@ API: GET ${base}/api/${p.path.startsWith("web/") ? "score/" + p.path : "score/" 
 Badge: ${base}/badge/${p.path}.svg   Share card: ${base}/og/${p.path}.png
 ${p.usage ? `Usage: used by ${p.usage.agents} agents \u00b7 ${p.usage.worked_pct}% worked (verified agents, one per owner)\n` : ""}${p.claim ? `Status: ${p.claim === "claimed" ? "claimed by its owner (proved control with a file)" : p.claim === "pending" ? "listed, owner not verified yet (not a verified agent)" : `scored, unclaimed (ScBee scored public data; not a registered agent). Owner? Claim it: ${base}/claim/${p.path}`}\n` : ""}Add to README: [![ScBee readiness](${base}/badge/${p.path}.svg)](${base}/${p.path})
 
-${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}## Fixes, biggest first
+${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}${previewMd(p.preview)}## Fixes, biggest first
 ${lost.length ? lost.slice(0, 8).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing major to fix"}
 
 ${p.agentReady ? agentReadyMd(base, p.path, p.agentReady) : ""}## Breakdown

@@ -19,7 +19,7 @@ import { fixMd, fixPage, reportMd, reportPage } from "./report.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
-import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage } from "./project.js";
+import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage, type ListingPreview } from "./project.js";
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
@@ -94,6 +94,10 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
+/** Words too broad to say what a project does: they would match almost every agent and every search. */
+const GENERIC_WORDS = new Set(["agent", "agents", "ai-agent", "ai-agents", "mcp", "mcp-server", "mcp-servers", "server", "servers", "llm", "llms", "tool", "tools",
+  "claude", "claude-code", "code", "openai", "gpt", "app", "api", "open-source", "opensource", "python", "typescript", "javascript", "node", "nodejs", "framework", "library", "simple", "fast", "based", "built"]);
+
 const PUBLIC_GET = /^\/api\/(stats|demand|radar|radar\/weekly|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|report|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
@@ -263,6 +267,26 @@ export function createApp(opts: AppOptions) {
     const fixes = [...tally.values()].sort((a, z) => z.projects - a.projects || a.label.localeCompare(z.label))
       .map((f) => ({ ...f, pct: Math.round((f.projects / rows.length) * 100) }));
     return { days, since: Date.now() - days * 86_400_000, scored: rows.length, strong: await radarItems(days), fixes };
+  }
+
+  /**
+   * What listing would get an unclaimed project, from real data only: searches that match its topics and description
+   * (each word searched at least 3 times in 30 days), verified agents that do related things, and its README install line.
+   * Generic words are left out so the matches mean something.
+   */
+  async function listingPreview(projectKey: string): Promise<ListingPreview | undefined> {
+    const row = await store.getProject(projectKey);
+    if (!row) return undefined;
+    const sig = JSON.parse(row.signals_json) as Partial<ProjectSignals>;
+    const words = needWords([...(sig.topics ?? []), sig.description ?? ""].join(" ")).filter((w) => !GENERIC_WORDS.has(w));
+    const related = words.length
+      ? rankForNeed(words.join(" "), await store.list("", true, 500)).filter((m) => m.matched.length >= 2 || m.score >= 3).slice(0, 3)
+      : [];
+    return {
+      searched: await store.searchedWords(words),
+      related: related.map((m) => ({ handle: m.agent.handle, name: m.agent.name })),
+      install: sig.readme?.installCommand ?? null,
+    };
   }
 
   async function forecastFor(projectKey: string) {
@@ -1303,8 +1327,9 @@ export function createApp(opts: AppOptions) {
             const v = await projectScore(owner, repo, ip);
             const claim = await store.claimStatus(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`);
             const usage = computeUsage(await store.usageRows(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`));
-            return page(200, projectPage({ ...v, claim, usage }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
-              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage }, band(v.result.total).label));
+            const preview = claim === "unclaimed" ? await listingPreview(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`) : undefined;
+            return page(200, projectPage({ ...v, claim, usage, preview }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
+              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage, preview }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
             throw e;
