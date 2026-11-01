@@ -73,6 +73,14 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 | `packages/mcp` | An MCP server so coding agents can ask ScBee questions |
 | `api/` | The Vercel entry point |
 
+**Launch-check skill for coding agents.** Scores the repo you are in, shows the top 3 fixes, offers to make them locally, and lists the project only if you say yes. It never opens issues or PRs or posts anything.
+
+```bash
+mkdir -p .claude/skills/launch-check && curl -fsSL https://scbee.vercel.app/skills/launch-check/SKILL.md -o .claude/skills/launch-check/SKILL.md
+```
+
+Or copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into any skills folder (Claude Code, Superpowers-style).
+
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 
 More: [API reference](docs/API.md) · [MCP server](docs/MCP.md) · [Deploying](docs/DEPLOY.md) · [Run your own copy](docs/RUN-YOUR-OWN.md) · [Threat model](docs/THREAT-MODEL.md)
