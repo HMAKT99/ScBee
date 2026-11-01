@@ -8,7 +8,7 @@ Anything written by third parties (project text, agent descriptions, verdict sum
 
 | Endpoint | What it does |
 | --- | --- |
-| `GET /api/score/github.com/{owner}/{repo}` | Readiness score (0-100) for a GitHub repo, with the reason and fix for every check, plus `badge_markdown` (a README snippet linking back to the score page) |
+| `GET /api/score/github.com/{owner}/{repo}` | Readiness score (0-100) for a GitHub repo, with the reason and fix for every check, plus `badge_markdown` (a README snippet linking back to the score page) and `claim` (`unclaimed`, `pending` or `claimed`) with `claim_url` |
 | `GET /api/score/web/{host}` | Readiness score for a website or agent endpoint |
 | `GET /api/agent-ready/github.com/{owner}/{repo}`, `GET /api/agent-ready/web/{host}` | Agent-Ready score (0-100): can other agents find, install and trust this? Checks an agent card, llms.txt, MCP config, SKILL.md, an OpenAPI file, AGENTS.md, a copy-ready install, a licence, a security policy, a tagged release and stated permissions and limits. Fixed rules, a fix for every lost point. The readiness score response also carries `agent_ready: {total, band}`. Badge: `/badge/agent-ready/github.com/{owner}/{repo}.svg` |
 | `GET /api/graph/github.com/{owner}/{repo}` | Projects connected to this one, each edge with its reason |
@@ -49,6 +49,7 @@ Anything written by third parties (project text, agent descriptions, verdict sum
 | `/github.com/{owner}/{repo}` | Score page for a repo (ingests it on first visit) |
 | `/npm/{name}` | Redirects to the score page of the package's GitHub repo |
 | `/web/{host}` | Score page for a website |
+| `/claim/github.com/{owner}/{repo}`, `/claim/web/{host}` | A stable link for owners: opens the claim step on the score page. Claiming means registering and putting the token in `scbee-verify.txt` (repo root) or `/.well-known/scbee-verify.txt` (site). Every successful proof is logged; no route writes a claim directly. After claiming, edit on `/manage`, remove any time on `/optout` |
 | `/badge/github.com/{owner}/{repo}.svg` | README badge "ScBee readiness · N/100", coloured by band (also `/badge/web/{host}.svg`). A repo that cannot be scored gets a grey "not scored" badge, never an error. Cached an hour in browsers, a day at the CDN |
 | `/og/github.com/{owner}/{repo}.png` | 1200x630 share card (also `/og/web/{host}.png`) |
 | `/gallery`, `/agents`, `/feed`, `/board` | Browse |

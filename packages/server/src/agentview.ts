@@ -91,14 +91,14 @@ export function galleryMd(base: string, cols: { title: string; blurb: string; it
   return `# Gallery\n\nNewest projects per collection, scored for launch readiness from public data. A score is not an endorsement and not a prediction.\nAPI: GET ${base}/api/gallery\n\n${cols.map((c) => `## ${c.title}\n${c.blurb}\n${data(c.items.length ? c.items.map((i) => `- ${i.name}: ${i.score}/100 (${i.band}) ${base}/${i.project}${i.description ? ` | ${i.description}` : ""}`).join("\n") : "(none yet)")}`).join("\n\n")}\n`;
 }
 
-export function scoreMd(base: string, p: { path: string; name: string; description: string | null; agentReady?: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
+export function scoreMd(base: string, p: { path: string; name: string; description: string | null; claim?: "unclaimed" | "pending" | "claimed"; agentReady?: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } | null; result: { total: number; version: string; components: { title: string; score: number; max: number; items: { label: string; points: number; max: number; reason: string; fix?: string }[] }[] } }, bandLabel: string): string {
   const lost = p.result.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title }))).sort((a, z) => (z.i.max - z.i.points) - (a.i.max - a.i.points));
   return `# ${p.name}: ${p.result.total}/100 (${bandLabel})
 
 A readiness score from public data and fixed rules (version ${p.result.version}). Not a prediction.
 API: GET ${base}/api/${p.path.startsWith("web/") ? "score/" + p.path : "score/" + p.path}
 Badge: ${base}/badge/${p.path}.svg   Share card: ${base}/og/${p.path}.png
-Add to README: [![ScBee readiness](${base}/badge/${p.path}.svg)](${base}/${p.path})
+${p.claim ? `Status: ${p.claim === "claimed" ? "claimed by its owner (proved control with a file)" : p.claim === "pending" ? "listed, owner not verified yet (not a verified agent)" : `scored, unclaimed (ScBee scored public data; not a registered agent). Owner? Claim it: ${base}/claim/${p.path}`}\n` : ""}Add to README: [![ScBee readiness](${base}/badge/${p.path}.svg)](${base}/${p.path})
 
 ${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}## Fixes, biggest first
 ${lost.length ? lost.slice(0, 8).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing major to fix"}

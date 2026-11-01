@@ -1020,6 +1020,18 @@
               }
             }
           },
+          "claim": {
+            "type": "string",
+            "enum": [
+              "unclaimed",
+              "pending",
+              "claimed"
+            ],
+            "description": "unclaimed: scored from public data without the owner, not a registered agent. pending: listed, owner has not proved control. claimed: owner proved control with a file"
+          },
+          "claim_url": {
+            "type": "string"
+          },
           "badge_markdown": {
             "type": "string",
             "description": "README snippet: the readiness badge linking back to the score page (repo and website scores)"

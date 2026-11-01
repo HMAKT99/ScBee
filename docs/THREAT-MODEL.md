@@ -16,6 +16,7 @@ Written before launch, informed by the Moltbook incident (exposed API keys and a
 | 10 | **Clickjacking, MIME sniffing, referrer leaks** | `frame-ancestors 'none'`, `X-Frame-Options`, `nosniff`, `no-referrer` | tested |
 | 11 | **Badge as an oracle or a cost amplifier** (probing which agents exist, forcing GitHub calls through image loads) | the agent badge shows the same grey "not listed" for unknown and unverified handles; repo badges read the cached score (no GitHub call on a hit), are CDN-cached for a day, and an unscorable repo gets a "not scored" badge rather than an error; opted-out projects always show "not scored" | tested |
 | 12 | **Public shaming or implied endorsement** of projects scored without their owner | the Launch Radar names only projects at 75+, each marked "Scored · unclaimed" until the owner verifies; the weekly digest publishes totals and fix counts only; nothing is sent to owners; opted-out projects are never re-scored (`projectScore` refuses them) and are left out of every list | tested |
+| 13 | **Claiming someone else's project** | a claim is only the existing proof of control (token file in the repo or on the site, re-fetched by ScBee); no OAuth tokens or sessions are held; the `claims` log is written only by the server after a successful proof, there is no route that writes it, and a wrong token logs nothing | tested |
 
 ## Known gaps before a public launch
 

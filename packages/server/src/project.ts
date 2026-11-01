@@ -14,7 +14,11 @@ export interface ProjectView {
   listed: boolean;
   /** The "can agents use this" score. Null until the project has been re-read with the facts it needs. */
   agentReady?: ScoreResult | null;
+  /** Read live from the listings, not from the cached score. */
+  claim?: "unclaimed" | "pending" | "claimed";
 }
+
+export const CLAIM_LABEL = { unclaimed: "Scored \u00b7 unclaimed", pending: "Listed \u00b7 owner not verified yet", claimed: "Claimed by its owner" } as const;
 
 /** Badges are cheap to serve: browsers keep them an hour, the CDN a day, and a stale one is fine for a week. */
 export const BADGE_CACHE = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
@@ -103,7 +107,7 @@ ${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span cla
 
 /** The invitation on a project nobody has claimed yet: what the owner gets, with no promise about users. */
 function claimSection(around: number, input: string): string {
-  return `<h2 class="h2s">Claim this project</h2><div class="specimen">
+  return `<h2 class="h2s" id="claim">Claim this project</h2><div class="specimen">
 <p>This project is on the map as an <strong>unclaimed node</strong>${around ? `, with <strong>${around}</strong> link${around === 1 ? "" : "s"} to other projects found in public data` : ""}. The owner can claim it by proving ownership with one file in the repo. Claiming gives the owner:</p>
 <ul class="list"><li>A page that agents can find by what the project does, with a copy-ready install command.</li><li>A receipt of the visitors ScBee sends to it, and which agents sent them.</li><li>The projects around it, and a way to ask them for an introduction (both sides must agree).</li></ul>
 <p class="mt16"><button class="btn" id="listit" data-input="${esc(input)}">List it on ScBee</button></p>
@@ -133,7 +137,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
     : `<div class="fixes"><h2>Nothing major to fix</h2><p>Every check passes. Ship it.</p></div>`;
   const body = `<div class="wrap"><div class="page"><div class="label">Launch readiness &middot; score ${esc(r.version)}</div>
 <div class="score-head mt16"><div class="display num-xl" aria-label="Score ${r.total} out of 100">${r.total}</div><div>
-<span class="band">${esc(b.label)}</span><h1 class="mt16 h-l">${esc(name)}</h1>
+<span class="band">${esc(b.label)}</span> ${p.claim ? `<span class="badge${p.claim === "claimed" ? " ok" : ""}">${CLAIM_LABEL[p.claim]}</span>` : ""}<h1 class="mt16 h-l">${esc(name)}</h1>
 ${p.description ? `<p class="lead mt16">${esc(p.description)}</p>` : ""}</div></div>
 ${fixes}
 <h2 class="h2s">Breakdown</h2><div class="comps">${comps}</div>
@@ -146,7 +150,9 @@ ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 <button class="btn ghost sm" data-copy="${esc(url)}">Copy link</button></div>
 <h2 class="h2s">Add the badge to your README</h2>
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy</button></div>
-${p.listed ? "" : claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`)}
+${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner proved control with a file in the ${p.path?.startsWith("web/") ? "site" : "repo"}. They can edit the listing on <a href="/manage">Manage a listing</a> or remove it at any time from <a href="/optout">Remove a project</a>.</p>`
+  : p.claim === "pending" ? `<p class="note mt16" id="claim">A listing was started but the owner has not proved control yet. Until then it is not a verified agent. Owner? Follow the verify step in <a href="/join.md">join.md</a>, or recover the key from <a href="/manage">Manage a listing</a>.</p>`
+  : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`) : ""}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div></div>`;
   return layout(`${name} · ScBee`, body, { head, description: `${name} scores ${r.total}/100 for launch readiness. ${b.label}. See exactly what to fix.` });
 }

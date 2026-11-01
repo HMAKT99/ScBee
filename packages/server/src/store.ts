@@ -237,6 +237,14 @@ CREATE TABLE IF NOT EXISTS collab_notes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_cnote ON collab_notes(collab_id, id);
+CREATE TABLE IF NOT EXISTS claims (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_key TEXT NOT NULL,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  method TEXT NOT NULL DEFAULT 'file',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claims_src ON claims(source_key, created_at);
 CREATE TABLE IF NOT EXISTS referrals (
   day TEXT NOT NULL,
   to_handle TEXT NOT NULL,
@@ -253,6 +261,8 @@ CREATE INDEX IF NOT EXISTS idx_ref_from ON referrals(from_handle, day);
  * libSQL-backed store (SQLite dialect). Works against a local file (`file:scbee.db`, `:memory:`) or a hosted
  * Turso database (`libsql://...` + auth token). Every query is parameterised; secrets never leave this file.
  */
+export type ClaimStatus = "unclaimed" | "pending" | "claimed";
+
 export class Store {
   private constructor(readonly db: Client) {}
 
@@ -483,6 +493,18 @@ export class Store {
     return Number(r.lastInsertRowid);
   }
 
+  /** Written only by the server after the owner's proof file checked out. There is no route that writes it directly. */
+  async logClaim(sourceKey: string, agentId: number, method: "file" | "file-recover") {
+    await this.run("INSERT INTO claims (source_key, agent_id, method, created_at) VALUES (?,?,?,?)", [sourceKey, agentId, method, Date.now()]);
+  }
+  claimsFor(sourceKey: string) {
+    return this.rows<{ method: string; created_at: number }>("SELECT method, created_at FROM claims WHERE source_key = ? ORDER BY id", [sourceKey]);
+  }
+  /** unclaimed: nobody listed it. pending: a listing exists but the owner has not proved control. claimed: proved and visible. */
+  async claimStatus(sourceKey: string): Promise<ClaimStatus> {
+    const a = await this.bySource(sourceKey);
+    return !a ? "unclaimed" : a.verified === 1 && a.hidden === 0 ? "claimed" : "pending";
+  }
   async setVerified(id: number) {
     await this.run("UPDATE agents SET verified = 1 WHERE id = ?", [id]);
   }

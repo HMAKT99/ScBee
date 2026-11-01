@@ -500,6 +500,7 @@ export function createApp(opts: AppOptions) {
         throw new HttpError(403, `could not prove control: the verification token was not found. ${verifyHint(src)}`);
       const key = newApiKey();
       await store.rotateKey(row.id, hashKey(key));
+      await store.logClaim(row.source_key, row.id, "file-recover");
       return json(res, 200, { handle: row.handle, api_key: key, verified: true });
     }
 
@@ -510,6 +511,7 @@ export function createApp(opts: AppOptions) {
       if (!(await checkChallenge(srcOf(a), a.challenge, opts.fetchOpts)))
         throw new HttpError(422, `token not found in ${verifyFilePath(srcOf(a))}. ${verifyHint(srcOf(a))}`);
       await store.setVerified(a.id);
+      await store.logClaim(a.source_key, a.id, "file");
       const pa = await store.publicAgent(a.handle);
       return json(res, 200, { verified: true, share: {
         page: `${baseUrl}/a/${a.handle}`, card: `${baseUrl}/og/agent/${a.handle}.png`,
@@ -568,6 +570,7 @@ export function createApp(opts: AppOptions) {
       const v = await projectScore(sm[1]!, sm[2]!, ip);
       return json(res, 200, { project: `github.com/${v.owner}/${v.repo}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
         badge_markdown: badgeMarkdown(baseUrl, `github.com/${v.owner}/${v.repo}`),
+        claim: await store.claimStatus(`github:${sm[1]!.toLowerCase()}/${sm[2]!.toLowerCase()}`), claim_url: `${baseUrl}/claim/github.com/${v.owner}/${v.repo}`,
         agent_ready: v.agentReady ? { total: v.agentReady.total, band: agentBand(v.agentReady.total).label, version: v.agentReady.version } : null,
         note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
@@ -655,6 +658,7 @@ export function createApp(opts: AppOptions) {
       const v = await siteScore(host, ip);
       return json(res, 200, { project: `web/${host}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
         badge_markdown: badgeMarkdown(baseUrl, `web/${host}`),
+        claim: await store.claimStatus(`url:https://${host}`), claim_url: `${baseUrl}/claim/web/${host}`,
         note: "A readiness score from public data and fixed rules. Not a prediction." });
     }
 
@@ -1217,6 +1221,12 @@ export function createApp(opts: AppOptions) {
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
         return void res.end(badgeSvg(total, "agent-ready"));
       }
+      // A stable link for owners: /claim/github.com/{owner}/{repo} or /claim/web/{host} opens the claim step on the score page.
+      const clm = p.match(/^\/claim\/(github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}|web\/[A-Za-z0-9.-]{4,253})\/?$/);
+      if (clm) {
+        res.writeHead(302, { ...SECURITY_HEADERS, location: `/${clm[1]}#claim`, "cache-control": "public, max-age=3600" });
+        return void res.end();
+      }
       const wm = p.match(/^\/(?:(badge|og)\/)?web\/([A-Za-z0-9.-]{4,253}?)(?:\.(svg|png))?\/?$/);
       const wHost = wm ? parseHost(wm[2]!) : null;
       if (wm && wHost) {
@@ -1236,7 +1246,8 @@ export function createApp(opts: AppOptions) {
         if (!kind && !ext) {
           try {
             const v = await siteScore(wHost, ip);
-            return page(200, projectPage(v, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady }, band(v.result.total).label));
+            const claim = await store.claimStatus(`url:https://${wHost}`);
+            return page(200, projectPage({ ...v, claim }, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady, claim }, band(v.result.total).label));
           } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
         }
       }
@@ -1259,8 +1270,9 @@ export function createApp(opts: AppOptions) {
         if (!kind && !ext) {
           try {
             const v = await projectScore(owner, repo, ip);
-            return page(200, projectPage(v, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
-              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady }, band(v.result.total).label));
+            const claim = await store.claimStatus(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`);
+            return page(200, projectPage({ ...v, claim }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
+              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
             throw e;
