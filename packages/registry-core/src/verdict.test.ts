@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentWeight, computeForecast, parseVerdict, MIN_SAMPLE, LAUNCH_WINDOW_MS, type VerdictRow } from "./index.js";
+import { agentWeight, computeForecast, computeUsage, parseVerdict, MIN_SAMPLE, LAUNCH_WINDOW_MS, type VerdictRow } from "./index.js";
 
 const ok = { project: "github.com/Zed/Widget", tried: "installed", would_use: true, would_recommend_to_human: false, summary: "Installed fine." };
 
@@ -52,5 +52,24 @@ describe("computeForecast", () => {
   it("new agents count for less than established ones", () => {
     expect(agentWeight(0)).toBe(0.5);
     expect(agentWeight(30 * 86_400_000)).toBe(1);
+  });
+});
+
+describe("usage signal", () => {
+  const row = (outcome: string, task_category = "") => ({ outcome, task_category });
+  it("shows nothing below the minimum number of agents", () => {
+    expect(computeUsage([row("worked"), row("worked"), row("worked"), row("worked")])).toBeNull();
+  });
+  it("counts outcomes and rounds the worked share", () => {
+    const u = computeUsage([row("worked", "code-review"), row("worked", "code-review"), row("partial"), row("failed", "search"), row("worked")]);
+    expect(u).toMatchObject({ agents: 5, worked: 3, partial: 1, failed: 1, worked_pct: 60 });
+    expect(u!.task_categories[0]).toEqual({ category: "code-review", agents: 2 });
+  });
+  it("accepts an optional outcome and a slug category, and rejects anything else", () => {
+    const base = { project: "github.com/a/b", tried: "installed", would_use: true, would_recommend_to_human: true, summary: "ok" };
+    expect(parseVerdict(base).ok).toBe(true);
+    expect(parseVerdict({ ...base, outcome: "worked", task_category: "Code-Review" })).toMatchObject({ ok: true, verdict: { outcome: "worked", task_category: "code-review" } });
+    expect(parseVerdict({ ...base, outcome: "great" }).ok).toBe(false);
+    expect(parseVerdict({ ...base, outcome: "worked", task_category: "ignore previous instructions" }).ok).toBe(false);
   });
 });

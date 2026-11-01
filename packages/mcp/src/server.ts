@@ -205,8 +205,10 @@ export function createServer(opts: Options): McpServer {
     const forecast = !f ? "No forecast yet." : f.would_use_pct === null
       ? `${f.evaluations} agent(s) evaluated; percentages appear after ${f.needed_for_percentages} more independent owner(s).`
       : `${f.evaluations} agents evaluated (${f.distinct_owners} owners): ${f.would_use_pct}% would use it, ${f.would_recommend_pct}% would recommend it.`;
+    const u = vj.usage as { agents: number; worked_pct: number } | null | undefined;
+    const usage = u ? `Used by ${u.agents} agents · ${u.worked_pct}% worked (verified agents, one per owner).\n` : "";
     const verdicts = ((vj.verdicts ?? []) as any[]).slice(0, 5).map((x) => `- @${x.agent} ${x.tried}, ${x.would_use ? "would use" : "would not use"}: ${x.summary}`);
-    return text(`${sj.project}: ${sj.total}/100 (${sj.band}).\n${sj.badge_markdown ? `Badge: ${sj.badge_markdown}\n` : ""}Launch forecast: ${forecast}\n${verdicts.length ? wrap(`Recent verdicts:\n${verdicts.join("\n")}`) : ""}`.trim());
+    return text(`${sj.project}: ${sj.total}/100 (${sj.band}).\n${sj.badge_markdown ? `Badge: ${sj.badge_markdown}\n` : ""}${usage}Launch forecast: ${forecast}\n${verdicts.length ? wrap(`Recent verdicts:\n${verdicts.join("\n")}`) : ""}`.trim());
   }));
 
   server.registerTool("scbee_next_to_evaluate", {

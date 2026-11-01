@@ -237,6 +237,15 @@ CREATE TABLE IF NOT EXISTS collab_notes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_cnote ON collab_notes(collab_id, id);
+CREATE TABLE IF NOT EXISTS verdict_usage (
+  project_key TEXT NOT NULL,
+  owner_key TEXT NOT NULL,
+  agent_id INTEGER NOT NULL REFERENCES agents(id),
+  outcome TEXT NOT NULL,
+  task_category TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (project_key, owner_key)
+);
 CREATE TABLE IF NOT EXISTS claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_key TEXT NOT NULL,
@@ -728,6 +737,26 @@ export class Store {
       [v.project_key, v.agent_id, v.owner_key, v.tried, v.would_use ? 1 : 0, v.would_recommend ? 1 : 0, v.friction.join(","), v.integrate.join(","), v.summary, now, now]);
   }
   /** Verdicts joined to their agents (hidden agents excluded), newest first. */
+  /** When this agent last reported an outcome for this project, if ever. */
+  async lastUsageReport(projectKey: string, agentId: number): Promise<number | null> {
+    const r = await this.one<{ updated_at: number }>("SELECT updated_at FROM verdict_usage WHERE project_key = ? AND agent_id = ?", [projectKey, agentId]);
+    return r ? Number(r.updated_at) : null;
+  }
+  /** One outcome per owner per project; a newer report replaces the older one, like verdicts. */
+  async upsertUsage(u: { project_key: string; owner_key: string; agent_id: number; outcome: string; task_category: string }) {
+    await this.run(
+      `INSERT INTO verdict_usage (project_key, owner_key, agent_id, outcome, task_category, updated_at) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(project_key, owner_key) DO UPDATE SET agent_id = excluded.agent_id, outcome = excluded.outcome,
+         task_category = excluded.task_category, updated_at = excluded.updated_at`,
+      [u.project_key, u.owner_key, u.agent_id, u.outcome, u.task_category, Date.now()]);
+  }
+  /** Outcomes that count publicly: verified, visible agents only, one per owner (the primary key). */
+  usageRows(projectKey: string) {
+    return this.rows<{ outcome: string; task_category: string }>(
+      `SELECT u.outcome, u.task_category FROM verdict_usage u JOIN agents a ON a.id = u.agent_id
+       WHERE u.project_key = ? AND a.verified = 1 AND a.hidden = 0`, [projectKey]);
+  }
+
   async verdictsFor(projectKey: string, limit = 100) {
     const rows = await this.rows<{
       handle: string; owner_key: string; agent_created_at: number; verified: number; tried: string; would_use: number; would_recommend: number;

@@ -1,4 +1,4 @@
-import { agentBand, band, type Forecast, type GraphEdge, type GraphNode, type ScoreResult } from "@scbee/registry-core";
+import { agentBand, band, type Forecast, type Usage, type GraphEdge, type GraphNode, type ScoreResult } from "@scbee/registry-core";
 import { esc, layout } from "./html.js";
 
 export interface ProjectView {
@@ -16,7 +16,12 @@ export interface ProjectView {
   agentReady?: ScoreResult | null;
   /** Read live from the listings, not from the cached score. */
   claim?: "unclaimed" | "pending" | "claimed";
+  /** Null below the minimum number of agents: then nothing is shown at all. */
+  usage?: Usage | null;
 }
+
+/** "Used by N agents · X% worked". Only called with a usage that met the minimum. */
+export const usageLine = (u: Usage) => `Used by ${u.agents} agents \u00b7 ${u.worked_pct}% worked`;
 
 export const CLAIM_LABEL = { unclaimed: "Scored \u00b7 unclaimed", pending: "Listed \u00b7 owner not verified yet", claimed: "Claimed by its owner" } as const;
 
@@ -138,7 +143,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
   const body = `<div class="wrap"><div class="page"><div class="label">Launch readiness &middot; score ${esc(r.version)}</div>
 <div class="score-head mt16"><div class="display num-xl" aria-label="Score ${r.total} out of 100">${r.total}</div><div>
 <span class="band">${esc(b.label)}</span> ${p.claim ? `<span class="badge${p.claim === "claimed" ? " ok" : ""}">${CLAIM_LABEL[p.claim]}</span>` : ""}<h1 class="mt16 h-l">${esc(name)}</h1>
-${p.description ? `<p class="lead mt16">${esc(p.description)}</p>` : ""}</div></div>
+${p.description ? `<p class="lead mt16">${esc(p.description)}</p>` : ""}${p.usage ? `<p class="mt8"><strong>${usageLine(p.usage)}</strong> <span class="mute">(verified agents, one per owner, reported after using it)</span></p>` : ""}</div></div>
 ${fixes}
 <h2 class="h2s">Breakdown</h2><div class="comps">${comps}</div>
 ${p.agentReady ? agentReadySection(p.agentReady, path, base) : ""}
