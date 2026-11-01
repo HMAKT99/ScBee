@@ -2216,6 +2216,54 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     await store.rows("SELECT 1", []);
   });
 
+  it("radar items are 'Scored · unclaimed' unless the owner verified; the weekly digest gives totals and fix counts without naming weak projects", async () => {
+    const comp = (fixed: boolean) => JSON.stringify({ version: "1", total: 0, components: [{ id: "trust", title: "Trust", score: 0, max: 7, items: [
+      { label: "Weekly probe", points: fixed ? 7 : 0, max: 7, reason: "r", ...(fixed ? {} : { fix: "Add the weekly probe file." }) }] }] });
+    const seedWith = async (owner: string, repo: string, total: number, fixed: boolean) => {
+      const key = `github:${owner}/${repo}`;
+      await store.saveProject(key, JSON.stringify({ fullName: `${owner}/${repo}`, description: "d", stars: 1, topics: [] }), comp(fixed), "1", total, 1);
+      await store.addToGallery("ai-agents", key);
+    };
+    const before = (await call("GET", "/api/radar/weekly")).json;
+    const probeBefore = before.most_common_fixes.find((f: any) => f.label === "Weekly probe")?.projects ?? 0;
+    await seedWith("weeklyz", "good", 88, true);
+    await seedWith("weeklyz", "poor", 30, false);
+    await seedWith("weeklyz", "meh", 50, false);
+    await makeAgent("weeklyz/owned");
+    await seedWith("weeklyz", "owned", 90, true);
+    const w = await call("GET", "/api/radar/weekly");
+    expect(w.status).toBe(200);
+    expect(w.json.projects_scored).toBe(before.projects_scored + 4); // a true count
+    const probe = w.json.most_common_fixes.find((f: any) => f.label === "Weekly probe");
+    expect(probe.projects).toBe(probeBefore + 2);
+    expect(probe.fix).toBe("Add the weekly probe file.");
+    const strong = Object.fromEntries(w.json.strong.map((x: any) => [x.name, x.claimed]));
+    expect(strong["weeklyz/good"]).toBe(false);
+    expect(strong["weeklyz/owned"]).toBe(true);
+    const text = JSON.stringify(w.json);
+    expect(text).not.toContain("weeklyz/poor"); // weak projects are never named
+    expect(text).not.toContain("weeklyz/meh");
+    const page = await get("/radar/weekly");
+    expect(page.status).toBe(200);
+    expect(page.text).toContain("Scored &middot; unclaimed".replace("&middot;", "\u00b7"));
+    expect(page.text).toContain("Most common fixes");
+    expect(page.text).not.toContain("weeklyz/poor");
+    const md = (await get("/radar/weekly?format=md")).text;
+    expect(md).toContain(`Projects scored: ${w.json.projects_scored}`);
+    expect(md).toContain("weeklyz/good: 88/100 http://t/github.com/weeklyz/good [scored, unclaimed]");
+    expect(md).toContain("[listed by owner]");
+    expect(md).not.toContain("weeklyz/meh");
+    const radar = await get("/radar");
+    expect(radar.text).toContain("listed by owner");
+    expect((await call("GET", "/api/radar")).json.projects.find((x: any) => x.name === "weeklyz/good").claimed).toBe(false);
+    const feed = await get("/feeds/radar-weekly.atom");
+    expect(feed.headers.get("content-type")).toMatch(/application\/atom\+xml/);
+    expect(feed.text).toMatch(/projects scored/);
+    expect(feed.text).not.toContain("weeklyz/poor");
+    // an unclaimed project never counts as an agent
+    expect((await call("GET", "/api/agents?q=weeklyz")).json.agents.map((a: any) => a.handle)).not.toContain("weeklyz-good");
+  });
+
   it("feeds for the board and for one agent, discoverable from their pages", async () => {
     const a = await makeAgent("feedown/agent", { card: { name: "Feed Agent", tagline: "Posts things", skills: [{ id: "s", name: "Post" }] } });
     await call("POST", "/api/promos", { kind: "offer", title: "Free <i>review</i> & tips", body: "Happy to review your agent card this week." }, a.key);
@@ -2289,7 +2337,7 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
 
   it("is discoverable from llms.txt and the OpenAPI contract", async () => {
     const llms = (await get("/llms.txt")).text;
-    for (const needle of ["/api/radar", "/feeds/radar.atom", "/feeds/board.atom", "/trust", "/skill/v1.md"]) expect(llms, needle).toContain(needle);
+    for (const needle of ["/api/radar", "/api/radar/weekly", "/feeds/radar-weekly.atom", "/feeds/radar.atom", "/feeds/board.atom", "/trust", "/skill/v1.md"]) expect(llms, needle).toContain(needle);
     const paths = Object.keys((await call("GET", "/openapi.json")).json.paths);
     expect(paths).toEqual(expect.arrayContaining(["/api/radar", "/feeds/radar.atom", "/feeds/board.atom", "/.well-known/skill.json"]));
   });
