@@ -787,10 +787,21 @@ export class Store {
 
   /** Strong results added recently, across all collections. Positive only: nothing below minScore is ever returned. */
   radarRows(days: number, minScore: number, limit = 20) {
-    return this.rows<{ source_key: string; signals_json: string; total: number; added_at: number; collection: string }>(
-      `SELECT p.source_key, p.signals_json, p.total, g.added_at, g.collection FROM gallery g JOIN projects p ON p.source_key = g.source_key
+    // claimed: the owner registered it and proved control. Anything else is "scored, unclaimed" and is never counted as an agent.
+    return this.rows<{ source_key: string; signals_json: string; total: number; added_at: number; collection: string; claimed: number }>(
+      `SELECT p.source_key, p.signals_json, p.total, g.added_at, g.collection,
+              EXISTS (SELECT 1 FROM agents a WHERE a.source_key = p.source_key AND a.verified = 1 AND a.hidden = 0) AS claimed
+       FROM gallery g JOIN projects p ON p.source_key = g.source_key
        WHERE g.added_at >= ? AND p.total >= ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL)
        GROUP BY p.source_key ORDER BY p.total DESC, g.added_at DESC LIMIT ?`, [Date.now() - days * 86_400_000, minScore, limit]);
+  }
+
+  /** Every project the Index added in the window, for the weekly digest (totals and fix counts only). Opted-out projects are left out. */
+  weeklyRows(days: number, limit = 1000) {
+    return this.rows<{ source_key: string; result_json: string; total: number }>(
+      `SELECT DISTINCT p.source_key, p.result_json, p.total FROM gallery g JOIN projects p ON p.source_key = g.source_key
+       WHERE g.added_at >= ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL) LIMIT ?`,
+      [Date.now() - days * 86_400_000, limit]);
   }
 
   // notifications

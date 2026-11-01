@@ -7,7 +7,7 @@ import {
 import { galleryPage } from "./gallery.js";
 import { configureSite, getSite, type SiteConfig } from "./config.js";
 import { atomFeed } from "./atom.js";
-import { radarMd, radarPage, RADAR_MIN_SCORE, type RadarItem } from "./radar.js";
+import { radarMd, radarPage, RADAR_MIN_SCORE, weeklyMd, weeklyPage, type RadarItem, type WeeklyDigest } from "./radar.js";
 import { trustMd, trustPage } from "./trust.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
@@ -90,7 +90,7 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
-const PUBLIC_GET = /^\/api\/(stats|demand|radar|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|report|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
+const PUBLIC_GET = /^\/api\/(stats|demand|radar|radar\/weekly|pairs|collabs\/public|agents|agents\/[a-z0-9-]{3,39}|network|gallery|report|promos|feed|score\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|agent-ready\/(github\.com\/[^/]+\/[^/]+|web\/[^/]+)|graph\/github\.com\/[^/]+\/[^/]+|projects\/github\.com\/[^/]+\/[^/]+\/verdicts)$/;
 
 const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES_WITH: "Works well with", ALTERNATIVE_TO: "Alternative to", ENDORSED_BY: "Agents would integrate" };
 /** Where a referral click can have come from. Anything else is counted as "other". */
@@ -238,8 +238,27 @@ export function createApp(opts: AppOptions) {
   async function radarItems(days = 7): Promise<RadarItem[]> {
     return (await store.radarRows(days, RADAR_MIN_SCORE)).map((r) => {
       const sig = JSON.parse(r.signals_json) as Partial<ProjectSignals>;
-      return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, description: sig.description ?? "", collection: r.collection, added_at: r.added_at };
+      return { project: r.source_key.replace("github:", "github.com/"), name: sig.fullName ?? r.source_key.slice(7), score: r.total, description: sig.description ?? "", collection: r.collection, added_at: r.added_at, claimed: r.claimed === 1 };
     });
+  }
+
+  /** Totals for the week: projects the Index scored, the radar list, and how often each fix came up. Nothing below the radar line is named. */
+  async function weeklyDigest(days = 7): Promise<WeeklyDigest> {
+    const rows = await store.weeklyRows(days);
+    const tally = new Map<string, { component: string; label: string; fix: string; projects: number }>();
+    for (const r of rows) {
+      const res = JSON.parse(r.result_json) as ScoreResult;
+      for (const c of res.components) for (const i of c.items) {
+        if (!i.fix || i.points >= i.max) continue;
+        const k = `${c.title}\u0000${i.label}`;
+        const t = tally.get(k) ?? { component: c.title, label: i.label, fix: i.fix, projects: 0 };
+        t.projects++;
+        tally.set(k, t);
+      }
+    }
+    const fixes = [...tally.values()].sort((a, z) => z.projects - a.projects || a.label.localeCompare(z.label))
+      .map((f) => ({ ...f, pct: Math.round((f.projects / rows.length) * 100) }));
+    return { days, since: Date.now() - days * 86_400_000, scored: rows.length, strong: await radarItems(days), fixes };
   }
 
   async function forecastFor(projectKey: string) {
@@ -830,10 +849,16 @@ export function createApp(opts: AppOptions) {
 
     if (method === "GET" && path === "/api/demand")
       return json(res, 200, { days: 30, note: "Words from searches that matched no verified agent, at least 3 times in 30 days. No search text is kept.", unmet: await store.unmetDemand() });
+    if (method === "GET" && path === "/api/radar/weekly") {
+      const d = await weeklyDigest();
+      return json(res, 200, { days: d.days, since: d.since, min_score: RADAR_MIN_SCORE, projects_scored: d.scored,
+        note: "Totals for new projects the Index scored this week, from public data and fixed rules. Counted, not estimated. Projects below min_score are never named. 'claimed: false' means scored without the owner: not a registered agent.",
+        most_common_fixes: d.fixes, strong: d.strong.map((i) => ({ project: i.project, name: i.name, score: i.score, claimed: i.claimed })) });
+    }
     if (method === "GET" && path === "/api/radar") {
       const items = await radarItems();
       return json(res, 200, { days: 7, min_score: RADAR_MIN_SCORE, note: "Positive only: new projects that scored at least min_score in the last 7 days, from public data and fixed rules. Not an endorsement.",
-        projects: items.map((i) => ({ project: i.project, name: i.name, score: i.score, collection: i.collection, added_at: i.added_at })) });
+        projects: items.map((i) => ({ project: i.project, name: i.name, score: i.score, collection: i.collection, added_at: i.added_at, claimed: i.claimed })) });
     }
     if (method === "GET" && path === "/api/pairs")
       return json(res, 200, { pairs: (await store.pairs()).map((x) => ({ a: x.a, b: x.b, url: `${baseUrl}${pairPath(x.a, x.b)}`, requested_at: x.since })) });
@@ -1303,6 +1328,7 @@ export function createApp(opts: AppOptions) {
           return page(200, fixPage(v.path, host, v.files, baseUrl), fixMd(baseUrl, v.path, host, v.files));
         } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
       }
+      if (p === "/radar/weekly") { const d = await weeklyDigest(); return page(200, weeklyPage(d), weeklyMd(baseUrl, d)); }
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));
       const gm = p.match(/^\/gallery\/([a-z0-9-]{2,40})$/);
@@ -1328,6 +1354,15 @@ export function createApp(opts: AppOptions) {
         if (!col) return page(404, notFound());
         return atom(atomFeed({ id: `${baseUrl}/feeds/gallery/${col.id}.atom`, title: `${getSite().name}: ${col.title}`, subtitle: col.blurb, selfUrl: `${baseUrl}/feeds/gallery/${col.id}.atom`, siteUrl: `${baseUrl}/gallery/${col.id}`,
           entries: col.items.map((i) => ({ id: `${baseUrl}/${i.project}`, title: `${i.name}: ${i.score}/100`, link: `${baseUrl}/${i.project}`, updated: i.updated ?? 0, summary: i.description })) }));
+      }
+      if (p === "/feeds/radar-weekly.atom") {
+        // One entry per week, named by the Monday it started on, so a reader sees each week once.
+        const d = await weeklyDigest();
+        const now = new Date(); const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
+        const wk = monday.toISOString().slice(0, 10);
+        return atom(atomFeed({ id: `${baseUrl}/feeds/radar-weekly.atom`, title: `${getSite().name} Launch Radar weekly`, subtitle: "Projects scored this week and the most common fixes", selfUrl: `${baseUrl}/feeds/radar-weekly.atom`, siteUrl: `${baseUrl}/radar/weekly`,
+          entries: [{ id: `${baseUrl}/radar/weekly#${wk}`, title: `Week of ${wk}: ${d.scored} projects scored, ${d.strong.length} at ${RADAR_MIN_SCORE}+`, link: `${baseUrl}/radar/weekly`, updated: monday.getTime(),
+            summary: d.fixes.length ? `Most common fixes: ${d.fixes.slice(0, 3).map((f) => `${f.label} (${f.pct}%)`).join(", ")}` : "No fixes counted yet." }] }));
       }
       if (p === "/feeds/radar.atom") {
         const items = await radarItems();
