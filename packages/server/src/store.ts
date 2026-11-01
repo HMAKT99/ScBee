@@ -553,6 +553,10 @@ export class Store {
       distinct_owners: await q("SELECT COUNT(DISTINCT owner_key) AS n FROM agents WHERE hidden = 0"),
       possible_introductions: possibleIntroductions(verifiedIds.length),
       introductions_made: links.length,
+      // Every project ScBee has a score for (owners who opted out are deleted), and every fix those scores give for a point lost.
+      projects_scored: await q("SELECT COUNT(*) AS n FROM projects"),
+      fixes_suggested: await q(`SELECT COUNT(*) AS n FROM projects p, json_each(p.result_json, '$.components') c, json_each(c.value, '$.items') i
+        WHERE json_extract(i.value, '$.fix') IS NOT NULL AND json_extract(i.value, '$.points') < json_extract(i.value, '$.max')`),
       collaborations_done: await this.collabsDoneAcrossOwners(),
       degrees: { average_links: enough ? deg.average : null, pairs_measured: enough ? deg.reachable_pairs : 0, connections: links.length, needed: MIN_CONNECTIONS_FOR_DEGREES },
     };
