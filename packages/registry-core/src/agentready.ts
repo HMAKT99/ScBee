@@ -6,7 +6,8 @@ import type { SiteSignals } from "./site.js";
  * "Can an agent use this?" Separate from launch readiness: it asks whether a project is easy for other agents and their owners
  * to find, install and trust. Deterministic rules over public facts, no model. Each lost point comes with a concrete fix.
  */
-export const AGENT_READY_VERSION = "1";
+/** 2: an A2A agent-card.json at the repo root counts, tags count as releases, docs/SECURITY.md counts. */
+export const AGENT_READY_VERSION = "2";
 
 /** File and README facts gathered with the other project signals. */
 export interface AgentFacts {
@@ -15,6 +16,8 @@ export interface AgentFacts {
   agentsMd: boolean;
   /** An MCP manifest or config file, or a README that documents an MCP server. */
   mcp: boolean;
+  /** An MCP manifest file (server.json, mcp.json, smithery.yaml...), not just a README mention. Optional: older stored facts lack it. */
+  mcpManifest?: boolean;
   skill: boolean;
   /** An OpenAPI or Swagger file in the repo root. */
   api: boolean;
@@ -39,7 +42,7 @@ export function scoreAgentReady(s: ProjectSignals): ScoreResult | null {
   if (!a) return null;
   const r = s.readme;
   const discoverable = [
-    it("Agent card", s.hasAgentCard, 15, "Has an agent.json or agent card other agents can read.", "No agent card.", "Add an agent.json (name, what it does, skills) at the repo root, or serve /.well-known/agent-card.json."),
+    it("Agent card", s.hasAgentCard, 15, "Has an agent.json or agent card other agents can read.", "No agent card.", "Add an agent card: agent-card.json or agent.json at the repo root (name, what it does, skills), or serve /.well-known/agent-card.json."),
     it("llms.txt", a.llmsTxt, 10, "Has an llms.txt for language models.", "No llms.txt.", "Add llms.txt at the repo root: a short, plain description and links to your key docs."),
     it("MCP server config", a.mcp, 10, "Documents or ships an MCP server config.", "No MCP config or documentation found.", "If it is an MCP server, add a server.json or a README block showing the mcpServers config."),
     it("Agent Skill", a.skill, 5, "Has a SKILL.md.", "No SKILL.md.", "Add a SKILL.md that teaches a coding agent when and how to use this, in plain steps."),

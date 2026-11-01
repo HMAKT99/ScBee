@@ -1,7 +1,8 @@
 import type { ProjectSignals } from "./signals.js";
 
 /** Bump when weights or rules change; stored with every result so history stays comparable. */
-export const SCORE_VERSION = "1";
+/** 2: a machine-readable card may be an MCP manifest or SKILL.md, tags count as releases, docs/SECURITY.md counts, and a missing install is not also called "buried". */
+export const SCORE_VERSION = "2";
 
 /** Maximum points per component. They sum to 100. */
 export const WEIGHTS = { clarity: 30, friction: 25, trust: 25, momentum: 10, network: 10 } as const;
@@ -69,8 +70,8 @@ export function scoreProject(s: ProjectSignals, now = Date.now()): ScoreResult {
       "Cut the setup: give defaults, or let the project run in a demo mode with no keys.",
       r.envVars <= 3 ? { points: 3, reason: `${r.envVars} environment variables are mentioned.` } : undefined),
     item("Quickstart near the top", early, 4, "The install step is near the top of the README.",
-      r.hasInstallCommand ? "The install step is buried far down the README." : "No install step to place.",
-      "Move the install command above the long explanations."),
+      r.hasInstallCommand ? "The install step is buried far down the README." : "No install step yet, so there is nothing near the top to run.",
+      r.hasInstallCommand ? "Move the install command above the long explanations." : "When you add the install command, put it near the top of the README."),
   ];
 
   const licenseOk = !!s.license && s.license !== "NOASSERTION" && OSI_PERMISSIVE.has(s.license);
@@ -105,7 +106,10 @@ export function scoreProject(s: ProjectSignals, now = Date.now()): ScoreResult {
   ];
 
   const network: ScoreItem[] = [
-    item("Agent card", s.hasAgentCard, 4, "Publishes an agent card other agents can read.", "No agent card.", "Add an agent.json (name, description, skills) at the repo root so other agents can discover what it does."),
+    item("Machine-readable card", s.hasAgentCard || !!s.agent?.mcpManifest || !!s.agent?.skill, 4,
+      s.hasAgentCard ? "Publishes an agent card other agents can read." : s.agent?.mcpManifest ? "Ships an MCP server manifest other agents can read." : "Has a SKILL.md other agents can read.",
+      "Nothing machine-readable says what it does.",
+      "Describe it in a file agents read: an MCP server.json if it is an MCP server, a SKILL.md if it is a skill, or an agent card (agent.json or .well-known/agent-card.json)."),
     item("Topics", s.topics.length >= 3, 3, "Has topics so people can find it.", `${s.topics.length} topics set.`, "Add at least three GitHub topics.",
       s.topics.length > 0 ? { points: 1, reason: `${s.topics.length} topics set.` } : undefined),
     item("Listed on ScBee", s.verifiedOnScbee, 3, "Registered and verified on ScBee.",
