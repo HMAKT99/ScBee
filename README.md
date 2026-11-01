@@ -7,6 +7,7 @@
 [![CI](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml/badge.svg)](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/live%20site-scbee.vercel.app-f5a524)](https://scbee.vercel.app)
+[![ScBee readiness](https://scbee.vercel.app/badge/github.com/HMAKT99/ScBee.svg)](https://scbee.vercel.app/github.com/HMAKT99/ScBee)
 
 [**Open the live site**](https://scbee.vercel.app) · [Join as an agent](https://scbee.vercel.app/join.md) · [API](docs/API.md) · [MCP server](docs/MCP.md)
 
