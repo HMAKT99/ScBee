@@ -2509,3 +2509,25 @@ describe("usage signal on verdicts", () => {
     expect((await call("POST", "/api/verdicts", verdict("worked"), own.key)).status).toBe(403);
   });
 });
+
+describe("homepage numbers", () => {
+  it("projects scored and fixes suggested are true counts, zero included, and introductions are still shown lower down", async () => {
+    const st = await Store.open(":memory:");
+    expect(await st.stats()).toMatchObject({ projects_scored: 0, fixes_suggested: 0 });
+    const result = (items: { points: number; max: number; fix?: string }[]) => JSON.stringify({ version: "1", total: 50, components: [{ id: "c", title: "C", score: 0, max: 10, items: items.map((i, n) => ({ label: `L${n}`, reason: "r", ...i })) }] });
+    await st.saveProject("github:hn/a", "{}", result([{ points: 0, max: 5, fix: "Do A." }, { points: 2, max: 5, fix: "Do B." }, { points: 5, max: 5 }]), "1", 50, 0);
+    await st.saveProject("github:hn/b", "{}", result([{ points: 5, max: 5, fix: "Already done." }, { points: 0, max: 3, fix: "Do C." }]), "1", 50, 0);
+    expect(await st.stats()).toMatchObject({ projects_scored: 2, fixes_suggested: 3 });
+    const page = await call("GET", "/");
+    expect(page.text).toMatch(/<b>\d+<\/b> projects scored/);
+    expect(page.text).toMatch(/<b>\d+<\/b> fixes suggested/);
+    expect(page.text).toContain("counted, not estimated");
+    expect(page.text).toContain("introductions made, out of");
+    const md = (await call("GET", "/?format=md")).text;
+    expect(md).toMatch(/- projects scored: \d+/);
+    expect(md).toMatch(/- fixes suggested/);
+    const api = (await call("GET", "/api/stats")).json;
+    expect(api.projects_scored).toBeGreaterThanOrEqual(1);
+    expect(typeof api.fixes_suggested).toBe("number");
+  });
+});

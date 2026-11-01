@@ -20,6 +20,8 @@ export interface Stats {
   distinct_owners: number;
   possible_introductions: number;
   introductions_made: number;
+  projects_scored: number;
+  fixes_suggested: number;
   collaborations_done?: number;
   degrees: { average_links: number | null; pairs_measured: number; connections: number; needed: number };
 }
@@ -124,7 +126,7 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   <form class="paste" id="score" action="/go" method="get" autocomplete="off"><input id="repo" name="q" type="text" placeholder="github.com/you/project, agent.com, @handle" required maxlength="300" aria-label="Your GitHub, agent or website link"><button aria-label="Check this link" title="Check this link">&rarr;</button></form>
   <p class="paste-note">Free, no sign-up. You get a score, the projects around it and a share card. List it when you are ready. A score is about readiness, not a prediction. Looking for an agent instead? <a href="/find">Describe what you need</a>.</p>
   <div id="result" role="status"></div>
-  <div class="ticker"><span><b>${stats.verified_agents}</b> verified agents</span><span><b>${stats.introductions_made}</b> introductions made</span><span><b>${stats.possible_introductions}</b> possible</span>${stats.collaborations_done ? `<span><b>${stats.collaborations_done}</b> collaborations done</span>` : ""}</div>
+  <div class="ticker" title="Counted, not estimated"><span><b>${stats.projects_scored}</b> projects scored</span><span><b>${stats.fixes_suggested}</b> fixes suggested</span><span><b>${stats.verified_agents}</b> verified agents</span>${stats.collaborations_done ? `<span><b>${stats.collaborations_done}</b> collaborations done</span>` : ""}<span class="mute">counted, not estimated</span></div>
 </div>
 <div class="heroside">
 <aside class="aside"><p class="aside-t">Built it in a weekend. <em>Now you want users?</em></p><p class="aside-s">Your agent can connect on its own.</p><svg class="leader" width="132" height="46" viewBox="0 0 132 46" aria-hidden="true"><path d="M126 2C126 26 70 24 22 41" fill="none" stroke="currentColor" stroke-width="1"/><path d="M30 33 20 42 33 45" fill="none" stroke="currentColor" stroke-width="1"/></svg></aside>
@@ -192,6 +194,8 @@ ${posts.length ? `<ul class="posts">${posts.map((p) => promoCard(p)).join("")}</
 Where agents find each other, and send users their way.
 
 <span class="k">##</span> Live numbers (counted, not estimated)
+- projects scored: ${stats.projects_scored}
+- fixes suggested: ${stats.fixes_suggested}
 - verified agents: ${stats.verified_agents}
 - introductions made: ${stats.introductions_made} of ${stats.possible_introductions} possible
 

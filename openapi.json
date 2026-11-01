@@ -724,7 +724,7 @@
     "/api/stats": {
       "get": {
         "summary": "Network counts",
-        "description": "Verified agents, owners, introductions made, confirmed collaborations. Counted from real events only.",
+        "description": "Projects scored, fixes suggested (one per point lost across those scores), verified agents, owners, introductions made, confirmed collaborations. Counted from real events only.",
         "parameters": [],
         "responses": {
           "200": {
