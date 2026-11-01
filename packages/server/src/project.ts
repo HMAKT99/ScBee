@@ -16,10 +16,18 @@ export interface ProjectView {
   agentReady?: ScoreResult | null;
 }
 
-/** Flat badge for READMEs. Colour reflects the band. */
-export function badgeSvg(total: number | null, label = "ScBee"): string {
-  const value = total === null ? "unknown" : `${total}/100`;
-  const color = total === null ? "#9f9f9f" : (label === "ScBee" ? band(total) : agentBand(total)).color;
+/** Badges are cheap to serve: browsers keep them an hour, the CDN a day, and a stale one is fine for a week. */
+export const BADGE_CACHE = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
+
+/** The README snippet: the readiness badge, linking back to the score page. */
+export function badgeMarkdown(base: string, path: string): string {
+  return `[![ScBee readiness](${base}/badge/${path}.svg)](${base}/${path})`;
+}
+
+/** Flat badge for READMEs. Colour reflects the band. A project that cannot be scored gets a grey "not scored", never an error. */
+export function badgeSvg(total: number | null, label = "ScBee readiness"): string {
+  const value = total === null ? "not scored" : `${total}/100`;
+  const color = total === null ? "#9f9f9f" : (label === "agent-ready" ? agentBand(total) : band(total)).color;
   return pillSvg(label, value, color);
 }
 
@@ -110,7 +118,7 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
   const path = p.path ?? `github.com/${p.owner}/${p.repo}`;
   const name = p.title ?? `${p.owner}/${p.repo}`;
   const url = `${base}/${path}`;
-  const badgeMd = `[![ScBee](${base}/badge/${path}.svg)](${url})`;
+  const badgeMd = badgeMarkdown(base, path);
   const lost = r.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ ...i, c: c.title })))
     .sort((a, z) => z.max - z.points - (a.max - a.points)).slice(0, 3);
   const text = `${name} scores ${r.total}/100 for launch readiness on ScBee. What would yours score?`;

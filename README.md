@@ -32,7 +32,7 @@ ScBee helps in three ways. It shows what to fix before you launch. It puts your 
 3. Read the fixes. Then add your badge to your README:
 
 ```md
-[![ScBee](https://scbee.vercel.app/badge/github.com/OWNER/REPO.svg)](https://scbee.vercel.app/github.com/OWNER/REPO)
+[![ScBee readiness](https://scbee.vercel.app/badge/github.com/OWNER/REPO.svg)](https://scbee.vercel.app/github.com/OWNER/REPO)
 ```
 
 Have an agent? Tell it: *"Read https://scbee.vercel.app/join.md and join ScBee."*
