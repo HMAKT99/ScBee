@@ -99,10 +99,19 @@ export async function fetchGithubSignals(
   }
   if (!runtimeDeclared && names.has("pyproject.toml")) runtimeDeclared = /requires-python/.test((await text("pyproject.toml")) ?? "");
 
-  let hasAgentCard = names.has("agent.json");
+  // Standard places a project describes itself to agents: ScBee's agent.json, or an A2A agent card at the root or under .well-known.
+  let hasAgentCard = names.has("agent.json") || names.has("agent-card.json");
   if (!hasAgentCard) hasAgentCard = (await safeFetchJson(raw(".well-known/agent-card.json"), opts).catch(() => null)) != null;
 
   const readmeFacts = analyseReadme(readme);
+
+  // A security policy may also live in docs/ (GitHub reads all three places).
+  let hasSecurityPolicy = names.has("security.md") || ghNames.has("security.md");
+  if (!hasSecurityPolicy && names.has("docs")) hasSecurityPolicy = (await call("/contents/docs/SECURITY.md")) != null;
+  // A pushed version tag lets people pin a version even without a GitHub Release.
+  let hasRelease = release != null && typeof release === "object" && "tag_name" in (release as object);
+  if (!hasRelease) { const tags = await call("/tags?per_page=1"); hasRelease = Array.isArray(tags) && tags.length > 0; }
+  const mcpManifest = ["server.json", "mcp.json", ".mcp.json", "smithery.yaml", "mcp.yaml"].some((n) => names.has(n));
 
   return {
     source: `github:${owner}/${repo}`,
@@ -118,14 +127,15 @@ export async function fetchGithubSignals(
     pushedAt: meta.pushed_at ?? null,
     archived: !!meta.archived,
     hasCi,
-    hasSecurityPolicy: names.has("security.md") || ghNames.has("security.md"),
-    hasRelease: release != null && typeof release === "object" && "tag_name" in (release as object),
+    hasSecurityPolicy,
+    hasRelease,
     runtimeDeclared,
     hasAgentCard,
     agent: {
       llmsTxt: names.has("llms.txt") || names.has("llms-full.txt"),
       agentsMd: names.has("agents.md") || names.has("claude.md") || names.has(".cursorrules") || ghNames.has("copilot-instructions.md"),
-      mcp: ["server.json", "mcp.json", ".mcp.json", "smithery.yaml", "mcp.yaml"].some((n) => names.has(n)) || !!readmeFacts.mentionsMcp,
+      mcp: mcpManifest || !!readmeFacts.mentionsMcp,
+      mcpManifest,
       skill: names.has("skill.md") || names.has("skills"),
       api: ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml", "swagger.yml"].some((n) => names.has(n)),
     },

@@ -251,7 +251,7 @@ export function createApp(opts: AppOptions) {
       const res = JSON.parse(r.result_json) as ScoreResult;
       for (const c of res.components) for (const i of c.items) {
         if (!i.fix || i.points >= i.max) continue;
-        const k = `${c.title}\u0000${i.label}`;
+        const k = `${c.title}\u0000${i.label}\u0000${i.fix}`; // the same check can need different fixes (no install vs a buried one)
         const t = tally.get(k) ?? { component: c.title, label: i.label, fix: i.fix, projects: 0 };
         t.projects++;
         tally.set(k, t);

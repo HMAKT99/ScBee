@@ -121,6 +121,20 @@ describe("fetchGithubSignals", () => {
     expect(seen.find((x) => x.url === api)?.auth).toBe("Bearer ghp_test");
     expect(seen.filter((x) => x.url.startsWith("https://raw.")).every((x) => x.auth === undefined)).toBe(true);
   });
+  it("counts a git tag as a release and docs/SECURITY.md as a security policy, and records an MCP manifest", async () => {
+    const f = {
+      ...files,
+      [`${api}/contents`]: { status: 200, body: JSON.stringify([{ name: "README.md", type: "file" }, { name: "docs", type: "dir" }, { name: "server.json", type: "file" }, { name: "agent-card.json", type: "file" }]) },
+      [`${api}/contents/docs/SECURITY.md`]: { status: 200, body: JSON.stringify({ name: "SECURITY.md", type: "file" }) },
+      [`${api}/tags?per_page=1`]: { status: 200, body: JSON.stringify([{ name: "v0.1.0" }]) },
+    };
+    const s = await fetchGithubSignals("o", "r", { listed: false, verified: false }, mk(f));
+    expect(s).toMatchObject({ hasSecurityPolicy: true, hasRelease: true, hasAgentCard: true });
+    expect(s.agent).toMatchObject({ mcp: true, mcpManifest: true });
+    const none = await fetchGithubSignals("o", "r", { listed: false, verified: false }, mk({ ...files, [`${api}/contents`]: { status: 200, body: JSON.stringify([{ name: "README.md", type: "file" }]) } }));
+    expect(none).toMatchObject({ hasSecurityPolicy: false, hasRelease: false, hasAgentCard: false });
+    expect(none.agent?.mcpManifest).toBe(false);
+  });
   it("404 means not found / private", async () => {
     await expect(fetchGithubSignals("o", "r", { listed: false, verified: false }, mk({}))).rejects.toMatchObject({ status: 404 });
   });
@@ -128,5 +142,30 @@ describe("fetchGithubSignals", () => {
     const e = await fetchGithubSignals("o", "r", { listed: false, verified: false }, mk({ [api]: { status: 403, body: "" } })).catch((x) => x);
     expect(e).toBeInstanceOf(ProjectError);
     expect(e.status).toBe(429);
+  });
+});
+
+describe("score version 2 rules", () => {
+  const card = (over: Partial<ProjectSignals>) => scoreProject(base(over), NOW).components.flatMap((c) => c.items).find((i) => i.label === "Machine-readable card")!;
+  const agent = { llmsTxt: false, agentsMd: false, mcp: false, mcpManifest: false, skill: false, api: false };
+  it("a machine-readable card can be an agent card, an MCP manifest or a SKILL.md, but not a README mention", () => {
+    expect(card({ hasAgentCard: false, agent }).points).toBe(0);
+    expect(card({ hasAgentCard: false, agent }).fix).toMatch(/server\.json.*SKILL\.md.*agent card/);
+    expect(card({ hasAgentCard: false, agent: { ...agent, mcp: true } }).points).toBe(0); // a README mention alone is not a file agents read
+    expect(card({ hasAgentCard: false, agent: { ...agent, mcp: true, mcpManifest: true } }).points).toBe(4);
+    expect(card({ hasAgentCard: false, agent: { ...agent, skill: true } }).points).toBe(4);
+    expect(card({ hasAgentCard: true }).points).toBe(4);
+  });
+  it("a repo with no install command is not also told its install is buried", () => {
+    const q = (readme: string) => scoreProject(base({ readme: analyseReadme(readme) }), NOW).components.flatMap((c) => c.items).find((i) => i.label === "Quickstart near the top")!;
+    const none = q("# Thing\n\nIt does things.\n\n## More\n\ntext");
+    expect(none.reason).not.toMatch(/buried/);
+    expect(none.fix).toMatch(/When you add the install command/);
+    const buried = q(`# Thing\n\n${"Long explanation. ".repeat(300)}\n\n\`\`\`\nnpm install thing\n\`\`\``);
+    expect(buried.reason).toMatch(/buried/);
+    expect(buried.fix).toBe("Move the install command above the long explanations.");
+  });
+  it("the score version moved so stored scores are read again", () => {
+    expect(SCORE_VERSION).toBe("2");
   });
 });
