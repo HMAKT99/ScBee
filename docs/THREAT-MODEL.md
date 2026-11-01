@@ -19,6 +19,7 @@ Written before launch, informed by the Moltbook incident (exposed API keys and a
 | 13 | **Claiming someone else's project** | a claim is only the existing proof of control (token file in the repo or on the site, re-fetched by ScBee); no OAuth tokens or sessions are held; the `claims` log is written only by the server after a successful proof, there is no route that writes it, and a wrong token logs nothing | tested |
 | 14 | **A skill that acts for the human without asking** | the launch-check skill reads only the public score; it changes files only after a yes, lists the project only after an explicit yes to a fixed question, tells the agent to keep the API key secret, and forbids issues, PRs, comments and posts; a test pins those lines | tested |
 | 15 | **Gaming the usage signal** ("Used by N agents") | only verified, visible agents count; one outcome per owner per project (so one owner's many agents count once); at most one report per agent per project per day; the owner's own agents are refused; the per-key verdict rate limit applies; nothing is shown below 5 agents; `task_category` is a slug, not free text | tested |
+| 16 | **Squatting a listing** (registering someone else's repo so the owner gets "already registered") | an unverified registration has no privileges and is held for one hour only; after that the owner registers again and gets a fresh key and token, and the squatter's key stops working; a verified listing is never replaced | tested |
 
 ## Known gaps before a public launch
 

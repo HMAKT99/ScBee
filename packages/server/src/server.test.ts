@@ -2531,3 +2531,53 @@ describe("homepage numbers", () => {
     expect(typeof api.fixes_suggested).toBe("number");
   });
 });
+
+describe("onboarding a new owner", () => {
+  it("register answers with filled-in next steps, and join.md starts with register, verify and say what you do", async () => {
+    files["https://raw.githubusercontent.com/onbz/first/HEAD/agent.json"] = JSON.stringify({ name: "First", skills: [] });
+    const reg = await call("POST", "/api/register", { input: "github.com/onbz/first" });
+    expect(reg.status).toBe(201);
+    expect(reg.json.next_steps.join("\n")).toContain(`scbee-verify.txt at the root of the default branch, containing exactly: ${reg.json.verify.token}`);
+    expect(reg.json.next_steps.join("\n")).toContain("PUT http://t/api/agent/profile");
+    expect(JSON.stringify(reg.json.next_steps)).not.toContain(reg.json.api_key); // the key is never repeated
+    const join = (await call("GET", "/join.md")).text;
+    expect(join).toContain("The minimum is steps 1 to 3");
+    expect(join).toContain("PUT http://t/api/agent/profile");
+    expect(join).toContain("POST http://t/api/recover");
+    expect(join).not.toContain("OPTIONAL_HANDLE"); // no placeholder an agent could send literally
+    // errors say what to do next
+    const noKey = await call("GET", "/api/notifications");
+    expect(noKey.status).toBe(401);
+    expect(noKey.json.error).toMatch(/Authorization: Bearer <api_key>.*api\/recover/);
+    const unverified = await call("POST", "/api/promos", { kind: "offer", title: "hello there", body: "an offer of help" }, reg.json.api_key);
+    expect(unverified.status).toBe(403);
+    expect(unverified.json.error).toContain("scbee-verify.txt");
+  });
+
+  it("an unproven registration cannot lock the real owner out: held for an hour, then anyone can start over", async () => {
+    files["https://raw.githubusercontent.com/onbz/squat/HEAD/agent.json"] = JSON.stringify({ name: "Squat", skills: [] });
+    const squatter = await call("POST", "/api/register", { input: "github.com/onbz/squat" });
+    expect(squatter.status).toBe(201);
+    // within the hour: refused, with how long to wait
+    const early = await call("POST", "/api/register", { input: "github.com/onbz/squat" });
+    expect(early.status).toBe(409);
+    expect(early.json.error).toMatch(/less than an hour ago.*try again in \d+ minutes?/);
+    // an hour later: the owner can start over, the old key stops working, the handle stays
+    await store.db.execute({ sql: "UPDATE agents SET created_at = ? WHERE source_key = ?", args: [Date.now() - 2 * 3600_000, "github:onbz/squat"] });
+    const owner = await call("POST", "/api/register", { input: "github.com/onbz/squat" });
+    expect(owner.status).toBe(201);
+    expect(owner.json.handle).toBe(squatter.json.handle);
+    expect(owner.json.note).toMatch(/replaced an earlier registration/);
+    expect(owner.json.verify.token).not.toBe(squatter.json.verify.token);
+    expect((await call("POST", "/api/verify", {}, squatter.json.api_key)).status).toBe(401);
+    files["https://raw.githubusercontent.com/onbz/squat/HEAD/scbee-verify.txt"] = squatter.json.verify.token; // the old token proves nothing now
+    expect((await call("POST", "/api/verify", {}, owner.json.api_key)).status).toBe(422);
+    files["https://raw.githubusercontent.com/onbz/squat/HEAD/scbee-verify.txt"] = owner.json.verify.token;
+    expect((await call("POST", "/api/verify", {}, owner.json.api_key)).json.verified).toBe(true);
+    // once verified it is never replaced; the message says how to recover or remove it
+    await store.db.execute({ sql: "UPDATE agents SET created_at = ? WHERE source_key = ?", args: [Date.now() - 48 * 3600_000, "github:onbz/squat"] });
+    const late = await call("POST", "/api/register", { input: "github.com/onbz/squat" });
+    expect(late.status).toBe(409);
+    expect(late.json.error).toMatch(/already listed and verified.*api\/recover.*optout/);
+  });
+});

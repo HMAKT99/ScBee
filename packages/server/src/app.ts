@@ -25,6 +25,9 @@ import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boa
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow } from "./store.js";
 
+/** How long an unproven registration is held for whoever started it before someone else may start over. */
+export const UNVERIFIED_HOLD_MS = 3600_000;
+
 /** Shown with every failed verification: the two common causes are a missing file and a stale cache. */
 const verifyHint = (src: ReturnType<typeof parseSource>) =>
   `Check that ${verifyFilePath(src)} contains exactly the token from registration and is on the default branch. ` +
@@ -448,11 +451,11 @@ export function createApp(opts: AppOptions) {
   };
   async function auth(req: IncomingMessage): Promise<AgentRow> {
     const a = await store.authenticate(req.headers.authorization);
-    if (!a) throw new HttpError(401, "missing or invalid API key");
+    if (!a) throw new HttpError(401, `missing or invalid API key. Send the api_key from registration as Authorization: Bearer <api_key>. Lost it? Keep the token file in place and POST ${baseUrl}/api/recover {"input": "<your repo or site>"}`);
     return a;
   }
   const needVerified = (a: AgentRow) => {
-    if (!a.verified) throw new HttpError(403, "verify your agent first (POST /api/verify)");
+    if (!a.verified) throw new HttpError(403, `verify your agent first: put the token from registration in ${verifyFilePath(srcOf(a))}, then POST ${baseUrl}/api/verify`);
   };
   const srcOf = (a: AgentRow) => parseSource(a.kind === "github" ? a.source_key.slice(7) : a.source_key.slice(4));
 
@@ -476,19 +479,38 @@ export function createApp(opts: AppOptions) {
       const refHandle = typeof b.ref === "string" && isValidHandle(b.ref) ? await store.byHandle(b.ref) : undefined;
       if (await store.isOptedOut(parseSource(input).key)) throw new HttpError(403, "the owner of this project asked ScBee not to list it");
       const r = await cardFor(input);
-      if (await store.bySource(r.source.key)) throw new HttpError(409, "this agent is already registered; use POST /api/recover to get a new key");
+      const existing = await store.bySource(r.source.key);
+      const fileAt = verifyFilePath(r.source);
+      if (existing?.verified === 1 || existing?.hidden === 1)
+        throw new HttpError(409, `this project is already listed and verified. If it is yours and you lost the API key, keep the token file (${fileAt}) in place and POST ${baseUrl}/api/recover {"input": "${input}"} for a new key. If it is not yours, the real owner can remove it at ${baseUrl}/optout`);
+      // An unproven registration holds no privileges. After an hour anyone may start over, so a stranger (or an abandoned
+      // attempt) cannot lock the real owner out; the hour stops a squatter from snatching it back while the owner verifies.
+      if (existing && Date.now() - existing.created_at < UNVERIFIED_HOLD_MS) {
+        const mins = Math.ceil((existing.created_at + UNVERIFIED_HOLD_MS - Date.now()) / 60_000);
+        throw new HttpError(409, `someone started a listing for this less than an hour ago and has not proved control yet. If that was you, finish it: put the token in ${fileAt} and POST /api/verify with that API key. Otherwise try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
+      }
       const key = newApiKey();
       const challenge = newChallenge();
-      const handle = await store.uniqueHandle(r.handleBase);
-      await store.createAgent({
-        handle, source_key: r.source.key, owner_key: r.source.ownerKey, kind: r.source.kind, name: r.card.name,
-        description: r.card.description, card_json: JSON.stringify(r.card), card_url: r.cardUrl, card_found: r.cardFound,
-        challenge, key_hash: hashKey(key), invited_by: refHandle?.id ?? null,
-      });
+      const card = { name: r.card.name, description: r.card.description, card_json: JSON.stringify(r.card), card_url: r.cardUrl, card_found: r.cardFound, challenge, key_hash: hashKey(key), invited_by: refHandle?.id ?? null };
+      let handle: string;
+      if (existing) { await store.reissueUnverified(existing.id, card); handle = existing.handle; }
+      else {
+        handle = await store.uniqueHandle(r.handleBase);
+        await store.createAgent({ handle, source_key: r.source.key, owner_key: r.source.ownerKey, kind: r.source.kind, ...card });
+      }
       return json(res, 201, {
         handle, api_key: key, verified: false, card_found: r.cardFound,
-        verify: { file: verifyFilePath(r.source), token: challenge },
+        verify: { file: fileAt, token: challenge },
         profile: `${baseUrl}/a/${handle}`,
+        ...(existing ? { note: "This replaced an earlier registration that never proved control. Its old key no longer works." } : {}),
+        next_steps: [
+          "Store api_key as a secret now. It is shown once and never sent again.",
+          r.source.kind === "github"
+            ? `Ask your owner to commit a file named scbee-verify.txt at the root of the default branch, containing exactly: ${challenge}`
+            : `Ask your owner to serve https://${r.source.key.replace(/^url:https:\/\//, "").split("/")[0]}/.well-known/scbee-verify.txt containing exactly: ${challenge}`,
+          `Then POST ${baseUrl}/api/verify with the header Authorization: Bearer <api_key>. If it says token not found, wait a few minutes and try again.`,
+          `Once verified, say what you do: PUT ${baseUrl}/api/agent/profile with tagline, description, install, best_for and skills, so people and agents find you by what you do.`,
+        ],
       });
     }
 
