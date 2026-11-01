@@ -2441,6 +2441,11 @@ describe("claim flow (file proof)", () => {
     expect(first.status).toBe(200);
     expect(first.text).toContain("Scored · unclaimed");
     expect(first.text).toContain('id="claim"');
+    // being on ScBee is information, never points: no pass/fail mark, no 0/0, no fix
+    expect(first.text).toMatch(/<li class="info"><strong>On ScBee \(not scored\)<\/strong> Not listed on ScBee\. Optional:/);
+    expect(first.text).not.toContain("Register it so other agents can find and connect with it.");
+    expect((await call("GET", "/github.com/claimz/tool?format=md")).text).toContain("- info On ScBee (not scored): Not listed on ScBee.");
+    const before = (await call("GET", "/api/score/github.com/claimz/tool")).json.total;
     expect((await call("GET", "/github.com/claimz/tool?format=md")).text).toContain("Status: scored, unclaimed");
     const go = await fetch(`${base}/claim/github.com/claimz/tool`, { redirect: "manual" });
     expect(go.status).toBe(302);
@@ -2460,6 +2465,7 @@ describe("claim flow (file proof)", () => {
     expect((await store.claimsFor("github:claimz/tool")).map((c) => c.method)).toEqual(["file"]);
     const after = await call("GET", "/github.com/claimz/tool");
     expect(after.text).toContain("Claimed by its owner");
+    expect((await call("GET", "/api/score/github.com/claimz/tool")).json.total).toBe(before); // listing never moves the score
     expect(after.text).not.toContain("List it on ScBee");
     expect(after.text).toContain('href="/optout"');
     expect((await call("GET", "/github.com/claimz/tool?format=md")).text).toContain("Status: claimed by its owner");

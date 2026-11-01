@@ -218,6 +218,8 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 .items li::before{display:inline-block;width:18px;font-family:var(--mono)}
 .items .ok::before{content:"\\2713";color:var(--ok)}
 .items .no::before{content:"\\00d7";color:var(--bad)}
+.items .info::before{content:"i";color:var(--mute)}
+.items .info{color:var(--mute)}
 .items strong{color:var(--ink);font-weight:500}
 .items .fix{display:block;margin-left:18px;color:var(--mute);font-size:13.5px}
 .share{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}

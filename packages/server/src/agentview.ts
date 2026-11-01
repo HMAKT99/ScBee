@@ -106,7 +106,7 @@ ${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}## Fixes, 
 ${lost.length ? lost.slice(0, 8).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing major to fix"}
 
 ${p.agentReady ? agentReadyMd(base, p.path, p.agentReady) : ""}## Breakdown
-${p.result.components.map((c) => `### ${c.title}: ${c.score}/${c.max}\n${c.items.map((i) => `- ${i.points >= i.max ? "ok" : "no"} ${i.label} (${i.points}/${i.max}): ${i.reason}`).join("\n")}`).join("\n\n")}
+${p.result.components.map((c) => `### ${c.title}: ${c.score}/${c.max}\n${c.items.map((i) => i.max === 0 ? `- info ${i.label}: ${i.reason}` : `- ${i.points >= i.max ? "ok" : "no"} ${i.label} (${i.points}/${i.max}): ${i.reason}`).join("\n")}`).join("\n\n")}
 `;
 }
 

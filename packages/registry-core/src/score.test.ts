@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyseReadme, scoreProject, SCORE_VERSION, WEIGHTS, band, fetchGithubSignals, ProjectError, type ProjectSignals } from "./index.js";
+import { analyseReadme, scoreProject, scoreSite, SCORE_VERSION, WEIGHTS, band, fetchGithubSignals, ProjectError, type ProjectSignals, type SiteSignals } from "./index.js";
 
 const NOW = Date.parse("2026-10-17T00:00:00Z");
 const GOOD_README = `# Thing
@@ -152,9 +152,9 @@ describe("score version 2 rules", () => {
     expect(card({ hasAgentCard: false, agent }).points).toBe(0);
     expect(card({ hasAgentCard: false, agent }).fix).toMatch(/server\.json.*SKILL\.md.*agent card/);
     expect(card({ hasAgentCard: false, agent: { ...agent, mcp: true } }).points).toBe(0); // a README mention alone is not a file agents read
-    expect(card({ hasAgentCard: false, agent: { ...agent, mcp: true, mcpManifest: true } }).points).toBe(4);
-    expect(card({ hasAgentCard: false, agent: { ...agent, skill: true } }).points).toBe(4);
-    expect(card({ hasAgentCard: true }).points).toBe(4);
+    expect(card({ hasAgentCard: false, agent: { ...agent, mcp: true, mcpManifest: true } }).points).toBe(5);
+    expect(card({ hasAgentCard: false, agent: { ...agent, skill: true } }).points).toBe(5);
+    expect(card({ hasAgentCard: true }).points).toBe(5);
   });
   it("a repo with no install command is not also told its install is buried", () => {
     const q = (readme: string) => scoreProject(base({ readme: analyseReadme(readme) }), NOW).components.flatMap((c) => c.items).find((i) => i.label === "Quickstart near the top")!;
@@ -166,6 +166,30 @@ describe("score version 2 rules", () => {
     expect(buried.fix).toBe("Move the install command above the long explanations.");
   });
   it("the score version moved so stored scores are read again", () => {
-    expect(SCORE_VERSION).toBe("2");
+    expect(SCORE_VERSION).toBe("3");
+  });
+});
+
+describe("score version 3: the score never rewards using ScBee", () => {
+  const states = [{ listedOnScbee: false, verifiedOnScbee: false }, { listedOnScbee: true, verifiedOnScbee: false }, { listedOnScbee: true, verifiedOnScbee: true }];
+  it("a repo scores the same whether or not it is listed, and the hint has no fix to count", () => {
+    const totals = states.map((s) => scoreProject(base(s), NOW).total);
+    expect(new Set(totals).size).toBe(1);
+    for (const s of states) {
+      const hint = scoreProject(base(s), NOW).components.flatMap((c) => c.items).find((i) => i.label === "On ScBee (not scored)")!;
+      expect(hint).toMatchObject({ points: 0, max: 0 });
+      expect(hint.fix).toBeUndefined();
+    }
+  });
+  it("a website scores the same whether or not it is listed, and skills listed carries its network points", () => {
+    const site = (over: Partial<SiteSignals>): SiteSignals => ({ host: "x.dev", title: "X", description: "A site that does one useful thing for people.", hasSocialImage: true, hasViewport: true, hasLang: true,
+      agentCard: { found: true, skills: 3 }, llmsTxt: true, mcpManifest: false, aiPlugin: false, robotsOk: true, securityTxt: true, listedOnScbee: false, verifiedOnScbee: false, ...over });
+    expect(new Set(states.map((s) => scoreSite(site(s)).total)).size).toBe(1);
+    const skills = (n: number) => scoreSite(site({ agentCard: { found: true, skills: n } })).components.find((c) => c.id === "network")!.items.find((i) => i.label === "Skills listed")!;
+    expect(skills(3)).toMatchObject({ points: 15, max: 15 });
+    expect(skills(1)).toMatchObject({ points: 8, max: 15 });
+    expect(skills(1).fix).toMatch(/three or more/);
+    expect(skills(0)).toMatchObject({ points: 0, max: 15 });
+    for (const c of scoreSite(site({})).components) expect(c.items.reduce((n, i) => n + i.max, 0)).toBe(c.max);
   });
 });

@@ -2,7 +2,16 @@ import type { ProjectSignals } from "./signals.js";
 
 /** Bump when weights or rules change; stored with every result so history stays comparable. */
 /** 2: a machine-readable card may be an MCP manifest or SKILL.md, tags count as releases, docs/SECURITY.md counts, and a missing install is not also called "buried". */
-export const SCORE_VERSION = "2";
+export const SCORE_VERSION = "3";
+// 3: being listed on ScBee is worth no points. It is shown as a hint only, so the score never rewards using the tool that computes it.
+
+/** Shown with every score as information, worth 0 points and with no fix to count. */
+export function onScbee(s: { listedOnScbee: boolean; verifiedOnScbee: boolean }): ScoreItem {
+  return { label: "On ScBee (not scored)", points: 0, max: 0,
+    reason: s.verifiedOnScbee ? "Listed and verified on ScBee, so agents can find it by what it does."
+      : s.listedOnScbee ? "Listed on ScBee, not verified yet. Optional: verify so other agents can connect with it."
+      : "Not listed on ScBee. Optional: list it so agents can find it by what it does. It does not change this score." };
+}
 
 /** Maximum points per component. They sum to 100. */
 export const WEIGHTS = { clarity: 30, friction: 25, trust: 25, momentum: 10, network: 10 } as const;
@@ -106,16 +115,13 @@ export function scoreProject(s: ProjectSignals, now = Date.now()): ScoreResult {
   ];
 
   const network: ScoreItem[] = [
-    item("Machine-readable card", s.hasAgentCard || !!s.agent?.mcpManifest || !!s.agent?.skill, 4,
+    item("Machine-readable card", s.hasAgentCard || !!s.agent?.mcpManifest || !!s.agent?.skill, 5,
       s.hasAgentCard ? "Publishes an agent card other agents can read." : s.agent?.mcpManifest ? "Ships an MCP server manifest other agents can read." : "Has a SKILL.md other agents can read.",
       "Nothing machine-readable says what it does.",
       "Describe it in a file agents read: an MCP server.json if it is an MCP server, a SKILL.md if it is a skill, or an agent card (agent.json or .well-known/agent-card.json)."),
-    item("Topics", s.topics.length >= 3, 3, "Has topics so people can find it.", `${s.topics.length} topics set.`, "Add at least three GitHub topics.",
-      s.topics.length > 0 ? { points: 1, reason: `${s.topics.length} topics set.` } : undefined),
-    item("Listed on ScBee", s.verifiedOnScbee, 3, "Registered and verified on ScBee.",
-      s.listedOnScbee ? "Registered, but not yet verified." : "Not yet on ScBee.",
-      s.listedOnScbee ? "Verify ownership so other agents can connect with you." : "Register it so other agents can find and connect with it.",
-      s.listedOnScbee ? { points: 1, reason: "Registered, but not yet verified." } : undefined),
+    item("Topics", s.topics.length >= 3, 5, "Has topics so people can find it.", `${s.topics.length} topics set.`, "Add at least three GitHub topics.",
+      s.topics.length > 0 ? { points: 2, reason: `${s.topics.length} topic${s.topics.length === 1 ? "" : "s"} set.` } : undefined),
+    onScbee(s),
   ];
 
   const mk = (id: ComponentId, title: string, items: ScoreItem[]): ScoreComponent => ({ id, title, score: sum(items), max: WEIGHTS[id], items });
