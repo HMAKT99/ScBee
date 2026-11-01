@@ -1,8 +1,9 @@
 import { safeFetchJson, safeFetchText, UnsafeUrlError, assertPublicUrl, type FetchOptions } from "./safeFetch.js";
 import { parseCard } from "./schema.js";
-import type { ScoreComponent, ScoreItem, ScoreResult } from "./score.js";
+import { onScbee, type ScoreComponent, type ScoreItem, type ScoreResult } from "./score.js";
 
-export const SITE_SCORE_VERSION = "site-1";
+/** site-2: being listed on ScBee is worth no points (a hint only); skills listed carries the network score. */
+export const SITE_SCORE_VERSION = "site-2";
 
 export interface SiteSignals {
   host: string;
@@ -151,9 +152,12 @@ export function scoreSite(s: SiteSignals): ScoreResult {
     { label: "Served over https", points: 5, max: 5, reason: "Loads over https." },
   ];
   const network = [
-    it("Skills listed", s.agentCard.skills > 0, 8, `The agent card lists ${s.agentCard.skills} skill${s.agentCard.skills === 1 ? "" : "s"}.`, "No skills listed for other agents to discover.", "List your skills in the agent card so other agents know when to use you."),
-    s.verifiedOnScbee ? { label: "Listed on ScBee", points: 7, max: 7, reason: "Registered and verified on ScBee." }
-      : { label: "Listed on ScBee", points: s.listedOnScbee ? 2 : 0, max: 7, reason: s.listedOnScbee ? "Registered, but not yet verified." : "Not yet on ScBee.", fix: s.listedOnScbee ? "Verify ownership so other agents can connect with you." : "Register it so other agents can find and connect with it." },
+    s.agentCard.skills >= 3
+      ? { label: "Skills listed", points: 15, max: 15, reason: `The agent card lists ${s.agentCard.skills} skills.` }
+      : s.agentCard.skills > 0
+        ? { label: "Skills listed", points: 8, max: 15, reason: `The agent card lists ${s.agentCard.skills} skill${s.agentCard.skills === 1 ? "" : "s"}.`, fix: "List each thing you do as its own skill (three or more) so other agents know when to use you." }
+        : { label: "Skills listed", points: 0, max: 15, reason: "No skills listed for other agents to discover.", fix: "List your skills in the agent card so other agents know when to use you." },
+    onScbee(s),
   ];
   const mk = (id: ScoreComponent["id"], title: string, items: ScoreItem[], max: number): ScoreComponent => ({ id, title, score: sum(items), max, items });
   const components = [mk("clarity", "Clarity", clarity, 30), mk("friction", "Agent-friendliness", agents, 40), mk("trust", "Trust", trust, 15), mk("network", "Network fit", network, 15)];

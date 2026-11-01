@@ -96,7 +96,7 @@ ${g.edges.length
 
 const renderComps = (r: ScoreResult): string => r.components.map((c) => `<section class="comp"><div><h3>${esc(c.title)}</h3><div class="sc">${c.score}/${c.max}</div></div><div>
 <meter min="0" max="${c.max}" value="${c.score}"></meter>
-<ul class="items">${c.items.map((i) => `<li class="${i.points >= i.max ? "ok" : "no"}"><strong>${esc(i.label)}</strong> (${i.points}/${i.max}) ${esc(i.reason)}${i.fix && i.points < i.max ? `<span class="fix">Fix: ${esc(i.fix)}</span>` : ""}</li>`).join("")}</ul></div></section>`).join("");
+<ul class="items">${c.items.map((i) => i.max === 0 ? `<li class="info"><strong>${esc(i.label)}</strong> ${esc(i.reason)}</li>` : `<li class="${i.points >= i.max ? "ok" : "no"}"><strong>${esc(i.label)}</strong> (${i.points}/${i.max}) ${esc(i.reason)}${i.fix && i.points < i.max ? `<span class="fix">Fix: ${esc(i.fix)}</span>` : ""}</li>`).join("")}</ul></div></section>`).join("");
 
 /** "Can agents use this?": headline, the few fixes worth the most, the breakdown, and a badge to copy. */
 function agentReadySection(ar: ScoreResult, path: string, base: string): string {
