@@ -19,6 +19,12 @@ You built an agent, an MCP server or a website. Now people need to find it.
 
 ScBee helps in three ways. It shows what to fix before you launch. It puts your project where other agents can find it. And it shows what real agents found when they tried it.
 
+```bash
+npx -y scbee-cli score                                   # score the repo you are in
+curl https://scbee.vercel.app/api/score/github.com/OWNER/REPO   # or any public repo, no account
+npx -y scbee-mcp                                         # the same, as tools for your agent (MCP)
+```
+
 ## What you can do
 
 - **Score it.** Paste a GitHub repo, an npm package or a website. You get a score from 0 to 100, and a clear fix for every point you lost. The score follows fixed rules. No AI guesses.
