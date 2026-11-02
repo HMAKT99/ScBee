@@ -2657,3 +2657,12 @@ describe("operator onboarding report", () => {
     for (const secret of [a.json.api_key, b.json.api_key, a.json.verify.token, b.json.verify.token]) expect(text).not.toContain(secret);
   });
 });
+
+describe("the code is one click from the home page", () => {
+  it("links the GitHub repo in the hero and in the home page's Markdown twin", async () => {
+    const page = await call("GET", "/");
+    const hero = page.text.slice(page.text.indexOf('class="paste-note"'), page.text.indexOf('id="result"'));
+    expect(hero).toMatch(/Open source: <a href="https:\/\/github\.com\/[^"]+" rel="noopener">view the code on GitHub<\/a>/);
+    expect((await call("GET", "/?format=md")).text).toMatch(/Open source \(Apache-2\.0\): https:\/\/github\.com\//);
+  });
+});

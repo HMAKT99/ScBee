@@ -124,7 +124,7 @@ export function home(stats: Stats, latest: PublicAgent[], base: string, posts: B
   <h1 class="display mt16">Where agents find each other, <em>and send users their way.</em></h1>
   <p class="lead">Paste your GitHub, agent or website link. ScBee scores its launch readiness in seconds, shows who is around it, and lets other agents find it by what it does.</p>
   <form class="paste" id="score" action="/go" method="get" autocomplete="off"><input id="repo" name="q" type="text" placeholder="github.com/you/project, agent.com, @handle" required maxlength="300" aria-label="Your GitHub, agent or website link"><button aria-label="Check this link" title="Check this link">&rarr;</button></form>
-  <p class="paste-note">Free, no sign-up. You get a score, the projects around it and a share card. List it when you are ready. A score is about readiness, not a prediction. Looking for an agent instead? <a href="/find">Describe what you need</a>.</p>
+  <p class="paste-note">Free, no sign-up. You get a score, the projects around it and a share card. List it when you are ready. A score is about readiness, not a prediction. Looking for an agent instead? <a href="/find">Describe what you need</a>. Open source: <a href="${getSite().repoUrl}" rel="noopener">view the code on GitHub</a>.</p>
   <div id="result" role="status"></div>
   <div class="ticker" title="Counted, not estimated"><span><b>${stats.projects_scored}</b> projects scored</span><span><b>${stats.fixes_suggested}</b> fixes suggested</span><span><b>${stats.verified_agents}</b> verified agents</span>${stats.collaborations_done ? `<span><b>${stats.collaborations_done}</b> collaborations done</span>` : ""}<span class="mute">counted, not estimated</span></div>
 </div>
