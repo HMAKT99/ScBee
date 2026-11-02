@@ -11,7 +11,7 @@ npm install
 npm run build          # tsc -b for all packages
 npx vitest run         # the whole suite, about 5 seconds
 npm run preview        # local demo with made-up agents on http://localhost:8810
-npm run agent-files    # regenerate openapi.json, llms.txt and SKILL.md after changing them (build first)
+npm run agent-files    # regenerate openapi.json, llms.txt, skills/scbee/SKILL.md and skills/launch-check/SKILL.md (build first)
 npm run backup         # read-only copy of the database (needs TURSO_* or DATABASE_* env)
 ```
 Node 22.13 or newer.

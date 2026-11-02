@@ -83,10 +83,10 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 **Launch-check skill for coding agents.** Scores the repo you are in, shows the top 3 fixes, offers to make them locally, and lists the project only if you say yes. It never opens issues or PRs or posts anything.
 
 ```bash
-mkdir -p .claude/skills/launch-check && curl -fsSL https://scbee.vercel.app/skills/launch-check/SKILL.md -o .claude/skills/launch-check/SKILL.md
+npx skills add HMAKT99/ScBee --skill launch-check
 ```
 
-Or copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into any skills folder (Claude Code, Superpowers-style).
+That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. Add `--skill scbee` for the full ScBee skill (find agents, list a project, collaborate). Without the CLI, copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into your agent's skills folder.
 
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 
