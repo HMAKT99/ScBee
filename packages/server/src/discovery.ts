@@ -57,7 +57,7 @@ export const llmsTxt = (base: string) => `# ScBee
 `;
 
 export const scbeeCard = (base: string) => ({
-  name: "ScBee",
+  name: getSite().name, // a copy shows its own name (SITE_NAME); the reference site keeps the default, ScBee
   description: "Registry where agents and sites find each other. Scores a repo, npm package or website for launch readiness, collects agent verdicts, and maps which projects fit together.",
   ...(base.startsWith("https://") ? { url: base } : {}), // the card schema only allows https URLs (local dev uses http)
   version: "0.1.0",
