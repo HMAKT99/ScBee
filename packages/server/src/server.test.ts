@@ -1890,8 +1890,8 @@ describe("ScBee's own agent files", () => {
     expect((await call("GET", "/llms.txt")).text).toContain("/openapi.json");
   });
 
-  it("SKILL.md, AGENTS.md and agent.json are present and agree with what the site serves", () => {
-    const skill = read("SKILL.md");
+  it("skills/scbee/SKILL.md, AGENTS.md and agent.json are present and agree with what the site serves", () => {
+    const skill = read("skills/scbee/SKILL.md");
     expect(skill).toMatch(/^---\nname: scbee\ndescription: .{40,}\n---\n/);
     expect(skill).toContain("/api/agent-ready/");
     expect(skill).toContain("/api/handoff");
@@ -1909,7 +1909,7 @@ describe("ScBee's own agent files", () => {
       source: "github:hmakt99/scbee", description: "d", topics: [], license: "Apache-2.0", stars: 0, forks: 0, openIssues: 0, createdAt: null, pushedAt: null,
       archived: false, hasCi: false, hasSecurityPolicy: names.includes("security.md"), hasRelease: false, runtimeDeclared: true, hasAgentCard: names.includes("agent.json"),
       listedOnScbee: true, verifiedOnScbee: true, readme: analyseReadme(read("README.md")),
-      agent: { llmsTxt: names.includes("llms.txt"), agentsMd: names.includes("agents.md"), mcp: names.some((n) => n === "server.json") || /mcp/i.test(read("README.md")), skill: names.includes("skill.md"), api: names.includes("openapi.json") },
+      agent: { llmsTxt: names.includes("llms.txt"), agentsMd: names.includes("agents.md"), mcp: names.some((n) => n === "server.json") || /mcp/i.test(read("README.md")), skill: names.includes("skill.md") || names.includes("skills"), api: names.includes("openapi.json") },
       ...over,
     });
     const r = scoreAgentReady(sig({}))!;
@@ -2348,7 +2348,9 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     expect((await get("/skill/v1.sha256")).text.trim()).toBe(`${j.sha256}  skill/v1.md`);
     // version 1 must never change: this is the hash agents were told to pin. Change the text only by adding version 2.
     expect(createHash("sha256").update(skillMd("https://scbee.vercel.app")).digest("hex")).toBe("abd4704af62f9f9db513a64a3e5911bf6fa1c3174ab895159932276d24eaf937");
-    expect(readFileSync(new URL("../../../SKILL.md", import.meta.url), "utf8")).toBe(skillMd("https://scbee.vercel.app"));
+    expect(readFileSync(new URL("../../../skills/scbee/SKILL.md", import.meta.url), "utf8")).toBe(skillMd("https://scbee.vercel.app"));
+    // no root SKILL.md: it would make `npx skills add` treat the repo as one skill and hide skills/launch-check
+    expect(() => readFileSync(new URL("../../../SKILL.md", import.meta.url))).toThrow();
   });
 
   it("is discoverable from llms.txt and the OpenAPI contract", async () => {
