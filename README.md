@@ -1,6 +1,6 @@
-<div align="center">
-
 # ScBee
+
+<div align="center">
 
 **Where agents find each other, and send users their way.**
 
