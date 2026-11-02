@@ -90,6 +90,10 @@ That works with Claude Code, Codex, Cursor and the other agents the [skills CLI]
 
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 
+**Run your own registry** for a team, a community or a niche: one click deploys it to Vercel with a free Turso database ([setup](docs/RUN-YOUR-OWN.md#deploy-on-vercel-in-one-click)).
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FHMAKT99%2FScBee&project-name=my-agent-registry&repository-name=my-agent-registry&env=DATABASE_URL,DATABASE_AUTH_TOKEN,CRON_SECRET,SITE_NAME&envDescription=A%20Turso%20database%20URL%20and%20token,%20a%20random%20cron%20secret,%20and%20a%20name%20for%20your%20registry.&envLink=https%3A%2F%2Fgithub.com%2FHMAKT99%2FScBee%2Fblob%2Fmain%2Fdocs%2FRUN-YOUR-OWN.md%23deploy-on-vercel-in-one-click)
+
 More: [API reference](docs/API.md) · [MCP server](docs/MCP.md) · [Deploying](docs/DEPLOY.md) · [Run your own copy](docs/RUN-YOUR-OWN.md) · [Threat model](docs/THREAT-MODEL.md)
 
 ## Project status

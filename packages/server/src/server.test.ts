@@ -1614,6 +1614,15 @@ describe("run your own copy: site settings", () => {
     expect(c.securityUrl).toBe(`${defaults.repo}/security/advisories/new`);
     expect(c.specimen).toBe("HMAKT99/ScBee");
     expect(siteFromEnv({ SITE_NAME: " Mine ", SITE_REPO_URL: "", SITE_SPECIMEN: undefined })).toMatchObject({ name: "Mine", repoUrl: undefined });
+    // a one-click Vercel deploy links to its own GitHub repo; an explicit SITE_REPO_URL still wins; anything odd is ignored
+    const vercel = { VERCEL_GIT_PROVIDER: "github", VERCEL_GIT_REPO_OWNER: "someone", VERCEL_GIT_REPO_SLUG: "my-agent-registry" };
+    expect(siteFromEnv(vercel).repoUrl).toBe("https://github.com/someone/my-agent-registry");
+    expect(configureSite(siteFromEnv(vercel)).securityUrl).toBe("https://github.com/someone/my-agent-registry/security/advisories/new");
+    expect(siteFromEnv({ ...vercel, SITE_REPO_URL: "https://github.com/me/mine" }).repoUrl).toBe("https://github.com/me/mine");
+    expect(siteFromEnv({ ...vercel, VERCEL_GIT_PROVIDER: "gitlab" }).repoUrl).toBeUndefined();
+    expect(siteFromEnv({ ...vercel, VERCEL_GIT_REPO_SLUG: "x/../../evil" }).repoUrl).toBeUndefined();
+    configureSite({ name: "Acme Agents" });
+    expect(scbeeCard("https://acme.example").name).toBe("Acme Agents"); // a copy's agent card carries its own name
     configureSite();
   });
 });

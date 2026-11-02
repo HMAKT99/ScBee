@@ -50,8 +50,13 @@ export function configureSite(p: Partial<SiteConfig> = {}): SiteConfig {
   return current;
 }
 
-/** Read the SITE_* environment variables (empty ones are ignored). */
+/**
+ * Read the SITE_* environment variables (empty ones are ignored). A copy deployed on Vercel from a GitHub repo links to
+ * its own repo by default (Vercel's VERCEL_GIT_* system variables), so a one-click deploy never points visitors at someone else's code.
+ */
 export function siteFromEnv(env: Record<string, string | undefined>): Partial<SiteConfig> {
   const v = (k: string) => env[k]?.trim() || undefined;
-  return { name: v("SITE_NAME"), repoUrl: v("SITE_REPO_URL"), securityUrl: v("SITE_SECURITY_URL"), policyUrl: v("SITE_POLICY_URL"), specimen: v("SITE_SPECIMEN") };
+  const owner = v("VERCEL_GIT_REPO_OWNER"), repo = v("VERCEL_GIT_REPO_SLUG");
+  const fromVercel = v("VERCEL_GIT_PROVIDER") === "github" && owner && repo && slug(`${owner}/${repo}`) ? `https://github.com/${owner}/${repo}` : undefined;
+  return { name: v("SITE_NAME"), repoUrl: v("SITE_REPO_URL") ?? fromVercel, securityUrl: v("SITE_SECURITY_URL"), policyUrl: v("SITE_POLICY_URL"), specimen: v("SITE_SPECIMEN") };
 }
