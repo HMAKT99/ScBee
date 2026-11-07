@@ -1,5 +1,7 @@
 /**
- * The launch-check skill for coding agents (Claude Code skills, Superpowers-style skill folders).
+ * The launch-check skill for coding agents (Claude Code skills, Superpowers-style skill folders, and OpenClaw's ClawHub:
+ * the metadata.openclaw block below is what ClawHub's security scan compares against what the skill does). Bump `version`
+ * when the text changes, then publish again (docs/OPERATIONS.md, "Publishing the skill to ClawHub").
  * Served at /skills/launch-check/SKILL.md and written to skills/launch-check/SKILL.md by `npm run agent-files`.
  * It reads one public score, changes files only after the human agrees, and registers only on an explicit yes.
  */
@@ -7,6 +9,13 @@ export function launchCheckMd(base: string): string {
   return `---
 name: launch-check
 description: Check whether the current repository is ready to launch. Reads its public ScBee readiness score, shows the score and the three fixes worth the most, offers to make those fixes locally, and only if the human says yes, lists the project on ScBee. Use when someone asks "is this ready to launch?", "what should I fix before I ship?", or wants a launch checklist for this repo.
+version: 1.0.0
+metadata:
+  openclaw:
+    homepage: ${base}
+    requires:
+      bins:
+        - git
 ---
 
 # Launch check
