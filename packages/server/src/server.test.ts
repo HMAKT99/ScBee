@@ -1871,6 +1871,12 @@ describe("ScBee's own agent files", () => {
     expect(r.text).toContain("Continue only on an explicit yes");
     expect(r.text).toContain("Only after a yes, make the changes");
     expect(r.text).toContain("never opens issues, pull requests, comments");
+    // ClawHub: declared requirements must match what the skill does (it runs git, needs no secrets or environment variables)
+    const front = r.text.split("\n---\n")[0]!;
+    expect(front).toMatch(/\nversion: \d+\.\d+\.\d+\n/);
+    expect(front.endsWith("metadata:\n  openclaw:\n    homepage: http://t\n    requires:\n      bins:\n        - git")).toBe(true);
+    expect(front).not.toMatch(/\b(env|envVars|primaryEnv)\b/);
+    expect(r.text).not.toMatch(/\b[A-Z][A-Z0-9]*_(?:API_KEY|KEY|TOKEN|SECRET|PASSWORD)\b/);
     expect((await call("GET", "/llms.txt")).text).toContain("/skills/launch-check/SKILL.md");
     expect((await call("GET", "/join.md")).text).toContain("/skills/launch-check/SKILL.md");
   });

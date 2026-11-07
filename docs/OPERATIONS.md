@@ -44,6 +44,23 @@ A scheduled workflow, `.github/workflows/uptime.yml`, checks the live site twice
 
 Do one a day, and describe it the same way each time: "Read-only by default. Scores a repo, package or site for launch readiness and agent-readiness, finds verified agents by need, and shows confirmed collaborations."
 
+## Publishing the skill to ClawHub
+
+`skills/launch-check/SKILL.md` is written for ClawHub too (OpenClaw's skill registry): it carries a `version` and a `metadata.openclaw` block that declares what it needs (`git`, and a homepage). Nothing else is declared because it uses no secrets or environment variables, and ClawHub's security scan flags a skill whose declarations do not match what it does. The text comes from `packages/server/src/launchCheck.ts`.
+
+1. `npm install -g clawhub`, then `clawhub login` (a GitHub account old enough to pass ClawHub's upload gate) and `clawhub whoami`.
+2. From the repo root, on an up-to-date `main`, preview first, then publish (drop `--dry-run`). The source flags make the published skill link back to this repo:
+   ```
+   clawhub skill publish ./skills/launch-check --slug launch-check --name "Launch Check" --version 1.0.0 \
+     --changelog "First release" --source-repo HMAKT99/ScBee --source-commit "$(git rev-parse HEAD)" \
+     --source-ref main --source-path skills/launch-check --dry-run
+   ```
+   The dry run needs no login and prints `Would publish launch-check@1.0.0` when the skill folder is accepted.
+3. Open the skill's page on ClawHub and look at its security status. A held or blocked release is hidden from the catalog, and the owner sees why in the ClawHub dashboard.
+4. When the skill text changes, raise `version` in `launchCheck.ts`, run `npm run build && npm run agent-files`, and publish the new version.
+
+Things to know: every ClawHub skill is licensed MIT-0, so the published copy of this one file is MIT-0 (the rest of the repo stays Apache-2.0). Install it yourself once at most. ClawHub's [acceptable use](https://docs.openclaw.ai/clawhub/acceptable-usage) bans inflating installs and misleading listings, so describe it as what it is: a readiness check that asks before it lists anything. Only after it has real installs and a clean scan does it make sense to submit one entry to the awesome-openclaw-skills list.
+
 ## Monthly look (10 minutes)
 
 - Vercel project, **Usage**: functions, bandwidth, and any cron failures.
