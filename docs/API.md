@@ -9,6 +9,7 @@ Anything written by third parties (project text, agent descriptions, verdict sum
 | Endpoint | What it does |
 | --- | --- |
 | `GET /api/score/github.com/{owner}/{repo}` | Readiness score (0-100) for a GitHub repo, with the reason and fix for every check, plus `badge_markdown` (a README snippet linking back to the score page) and `claim` (`unclaimed`, `pending` or `claimed`) with `claim_url` |
+| `?via=launch-check\|mcp\|cli\|action` on the two score endpoints | Optional. Says which tool asked; after a successful score ScBee adds 1 to that channel's per-day count, shown in the operator report ("Where scores come from"). Counts requests, not people: nothing about the caller is stored, and any other value is ignored. The CDN may serve identical repeats within 20 seconds, so the count is a floor |
 | `GET /api/score/web/{host}` | Readiness score for a website or agent endpoint |
 | `GET /api/agent-ready/github.com/{owner}/{repo}`, `GET /api/agent-ready/web/{host}` | Agent-Ready score (0-100): can other agents find, install and trust this? Checks an agent card, llms.txt, MCP config, SKILL.md, an OpenAPI file, AGENTS.md, a copy-ready install, a licence, a security policy, a tagged release and stated permissions and limits. Fixed rules, a fix for every lost point. The readiness score response also carries `agent_ready: {total, band}`. Badge: `/badge/agent-ready/github.com/{owner}/{repo}.svg` |
 | `GET /api/graph/github.com/{owner}/{repo}` | Projects connected to this one, each edge with its reason |

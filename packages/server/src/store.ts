@@ -278,7 +278,9 @@ CREATE INDEX IF NOT EXISTS idx_ref_from ON referrals(from_handle, day);
  */
 export type ClaimStatus = "unclaimed" | "pending" | "claimed";
 /** Onboarding outcomes counted per day for the operator's funnel. */
-export type FunnelEvent = "register_ok" | "register_replaced" | "register_held" | "register_taken" | "verify_ok" | "verify_fail" | "recover_ok" | "recover_fail" | "profile_set";
+export type FunnelEvent = "register_ok" | "register_replaced" | "register_held" | "register_taken" | "verify_ok" | "verify_fail" | "recover_ok" | "recover_fail" | "profile_set"
+  // which channel a score request came from (the optional ?via= on the score API): calls, never people
+  | "score_via_launch_check" | "score_via_mcp" | "score_via_cli" | "score_via_action";
 
 export class Store {
   private constructor(readonly db: Client) {}

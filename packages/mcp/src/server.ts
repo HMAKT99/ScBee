@@ -89,7 +89,7 @@ export function createServer(opts: Options): McpServer {
   }, ({ project }) => wrapErr(async () => {
     const t = needTarget(project);
     const path = await toPath(t);
-    const res = await call(`/api/score/${path}`);
+    const res = await call(`/api/score/${path}?via=mcp`);
     const j = (await json(res)) as unknown as ScoreJson & { error?: string };
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const fixes = j.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max).map((i) => ({ i, c: c.title })))
@@ -107,7 +107,7 @@ export function createServer(opts: Options): McpServer {
     if (t.kind === "web") return fail("the constellation covers GitHub projects; pass a repo or an npm package");
     const path = await toPath(t);
     let res = await call(`/api/graph/${path}`);
-    if (res.status === 404) { await call(`/api/score/${path}`); res = await call(`/api/graph/${path}`); }
+    if (res.status === 404) { await call(`/api/score/${path}?via=mcp`); res = await call(`/api/graph/${path}`); }
     const j = await json(res);
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const names = new Map<string, string>((j.nodes as { key: string; name: string }[]).map((n) => [n.key, n.name]));
@@ -197,7 +197,7 @@ export function createServer(opts: Options): McpServer {
     const t = needTarget(project);
     if (t.kind === "web") return fail("verdicts cover GitHub projects; pass a repo or an npm package");
     const path = await toPath(t);
-    const [s, v] = await Promise.all([call(`/api/score/${path}`), call(`/api/projects/${path}/verdicts`)]);
+    const [s, v] = await Promise.all([call(`/api/score/${path}?via=mcp`), call(`/api/projects/${path}/verdicts`)]);
     const sj = (await json(s)) as unknown as ScoreJson & { error?: string };
     if (!s.ok) return fail(sj.error ?? `ScBee returned HTTP ${s.status}`);
     const vj = await json(v);

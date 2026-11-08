@@ -94,6 +94,9 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 };
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
+/** The channels that may say where a score request came from, with ?via=. Only these exact values are counted; anything else is ignored. */
+const SCORE_VIA: Record<string, FunnelEvent> = { "launch-check": "score_via_launch_check", mcp: "score_via_mcp", cli: "score_via_cli", action: "score_via_action" };
+
 /** Words too broad to say what a project does: they would match almost every agent and every search. */
 const GENERIC_WORDS = new Set(["agent", "agents", "ai-agent", "ai-agents", "mcp", "mcp-server", "mcp-servers", "server", "servers", "llm", "llms", "tool", "tools",
   "claude", "claude-code", "code", "openai", "gpt", "app", "api", "open-source", "opensource", "python", "typescript", "javascript", "node", "nodejs", "framework", "library", "simple", "fast", "based", "built"]);
@@ -635,6 +638,8 @@ export function createApp(opts: AppOptions) {
     const sm = path.match(/^\/api\/score\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})$/);
     if (method === "GET" && sm) {
       const v = await projectScore(sm[1]!, sm[2]!, ip);
+      const via = SCORE_VIA[url.searchParams.get("via") ?? ""];
+      if (via) await funnel(via); // after a successful score; a per-day count, no identity stored
       return json(res, 200, { project: `github.com/${v.owner}/${v.repo}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
         badge_markdown: badgeMarkdown(baseUrl, `github.com/${v.owner}/${v.repo}`),
         claim: await store.claimStatus(`github:${sm[1]!.toLowerCase()}/${sm[2]!.toLowerCase()}`), claim_url: `${baseUrl}/claim/github.com/${v.owner}/${v.repo}`,
@@ -731,6 +736,8 @@ export function createApp(opts: AppOptions) {
       const host = parseHost(wsm[1]!);
       if (!host) throw new HttpError(400, "enter a public hostname like example.com");
       const v = await siteScore(host, ip);
+      const via = SCORE_VIA[url.searchParams.get("via") ?? ""];
+      if (via) await funnel(via);
       return json(res, 200, { project: `web/${host}`, band: band(v.result.total).label, checked_at: v.fetchedAt, ...v.result,
         badge_markdown: badgeMarkdown(baseUrl, `web/${host}`),
         claim: await store.claimStatus(`url:https://${host}`), claim_url: `${baseUrl}/claim/web/${host}`,
