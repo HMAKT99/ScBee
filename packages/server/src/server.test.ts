@@ -2683,3 +2683,37 @@ describe("the code is one click from the home page", () => {
     expect((await call("GET", "/?format=md")).text).toMatch(/Open source \(Apache-2\.0\): https:\/\/github\.com\//);
   });
 });
+
+describe("where score requests come from (?via=)", () => {
+  const events = async () => (await (await fetch(`${base}/api/admin/onboarding?days=30`, { headers: { "x-admin-token": "adm-secret" } })).json() as any).events as Record<string, number>;
+  it("counts each known channel per day after a successful score, and ignores anything else", async () => {
+    const api = "https://api.github.com/repos/viaz/tool";
+    files[api] = JSON.stringify({ full_name: "viaz/tool", description: "a tool", topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    const before = await events();
+    const n = (e: Record<string, number>, k: string) => e[k] ?? 0;
+    const body0 = (await call("GET", "/api/score/github.com/viaz/tool")).json;
+    for (const via of ["launch-check", "mcp", "cli", "action"]) expect((await call("GET", `/api/score/github.com/viaz/tool?via=${via}`)).status).toBe(200);
+    expect((await call("GET", "/api/score/web/shop.example.dev?via=mcp")).status).toBeLessThan(500);
+    // unknown, empty, odd-cased and injected values count nothing
+    for (const bad of ["", "LAUNCH-CHECK", "evil", "mcp,cli", "launch-check%20x"]) expect((await call("GET", `/api/score/github.com/viaz/tool?via=${bad}`)).status).toBe(200);
+    // a failed score counts nothing
+    expect((await call("GET", "/api/score/github.com/viaz/does-not-exist?via=cli")).status).toBeGreaterThanOrEqual(400);
+    const after = await events();
+    expect(n(after, "score_via_launch_check") - n(before, "score_via_launch_check")).toBe(1);
+    expect(n(after, "score_via_cli") - n(before, "score_via_cli")).toBe(1);
+    expect(n(after, "score_via_action") - n(before, "score_via_action")).toBe(1);
+    expect(n(after, "score_via_mcp") - n(before, "score_via_mcp")).toBeGreaterThanOrEqual(1); // the repo score; the site score depends on the fake web
+    // the response itself is unchanged by ?via=
+    const withVia = (await call("GET", "/api/score/github.com/viaz/tool?via=cli")).json;
+    expect({ ...withVia, checked_at: 0 }).toEqual({ ...body0, checked_at: 0 });
+  });
+  it("the skill and the other clients say which channel they are", async () => {
+    expect((await call("GET", "/skills/launch-check/SKILL.md")).text).toContain("/api/score/github.com/OWNER/REPO?via=launch-check");
+    const { readFileSync } = await import("node:fs");
+    const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
+    expect(read("../../mcp/src/server.ts")).toMatch(/api\/score\/\$\{path\}\?via=mcp/);
+    expect(read("../../cli/src/index.ts")).toMatch(/api\/score\/\$\{path\}\?via=cli/);
+    expect(read("../../../action/run.mjs")).toMatch(/api\/score\/\$\{project\}\?via=action/);
+  });
+});

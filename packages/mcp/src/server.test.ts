@@ -100,7 +100,7 @@ describe("tools", () => {
     });
     const c = await connect(server);
     expect(out(await c.callTool({ name: "scbee_score", arguments: { project: "npm:left-pad" } }))).toMatch(/72\/100/);
-    expect(seen.map((s) => s.url)).toEqual(["/npm/left-pad", "/api/score/github.com/o/r"]);
+    expect(seen.map((s) => s.url)).toEqual(["/npm/left-pad", "/api/score/github.com/o/r?via=mcp"]);
   });
 
   it("returns a tool error for bad input and for server errors", async () => {
@@ -187,7 +187,7 @@ describe("tools", () => {
     const r = await c.callTool({ name: "scbee_find_complements", arguments: { project: "o/r" } });
     expect(r.isError).toBeFalsy();
     expect(out(r)).toMatch(/No connections found yet/);
-    expect(seen.map((s) => s.url)).toEqual(["/api/graph/github.com/o/r", "/api/score/github.com/o/r", "/api/graph/github.com/o/r"]);
+    expect(seen.map((s) => s.url)).toEqual(["/api/graph/github.com/o/r", "/api/score/github.com/o/r?via=mcp", "/api/graph/github.com/o/r"]);
   });
 
   it("auth tools refuse without an API key and never send one unless configured", async () => {

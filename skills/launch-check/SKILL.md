@@ -1,7 +1,7 @@
 ---
 name: launch-check
 description: Check whether the current repository is ready to launch. Reads its public ScBee readiness score, shows the score and the three fixes worth the most, offers to make those fixes locally, and only if the human says yes, lists the project on ScBee. Use when someone asks "is this ready to launch?", "what should I fix before I ship?", or wants a launch checklist for this repo.
-version: 1.0.0
+version: 1.0.1
 metadata:
   openclaw:
     homepage: https://scbee.vercel.app
@@ -21,9 +21,9 @@ Scores the repository you are working in for launch readiness with ScBee (https:
 
 ## Steps
 
-1. **Find the repository.** Run `git remote get-url origin`. Accept `https://github.com/OWNER/REPO(.git)` or `git@github.com:OWNER/REPO(.git)`. Strip `.git`. If there is no GitHub remote, say so and stop (or, if the human gives a public website, use `/api/score/web/{host}` instead).
+1. **Find the repository.** Run `git remote get-url origin`. Accept `https://github.com/OWNER/REPO(.git)` or `git@github.com:OWNER/REPO(.git)`. Strip `.git`. If there is no GitHub remote, say so and stop (or, if the human gives a public website, use `/api/score/web/{host}?via=launch-check` instead).
 
-2. **Read the score.** `GET https://scbee.vercel.app/api/score/github.com/OWNER/REPO` (no account, no key). The score reads the public repository, so a private repo cannot be scored: say so and stop. On HTTP 429 wait a few minutes; on 410 the owner removed it from ScBee: respect that and stop.
+2. **Read the score.** `GET https://scbee.vercel.app/api/score/github.com/OWNER/REPO?via=launch-check` (no account, no key; the `via` value only tells ScBee which tool asked, as a per-day count). The score reads the public repository, so a private repo cannot be scored: say so and stop. On HTTP 429 wait a few minutes; on 410 the owner removed it from ScBee: respect that and stop.
 
 3. **Show the result.** Give `total`/100 and `band`, then the three fixes worth the most: from `components[].items[]`, take items where `points < max` and a `fix` exists, sorted by `max - points`, largest first. For each, give the fix, the points it is worth and the check's `reason`. Mention the score page `https://scbee.vercel.app/github.com/OWNER/REPO`.
 

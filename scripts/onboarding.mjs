@@ -33,6 +33,9 @@ console.log(`  register: ${e("register_ok")} new, ${e("register_replaced")} repl
 console.log(`  verify:   ${e("verify_ok")} ok, ${e("verify_fail")} token not found`);
 console.log(`  recover:  ${e("recover_ok")} ok, ${e("recover_fail")} failed`);
 console.log(`  profile:  ${e("profile_set")} updates`);
+const via = ["launch_check", "mcp", "cli", "action"].map((k) => [k, e(`score_via_${k}`)]);
+console.log("\nWhere scores come from (requests that said ?via=, counted per day: calls, not people)");
+console.log(`  ${via.map(([k, n]) => `${k.replace("_", "-")}: ${n}`).join(", ")}`);
 if (r.stalled.length) {
   console.log("\nStalled: registered over an hour ago, not verified");
   for (const s of r.stalled) console.log(`  @${s.handle}  ${s.source}  ${s.hours_waiting}h${s.card_found ? "" : "  (no agent.json)"}`);

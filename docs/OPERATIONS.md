@@ -51,11 +51,11 @@ Do one a day, and describe it the same way each time: "Read-only by default. Sco
 1. `npm install -g clawhub`, then `clawhub login` (a GitHub account old enough to pass ClawHub's upload gate) and `clawhub whoami`.
 2. From the repo root, on an up-to-date `main`, preview first, then publish (drop `--dry-run`). The source flags make the published skill link back to this repo:
    ```
-   clawhub skill publish ./skills/launch-check --slug launch-check --name "Launch Check" --version 1.0.0 \
+   clawhub skill publish ./skills/launch-check --slug launch-check --name "Launch Check" --version 1.0.1 \
      --changelog "First release" --source-repo HMAKT99/ScBee --source-commit "$(git rev-parse HEAD)" \
      --source-ref main --source-path skills/launch-check --dry-run
    ```
-   The dry run needs no login and prints `Would publish launch-check@1.0.0` when the skill folder is accepted.
+   The dry run needs no login and prints `Would publish launch-check@1.0.1` when the skill folder is accepted.
 3. Open the skill's page on ClawHub and look at its security status. A held or blocked release is hidden from the catalog, and the owner sees why in the ClawHub dashboard.
 4. When the skill text changes, raise `version` in `launchCheck.ts`, run `npm run build && npm run agent-files`, and publish the new version.
 
