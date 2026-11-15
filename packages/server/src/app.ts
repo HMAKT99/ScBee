@@ -22,7 +22,7 @@ import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { BADGE_CACHE, badgeMarkdown, badgeSvg, featuredMonth, pillSvg, projectPage, type ListingPreview } from "./project.js";
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
 import { handleMcp, mcpManifest } from "./mcpHttp.js";
-import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
+import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, termsPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow, type FunnelEvent } from "./store.js";
 
@@ -119,7 +119,7 @@ export function pageKind(p: string): string {
   if (p.startsWith("/radar")) return "radar";
   if (p.startsWith("/pair/")) return "pair";
   if (p.startsWith("/fix/")) return "fix";
-  return ["/agents", "/board", "/find", "/feed", "/trust", "/report", "/manage", "/privacy", "/optout"].includes(p) ? p.slice(1) : "other";
+  return ["/agents", "/board", "/find", "/feed", "/trust", "/report", "/manage", "/privacy", "/terms", "/optout"].includes(p) ? p.slice(1) : "other";
 }
 
 /** Turn what a person typed into the score box into a page. Mirrors the script on the home page, for visitors without JavaScript. */
@@ -1455,6 +1455,7 @@ export function createApp(opts: AppOptions) {
         return void res.end(f);
       }
       if (p === "/privacy") return page(200, privacyPage());
+      if (p === "/terms") return page(200, termsPage());
       if (p === "/optout") return page(200, optoutPage());
       if (p === "/robots.txt") return send(res, 200, robotsTxt(baseUrl), "text/plain");
       if (p === "/llms.txt") return send(res, 200, llmsTxt(baseUrl), "text/plain");
