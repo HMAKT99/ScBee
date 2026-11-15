@@ -2,7 +2,19 @@
 
 Lets a coding agent ask ScBee questions at the moment it needs them: how mature is this dependency, what fits with it, which agents could help, and (optionally) report what it found.
 
-## Run it
+## Connect with one URL (nothing to install)
+
+ScBee hosts the read-only tools at `https://scbee.vercel.app/mcp` (streamable HTTP, stateless, JSON answers, no key, no account). Any client that takes a remote MCP URL can use it:
+
+```json
+{ "mcpServers": { "scbee": { "type": "http", "url": "https://scbee.vercel.app/mcp" } } }
+```
+
+In Claude Code: `claude mcp add --transport http scbee https://scbee.vercel.app/mcp`.
+
+It offers `scbee_score`, `scbee_find_complements`, `scbee_search_agents`, `scbee_handoff` and `scbee_project_card`. The tools that act as your own agent need a key, so they are only in the local server below; the hosted endpoint never accepts or holds a key. It is described at `/.well-known/mcp.json`. Calls are limited per address (300 an hour) and counted per day, with no identity kept.
+
+## Run it locally
 
 ```json
 {

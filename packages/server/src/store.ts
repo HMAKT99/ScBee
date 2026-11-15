@@ -270,6 +270,12 @@ CREATE TABLE IF NOT EXISTS referrals (
 );
 CREATE INDEX IF NOT EXISTS idx_ref_to ON referrals(to_handle, day);
 CREATE INDEX IF NOT EXISTS idx_ref_from ON referrals(from_handle, day);
+CREATE TABLE IF NOT EXISTS badge_hits (
+  day TEXT NOT NULL,
+  path TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, path)
+);
 `;
 
 /**
@@ -280,7 +286,12 @@ export type ClaimStatus = "unclaimed" | "pending" | "claimed";
 /** Onboarding outcomes counted per day for the operator's funnel. */
 export type FunnelEvent = "register_ok" | "register_replaced" | "register_held" | "register_taken" | "verify_ok" | "verify_fail" | "recover_ok" | "recover_fail" | "profile_set"
   // which channel a score request came from (the optional ?via= on the score API): calls, never people
-  | "score_via_launch_check" | "score_via_mcp" | "score_via_cli" | "score_via_action";
+  | "score_via_launch_check" | "score_via_mcp" | "score_via_cli" | "score_via_action" | "score_via_mcp_http"
+  // tool calls answered by the hosted MCP endpoint (/mcp): calls, never people
+  | "mcp_http_call";
+
+/** How many owners other than the operator get a numbered founding mark. */
+export const FOUNDING_PLACES = 25;
 
 export class Store {
   private constructor(readonly db: Client) {}
@@ -392,6 +403,7 @@ export class Store {
     await this.run("DELETE FROM projects WHERE source_key = ?", [key]);
     await this.run("DELETE FROM gallery WHERE source_key = ?", [key]);
     await this.run("DELETE FROM score_history WHERE source_key = ?", [key]);
+    await this.run("DELETE FROM badge_hits WHERE path = ?", [key.startsWith("github:") ? `github.com/${key.slice(7)}` : `web/${key.slice(4).replace(/^https:\/\//, "")}`]);
     if (visible) await this.run("UPDATE agents SET hidden = 1 WHERE id = ?", [visible.id]);
   }
   async clearOptout(key: string) {
@@ -613,6 +625,62 @@ export class Store {
     await this.run("INSERT INTO funnel_events (day, event, n) VALUES (?, ?, 1) ON CONFLICT(day, event) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), event]);
   }
 
+  /**
+   * One more of a traffic count today: `view:<page kind>`, `ref:<referring host>` or `src:<campaign word>`.
+   * Counts only. No address, visitor id, path or full referrer is kept, and nothing is stored in the browser.
+   */
+  async bumpCount(event: string) {
+    if (!/^(view|ref|src):[a-z0-9._-]{1,80}$/.test(event)) return;
+    await this.run("INSERT INTO funnel_events (day, event, n) VALUES (?, ?, 1) ON CONFLICT(day, event) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), event]);
+  }
+  /** One more request today for a project's badge. The path is a public repo or site name; nothing about the reader is kept. */
+  async bumpBadge(path: string) {
+    await this.run("INSERT INTO badge_hits (day, path, n) VALUES (?, ?, 1) ON CONFLICT(day, path) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), path.slice(0, 200)]);
+  }
+  /** Whether a project is in any gallery collection. */
+  async inGallery(key: string): Promise<boolean> {
+    return !!(await this.one<{ x: number }>("SELECT 1 AS x FROM gallery WHERE source_key = ? LIMIT 1", [key]));
+  }
+  /**
+   * Owners with a verified, visible agent, in the order they first proved control, leaving out the operator's own.
+   * The first FOUNDING_PLACES of them are the founding owners; the position is a fact about order, not a rank.
+   */
+  async foundingOwners(operatorOwner: string): Promise<string[]> {
+    return (await this.rows<{ owner_key: string }>(
+      `SELECT a.owner_key, MIN(COALESCE((SELECT MIN(c.created_at) FROM claims c WHERE c.agent_id = a.id), a.created_at)) AS t
+       FROM agents a WHERE a.verified = 1 AND a.hidden = 0 AND a.owner_key <> ? GROUP BY a.owner_key ORDER BY t ASC, a.owner_key ASC LIMIT ?`,
+      [operatorOwner, FOUNDING_PLACES])).map((r) => r.owner_key);
+  }
+  /** The founding place (1-based) of the owner of this agent, or null. */
+  async foundingPlace(handle: string, operatorOwner: string): Promise<number | null> {
+    const a = await this.byHandle(handle);
+    if (!a || a.verified !== 1 || a.hidden) return null;
+    const i = (await this.foundingOwners(operatorOwner)).indexOf(a.owner_key);
+    return i < 0 ? null : i + 1;
+  }
+  /** Who the listings belong to, so the home page can say it plainly: verified owners, and how many listings are the operator's own. */
+  async ownerSummary(operatorOwner: string) {
+    const n = async (sql: string, args: InValue[] = []) => Number((await this.one<{ n: number }>(sql, args))?.n ?? 0);
+    return {
+      verified_owners: await n("SELECT COUNT(DISTINCT owner_key) AS n FROM agents WHERE verified = 1 AND hidden = 0"),
+      operator_listings: await n("SELECT COUNT(*) AS n FROM agents WHERE hidden = 0 AND owner_key = ?", [operatorOwner]),
+      founding_taken: (await this.foundingOwners(operatorOwner)).length,
+      founding_places: FOUNDING_PLACES,
+    };
+  }
+  /**
+   * How far a project's score has risen under the current rules: the earliest recorded total with the same score version, and the latest.
+   * Null unless it went up. A change of rules never counts as the owner's improvement.
+   */
+  async scoreRise(key: string): Promise<{ from: number; to: number; days: number } | null> {
+    const now = await this.one<{ total: number; score_version: string }>("SELECT total, score_version FROM projects WHERE source_key = ?", [key]);
+    if (!now) return null;
+    const first = await this.one<{ total: number; created_at: number }>(
+      "SELECT total, created_at FROM score_history WHERE source_key = ? AND score_version = ? ORDER BY id ASC LIMIT 1", [key, now.score_version]);
+    if (!first || Number(now.total) <= Number(first.total)) return null;
+    return { from: Number(first.total), to: Number(now.total), days: Math.max(1, Math.round((Date.now() - Number(first.created_at)) / 86_400_000)) };
+  }
+
   /** For the operator only (admin token): how newcomers move from registering to being useful, over the last `days`. */
   async onboardingReport(days: number) {
     const since = Date.now() - days * 86_400_000;
@@ -637,9 +705,12 @@ export class Store {
       [since, Date.now() - 3600_000])).map((r) => ({ handle: r.handle, source: r.source_key, hours_waiting: Math.round((Date.now() - Number(r.created_at)) / 3600_000), card_found: r.card_found === 1 }));
     const events = Object.fromEntries((await this.rows<{ event: string; n: number }>(
       "SELECT event, SUM(n) AS n FROM funnel_events WHERE day >= ? GROUP BY event ORDER BY event", [sinceDay])).map((r) => [r.event, Number(r.n)]));
+    const badgeRows = (await this.rows<{ path: string; n: number }>(
+      "SELECT path, SUM(n) AS n FROM badge_hits WHERE day >= ? GROUP BY path ORDER BY n DESC, path ASC LIMIT 200", [sinceDay])).map((r) => ({ path: r.path, requests: Number(r.n) }));
     return {
       days, funnel: { registered, verified, described, active }, owners: { new_in_window: newOwners, with_a_verified_agent: verifiedOwners },
       median_minutes_to_verify: median === null ? null : Math.round(median / 60_000), events, stalled,
+      badges: { distinct_projects: badgeRows.length, top: badgeRows.slice(0, 10) },
     };
   }
 

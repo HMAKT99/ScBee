@@ -20,7 +20,8 @@ import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, s
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage, type ListingPreview } from "./project.js";
-import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderSiteCard } from "./card.js";
+import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
+import { handleMcp, mcpManifest } from "./mcpHttp.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
 import { Store, hashKey, newApiKey, type AgentRow, type CollabRow, type FunnelEvent } from "./store.js";
@@ -95,7 +96,7 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
 /** The channels that may say where a score request came from, with ?via=. Only these exact values are counted; anything else is ignored. */
-const SCORE_VIA: Record<string, FunnelEvent> = { "launch-check": "score_via_launch_check", mcp: "score_via_mcp", cli: "score_via_cli", action: "score_via_action" };
+const SCORE_VIA: Record<string, FunnelEvent> = { "launch-check": "score_via_launch_check", mcp: "score_via_mcp", "mcp-http": "score_via_mcp_http", cli: "score_via_cli", action: "score_via_action" };
 
 /** Words too broad to say what a project does: they would match almost every agent and every search. */
 const GENERIC_WORDS = new Set(["agent", "agents", "ai-agent", "ai-agents", "mcp", "mcp-server", "mcp-servers", "server", "servers", "llm", "llms", "tool", "tools",
@@ -108,6 +109,18 @@ const EDGE_LABELS: Record<string, string> = { DEPENDS_ON: "Depends on", COMPOSES
 export const COLLAB_KINDS = ["integrate", "co-launch", "review", "swap", "example", "other"] as const;
 const REFERRAL_PAGES = new Set(["home", "agents", "board", "feed", "gallery", "score", "agent-page", "find"]);
 const BOT_AGENT = /bot|crawl|spider|preview|headless|curl|wget|python|go-http|scan|monitor|fetch/i;
+
+/** Which kind of page a path is, for the per-day view counts. A fixed, short list: the path itself is never stored. */
+export function pageKind(p: string): string {
+  if (p === "/") return "home";
+  if (p.startsWith("/github.com/") || p.startsWith("/web/")) return "score";
+  if (p.startsWith("/a/")) return "agent";
+  if (p.startsWith("/gallery")) return "gallery";
+  if (p.startsWith("/radar")) return "radar";
+  if (p.startsWith("/pair/")) return "pair";
+  if (p.startsWith("/fix/")) return "fix";
+  return ["/agents", "/board", "/find", "/feed", "/trust", "/report", "/manage", "/privacy", "/optout"].includes(p) ? p.slice(1) : "other";
+}
 
 /** Turn what a person typed into the score box into a page. Mirrors the script on the home page, for visitors without JavaScript. */
 export function goTarget(raw: string): string | null {
@@ -158,7 +171,11 @@ export function createApp(opts: AppOptions) {
     connections: (await store.pairs()).filter((x) => x.a === handle || x.b === handle).length,
     referrals_30d: (await store.referralStats(handle)).received,
   });
-  const stats = () => store.stats();
+  /** The operator's own owner key (from the site's repo), so their listings are never counted as someone else joining. */
+  const operatorOwner = () => `github:${(getSite().repoUrl.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1] ?? "").toLowerCase()}`;
+  const stats = async () => ({ ...(await store.stats()), ...(await store.ownerSummary(operatorOwner())) });
+  /** A project's score page may be indexed by search engines when its owner listed it, or when it is in the gallery and scored well. */
+  const indexable = async (key: string, listed: boolean, total: number) => listed || (total >= RADAR_MIN_SCORE && (await store.inGallery(key)));
 
   /** Score a public website or agent endpoint: same caching and limits as repos. */
   async function siteScore(host: string, ip: string) {
@@ -1183,9 +1200,24 @@ export function createApp(opts: AppOptions) {
       const url = new URL(req.url ?? "/", "http://localhost");
       const method = req.method ?? "GET";
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
+      if (url.pathname === "/mcp") {
+        // A person who opens the address in a browser is sent to the instructions; clients speak JSON-RPC over POST.
+        if (method === "GET" && String(req.headers.accept ?? "").includes("text/html")) { res.writeHead(302, { ...SECURITY_HEADERS, location: "/#connect", "cache-control": "no-store" }); return void res.end(); }
+        if (method === "POST") await limit(`mcp:${clientIp(req)}`, 300, 3600_000);
+        return await handleMcp(req, res, { baseUrl, handler, ip: clientIp(req), headers: SECURITY_HEADERS, onToolCall: () => funnel("mcp_http_call") });
+      }
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
       if (p.length > 1 && p.endsWith("/")) { res.writeHead(301, { ...SECURITY_HEADERS, location: p.replace(/\/+$/, "") + url.search, "cache-control": "public, max-age=3600" }); return void res.end(); }
+      // Put this site's address in front of any GitHub, npm or website URL: /https://github.com/owner/repo opens its score page.
+      // (A proxy may fold the double slash into one.) Extra path after owner/repo, such as /tree/main, is dropped the same way.
+      const pasted = p.match(/^\/(https?:\/{1,2}.+)$/)?.[1]?.replace(/^(https?:)\/+/, "$1//") ?? p.match(/^\/((?:www\.)?github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}\/.+)$/)?.[1];
+      if (pasted) {
+        const to = goTarget(pasted);
+        if (!to) throw new HttpError(404, "not found");
+        res.writeHead(302, { ...SECURITY_HEADERS, location: to, "cache-control": "public, max-age=3600" });
+        return void res.end();
+      }
       // ---- two audiences, one site: HTML for people, Markdown for agents (?format=md or Accept: text/markdown),
       // and ?view=agent shows that Markdown to a person. Every HTML page carries the Human/Agent switch.
       const accept = String(req.headers.accept ?? "");
@@ -1202,7 +1234,28 @@ export function createApp(opts: AppOptions) {
         return rawSend(r, status, text, type, cache ?? (html || type === "text/markdown" ? PAGE_CACHE : "no-store"), html ? {} : { "access-control-allow-origin": "*" });
       };
       /** Send a page: HTML for people, or its Markdown twin for agents. */
-      const page = (status: number, html: string, md?: string) => {
+      /**
+       * Per-day counts of what was opened and where visitors came from: the kind of page, the referring site's host name, and a
+       * campaign word (?utm_source= or ?ref=). No address, visitor id, cookie, path or full referrer is kept. Bots are skipped.
+       * Pages are cached briefly at the edge, so these are a floor, not an exact total.
+       */
+      const countView = async () => {
+        const ua = String(req.headers["user-agent"] ?? "");
+        if (method !== "GET" || !ua || BOT_AGENT.test(ua)) return;
+        const jobs: Promise<unknown>[] = [store.bumpCount(`view:${pageKind(p)}`)];
+        let refHost = "";
+        try { refHost = new URL(String(req.headers.referer ?? "")).hostname.toLowerCase().replace(/^www\./, ""); } catch { /* no referrer */ }
+        const src = (url.searchParams.get("utm_source") ?? url.searchParams.get("ref") ?? "").toLowerCase();
+        const named = (refHost && refHost !== new URL(baseUrl).hostname && /^[a-z0-9.-]{4,80}$/.test(refHost) ? 1 : 0) + (/^[a-z0-9._-]{2,30}$/.test(src) ? 1 : 0);
+        // Host names and campaign words are open-ended, so one visitor may add only a few per hour (hashed address, kept for that hour only).
+        if (named && (await store.hit(`pv:${createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 16)}`, 30, 3600_000))) {
+          if (refHost && refHost !== new URL(baseUrl).hostname && /^[a-z0-9.-]{4,80}$/.test(refHost)) jobs.push(store.bumpCount(`ref:${refHost}`));
+          if (/^[a-z0-9._-]{2,30}$/.test(src)) jobs.push(store.bumpCount(`src:${src}`));
+        }
+        await Promise.all(jobs);
+      };
+      const page = async (status: number, html: string, md?: string) => {
+        if (status === 200 && !wantMd && !agentMode) await countView().catch(() => undefined);
         const title = (html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "ScBee").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
         const text = md ?? genericMd(title, baseUrl, url.pathname, "This page is interactive. Use the API, or see the human page.");
         if (wantMd) return send(res, status, text, "text/markdown");
@@ -1252,6 +1305,11 @@ export function createApp(opts: AppOptions) {
         res.writeHead(302, { ...SECURITY_HEADERS, location: `/github.com/${facts.repo.owner}/${facts.repo.repo}`, "cache-control": "public, max-age=3600" });
         return void res.end();
       }
+      /** Count a badge request for a project that has a score, so "badges in the wild" can be read from real requests. A floor: badges are cached. */
+      const countBadge = async (path: string, total: number | null) => {
+        if (total === null || method !== "GET") return;
+        if (await store.hit(`bdg:${createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 16)}`, 300, 3600_000)) await store.bumpBadge(path.toLowerCase()).catch(() => undefined);
+      };
       const agb = p.match(/^\/badge\/agent\/([a-z0-9-]{3,39})\.svg$/);
       if (agb) {
         const ag = await store.byHandle(agb[1]!);
@@ -1259,7 +1317,8 @@ export function createApp(opts: AppOptions) {
         let value = "not listed", color = "#9f9f9f";
         if (ag?.verified) {
           const c = (await outcomesOf(ag.handle)).collaborations;
-          value = c ? `listed \u00b7 verified \u00b7 ${c} collab${c === 1 ? "" : "s"}` : "listed \u00b7 verified";
+          const place = await store.foundingPlace(ag.handle, operatorOwner());
+          value = (c ? `listed \u00b7 verified \u00b7 ${c} collab${c === 1 ? "" : "s"}` : "listed \u00b7 verified") + (place ? ` \u00b7 founding #${place}` : "");
           color = "#2da44e";
         }
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
@@ -1281,7 +1340,7 @@ export function createApp(opts: AppOptions) {
         const ag = await store.publicAgent(ago[1]!);
         if (!ag) return send(res, 404, notFound(), "text/html");
         const oc = await outcomesOf(ag.handle);
-        const png = await renderAgentCard({ name: ag.name, handle: ag.handle, tagline: ag.tagline, verified: ag.verified, outcomes: oc });
+        const png = await renderAgentCard({ name: ag.name, handle: ag.handle, tagline: ag.tagline, verified: ag.verified, outcomes: oc, founding: await store.foundingPlace(ag.handle, operatorOwner()) });
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
         return void res.end(png);
       }
@@ -1294,8 +1353,18 @@ export function createApp(opts: AppOptions) {
           const v = abm[3] ? (h ? await siteScore(h, ip) : null) : await projectScore(abm[1]!, abm[2]!, ip);
           total = v?.agentReady?.total ?? null;
         } catch { /* unknown badge */ }
+        await countBadge(abm[3] ? `web/${abm[3]}` : `github.com/${abm[1]}/${abm[2]}`, total);
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
         return void res.end(badgeSvg(total, "agent-ready"));
+      }
+      const orm = p.match(/^\/og\/rise\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)\.png$/);
+      if (orm) {
+        const v = await projectScore(orm[1]!, orm[2]!, clientIp(req));
+        const rise = await store.scoreRise(`github:${orm[1]!.toLowerCase()}/${orm[2]!.toLowerCase()}`);
+        if (!rise) return send(res, 404, notFound(), "text/html");
+        const png = await renderRiseCard(`${v.owner}/${v.repo}`, rise);
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
+        return void res.end(png);
       }
       // A stable link for owners: /claim/github.com/{owner}/{repo} or /claim/web/{host} opens the claim step on the score page.
       const clm = p.match(/^\/claim\/(github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}|web\/[A-Za-z0-9.-]{4,253})\/?$/);
@@ -1310,6 +1379,7 @@ export function createApp(opts: AppOptions) {
         if (kind === "badge" && ext === "svg") {
           let total: number | null = null;
           try { total = (await siteScore(wHost, ip)).result.total; } catch { /* unknown badge */ }
+          await countBadge(`web/${wHost}`, total);
           res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
           return void res.end(badgeSvg(total));
         }
@@ -1323,7 +1393,7 @@ export function createApp(opts: AppOptions) {
           try {
             const v = await siteScore(wHost, ip);
             const claim = await store.claimStatus(`url:https://${wHost}`);
-            return page(200, projectPage({ ...v, claim }, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady, claim }, band(v.result.total).label));
+            return page(200, projectPage({ ...v, claim, indexable: await indexable(`url:https://${wHost}`, v.listed || claim === "claimed", v.result.total) }, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady, claim }, band(v.result.total).label));
           } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
         }
       }
@@ -1334,6 +1404,7 @@ export function createApp(opts: AppOptions) {
         if (kind === "badge" && ext === "svg") {
           let total: number | null = null;
           try { total = (await projectScore(owner, repo, ip)).result.total; } catch { /* unknown badge */ }
+          await countBadge(`github.com/${owner}/${repo}`, total);
           res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
           return void res.end(badgeSvg(total));
         }
@@ -1349,7 +1420,9 @@ export function createApp(opts: AppOptions) {
             const claim = await store.claimStatus(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`);
             const usage = computeUsage(await store.usageRows(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`));
             const preview = claim === "unclaimed" ? await listingPreview(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`) : undefined;
-            return page(200, projectPage({ ...v, claim, usage, preview }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
+            const key = `github:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+            const rise = await store.scoreRise(key);
+            return page(200, projectPage({ ...v, claim, usage, preview, rise, shareRise: url.searchParams.has("rise"), indexable: await indexable(key, v.listed || claim === "claimed", v.result.total) }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
               scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage, preview }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
@@ -1378,10 +1451,13 @@ export function createApp(opts: AppOptions) {
       if (p === "/llms.txt") return send(res, 200, llmsTxt(baseUrl), "text/plain");
       if (p === "/openapi.json") return send(res, 200, JSON.stringify(openapi(baseUrl), null, 2), "application/json");
       if (p === "/.well-known/jwks.json") return send(res, 200, JSON.stringify({ keys: [(await identity()).jwk] }), "application/json", "public, max-age=3600");
-      if (p === "/.well-known/agent-card.json") return send(res, 200, JSON.stringify(scbeeCard(baseUrl), null, 2), "application/json");
+      // /.well-known/agent.json is the older name some clients still ask for; both serve the same card.
+      if (p === "/.well-known/agent-card.json" || p === "/.well-known/agent.json") return send(res, 200, JSON.stringify(scbeeCard(baseUrl), null, 2), "application/json");
+      if (p === "/.well-known/mcp.json" || p === "/.well-known/mcp/server-card.json") return send(res, 200, JSON.stringify(mcpManifest(baseUrl, getSite().name, "1"), null, 2), "application/json", "public, max-age=3600");
       if (p === "/sitemap.xml") {
         const handles = (await store.list("", false, 1000)).map((x) => x.handle);
-        const gallery = (await galleryData()).flatMap((c) => c.items.map((i) => i.project));
+        // Only the score pages search engines may index: gallery projects that scored well (the same line as the radar).
+        const gallery = (await galleryData()).flatMap((c) => c.items.filter((i) => i.score >= RADAR_MIN_SCORE).map((i) => i.project));
         return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)], (await store.pairs()).map((x) => pairPath(x.a, x.b)), COLLECTIONS.map((c) => c.id)), "application/xml");
       }
       if (p === "/manage") return page(200, managePage());
@@ -1545,7 +1621,7 @@ export function createApp(opts: AppOptions) {
         const collabs = (await Promise.all(done.map(async (d) => { const peer = await store.publicAgent(d.a === a.handle ? d.b : d.a); return peer ? { handle: peer.handle, name: peer.name, kind: d.kind, title: d.title, same_owner: d.same_owner } : null; }))).filter((x): x is { handle: string; name: string; kind: string; title: string; same_owner: boolean } => !!x);
         const stats = await store.referralStats(a.handle);
         const lv = levelsOf({ verified: a.verified, connections: mine.length, collaborations: done.filter((d) => !d.same_owner).length, referralsSent: stats.sent });
-        const net = { stats, neighbours: gh ? await neighboursOf(a.source) : [], pairs, collabs, levels: lv.earned };
+        const net = { stats, neighbours: gh ? await neighboursOf(a.source) : [], pairs, collabs, levels: lv.earned, founding: await store.foundingPlace(a.handle, operatorOwner()) };
         return page(200, agentPage(a, proof, posts, net), agentMd(baseUrl, a, proof, posts, net));
       }
       return page(404, notFound());

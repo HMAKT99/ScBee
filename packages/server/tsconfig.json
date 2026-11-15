@@ -3,5 +3,5 @@
   "compilerOptions": { "outDir": "dist", "rootDir": "src" },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../registry-core" }]
+  "references": [{ "path": "../registry-core" }, { "path": "../mcp" }]
 }

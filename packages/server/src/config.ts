@@ -15,6 +15,8 @@ export interface SiteConfig {
   policyUrl: string;
   /** owner/repo of the project shown as the live example on the home page. */
   specimen: string;
+  /** Google Search Console verification code, rendered as a meta tag on every page so the operator can prove ownership. Optional. */
+  googleVerification?: string;
 }
 
 const DEFAULT_REPO = "https://github.com/HMAKT99/ScBee";
@@ -46,6 +48,7 @@ export function configureSite(p: Partial<SiteConfig> = {}): SiteConfig {
     securityUrl: httpsUrl(p.securityUrl) ?? (fromRepo ? `${repoUrl}/security/advisories/new` : DEFAULTS.securityUrl),
     policyUrl: httpsUrl(p.policyUrl) ?? (fromRepo ? `${repoUrl}/blob/main/SECURITY.md` : DEFAULTS.policyUrl),
     specimen: slug(p.specimen) ?? (fromRepo && gh ? gh : DEFAULTS.specimen),
+    googleVerification: p.googleVerification && /^[A-Za-z0-9_-]{10,100}$/.test(p.googleVerification) ? p.googleVerification : undefined,
   };
   return current;
 }
@@ -58,5 +61,5 @@ export function siteFromEnv(env: Record<string, string | undefined>): Partial<Si
   const v = (k: string) => env[k]?.trim() || undefined;
   const owner = v("VERCEL_GIT_REPO_OWNER"), repo = v("VERCEL_GIT_REPO_SLUG");
   const fromVercel = v("VERCEL_GIT_PROVIDER") === "github" && owner && repo && slug(`${owner}/${repo}`) ? `https://github.com/${owner}/${repo}` : undefined;
-  return { name: v("SITE_NAME"), repoUrl: v("SITE_REPO_URL") ?? fromVercel, securityUrl: v("SITE_SECURITY_URL"), policyUrl: v("SITE_POLICY_URL"), specimen: v("SITE_SPECIMEN") };
+  return { name: v("SITE_NAME"), repoUrl: v("SITE_REPO_URL") ?? fromVercel, securityUrl: v("SITE_SECURITY_URL"), policyUrl: v("SITE_POLICY_URL"), specimen: v("SITE_SPECIMEN"), googleVerification: v("GOOGLE_SITE_VERIFICATION") };
 }

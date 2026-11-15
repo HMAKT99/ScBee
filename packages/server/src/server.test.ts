@@ -1332,7 +1332,7 @@ describe("site polish", () => {
     await makeAgent("polish2/agent", { card: { name: "Polish Two", tagline: "Does polish", skills: [] } });
     const h = await bodyOf("/");
     expect(h).toContain('<a class="skip" href="#main">Skip to content</a>');
-    expect(h).toMatch(/<details class="menu"><summary aria-label="Open the menu">Menu<\/summary><div class="menu-panel">.*Agents.*Board.*Gallery.*Join.*Register/s);
+    expect(h).toMatch(/<details class="menu"><summary aria-label="Open the menu">Menu<\/summary><div class="menu-panel">.*Agents.*Board.*Gallery.*Join.*Score your project/s);
     expect(h).not.toMatch(/<h4/);
     expect(h).toContain('<p class="fh">Product</p>');
     expect(h).toMatch(/<ul class="sr" aria-label="Agents on the map">.*Polish Two/s);
@@ -2712,8 +2712,153 @@ describe("where score requests come from (?via=)", () => {
     expect((await call("GET", "/skills/launch-check/SKILL.md")).text).toContain("/api/score/github.com/OWNER/REPO?via=launch-check");
     const { readFileSync } = await import("node:fs");
     const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
-    expect(read("../../mcp/src/server.ts")).toMatch(/api\/score\/\$\{path\}\?via=mcp/);
+    expect(read("../../mcp/src/server.ts")).toMatch(/api\/score\/\$\{path\}\?via=\$\{via\}/);
+    expect(read("../../mcp/src/server.ts")).toContain(': "mcp";'); // the local server's default channel
     expect(read("../../cli/src/index.ts")).toMatch(/api\/score\/\$\{path\}\?via=cli/);
     expect(read("../../../action/run.mjs")).toMatch(/api\/score\/\$\{project\}\?via=action/);
+  });
+});
+
+describe("get found: hosted MCP, indexing, paste-a-URL, founding owners, the climb, traffic counts", () => {
+  const ua = { "user-agent": "Mozilla/5.0 (test)" };
+  const get = async (path: string, headers: Record<string, string> = ua) => { const r = await fetch(base + path, { headers, redirect: "manual" }); return { status: r.status, text: await r.text(), headers: r.headers }; };
+  const rpc = async (body: unknown) => {
+    const r = await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify(body) });
+    return { status: r.status, json: (await r.json()) as any, headers: r.headers };
+  };
+  const report = async () => (await (await fetch(`${base}/api/admin/onboarding?days=30`, { headers: { "x-admin-token": "adm-secret" } })).json()) as any;
+  const seedRepo = (owner: string, repo: string) => {
+    const api = `https://api.github.com/repos/${owner}/${repo}`;
+    files[api] = JSON.stringify({ full_name: `${owner}/${repo}`, description: "a tool for tests", topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+  };
+
+  it("answers MCP over stateless HTTP with only the tools that need no key, and counts tool calls", async () => {
+    const init = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" } } });
+    expect(init.status).toBe(200);
+    expect(init.json.result.serverInfo.name).toBe("scbee");
+    expect(init.headers.get("access-control-allow-origin")).toBe("*");
+    const list = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const { HOSTED_MCP_TOOLS } = await import("./mcpHttp.js");
+    expect(list.json.result.tools.map((t: any) => t.name).sort()).toEqual([...HOSTED_MCP_TOOLS].sort());
+    seedRepo("mcpz", "tool");
+    const before = (await report()).events;
+    const callRes = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "scbee_score", arguments: { project: "mcpz/tool" } } });
+    expect(callRes.json.result.isError).toBeFalsy();
+    expect(callRes.json.result.content[0].text).toMatch(/^github\.com\/mcpz\/tool: \d+\/100/);
+    const after = (await report()).events;
+    expect((after.mcp_http_call ?? 0) - (before.mcp_http_call ?? 0)).toBe(1);
+    expect((after.score_via_mcp_http ?? 0) - (before.score_via_mcp_http ?? 0)).toBe(1);
+  });
+
+  it("refuses what it does not speak, and sends a person in a browser to the instructions", async () => {
+    expect((await fetch(`${base}/mcp`)).status).toBe(405);
+    expect((await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: "not json" })).status).toBe(400);
+    const browser = await get("/mcp", { ...ua, accept: "text/html" });
+    expect(browser.status).toBe(302);
+    expect(browser.headers.get("location")).toBe("/#connect");
+    expect((await fetch(`${base}/mcp`, { method: "OPTIONS" })).status).toBe(204);
+  });
+
+  it("describes the endpoint under .well-known and in llms.txt, and serves the card under the older name too", async () => {
+    const m = JSON.parse((await get("/.well-known/mcp.json")).text);
+    expect(m.transport).toEqual({ type: "streamable-http", url: "http://t/mcp", stateless: true });
+    expect(m.authentication.required).toBe(false);
+    expect((await get("/.well-known/agent.json")).text).toBe((await get("/.well-known/agent-card.json")).text);
+    const llms = (await get("/llms.txt")).text;
+    expect(llms).toContain("http://t/mcp");
+    expect(llms).toContain("npx -y scbee-mcp");
+    expect((await get("/join.md")).text).toContain("http://t/mcp");
+    const home = (await get("/")).text;
+    expect(home).toContain('id="connect"');
+    expect(home).toContain("http://t/mcp");
+  });
+
+  it("opens a score page when this site is put in front of a pasted URL", async () => {
+    for (const [from, to] of [["/https://github.com/HMAKT99/DryRun", "/github.com/HMAKT99/DryRun"], ["/https:/github.com/HMAKT99/DryRun", "/github.com/HMAKT99/DryRun"],
+      ["/github.com/HMAKT99/DryRun/tree/main/packages", "/github.com/HMAKT99/DryRun"], ["/https://www.npmjs.com/package/dry-run-agents", "/npm/dry-run-agents"], ["/https://example.com/pricing", "/web/example.com"]]) {
+      const r = await get(from);
+      expect(r.status, from).toBe(302);
+      expect(r.headers.get("location"), from).toBe(to);
+    }
+    expect((await get("/https://-")).status).toBe(404);
+  });
+
+  it("lets search engines index only gallery projects that scored well, in the sitemap and on the page", async () => {
+    const seed = async (repo: string, total: number) => {
+      const key = `github:idx/${repo}`;
+      await store.saveProject(key, JSON.stringify({ fullName: `idx/${repo}`, description: "d", stars: 1, topics: [] }), JSON.stringify({ version: "1", total, components: [] }), "1", total, 1);
+      await store.addToGallery("mcp-servers", key);
+    };
+    await seed("strong", 91);
+    await seed("weak", 41);
+    const sm = (await get("/sitemap.xml")).text;
+    expect(sm).toContain("http://t/github.com/idx/strong");
+    expect(sm).not.toContain("http://t/github.com/idx/weak");
+    const { projectPage } = await import("./project.js");
+    const view = { owner: "a", repo: "b", description: null, stars: 0, fetchedAt: Date.now(), listed: false, result: { version: "1", total: 90, components: [] } as any };
+    expect(projectPage({ ...view, indexable: true }, "http://t")).not.toContain("noindex");
+    expect(projectPage({ ...view, indexable: false }, "http://t")).toContain('content="noindex,follow"');
+    expect(projectPage(view, "http://t")).toContain('content="noindex,follow"'); // unlisted and not known to be indexable: skipped
+    expect(projectPage({ ...view, indexable: true }, "http://t")).toContain('"@type":"SoftwareSourceCode"');
+    seedRepo("idxz", "lonely"); // scored, but in no collection
+    expect((await get("/github.com/idxz/lonely")).text).toContain('content="noindex,follow"');
+  });
+
+  it("gives the first owners other than the operator a numbered founding mark, and says the counts plainly", async () => {
+    const op = await makeAgent("hmakt99/own-tool");
+    const late = await makeAgent("foundz/agent");
+    const owners = await store.foundingOwners("github:hmakt99");
+    expect(owners.length).toBeLessThanOrEqual(25);
+    expect(owners).not.toContain("github:hmakt99");
+    expect(new Set(owners).size).toBe(owners.length); // one place per owner
+    const first = (await (store as any).db.execute({ sql: "SELECT handle FROM agents WHERE owner_key = ? AND verified = 1 AND hidden = 0 LIMIT 1", args: [owners[0]] })).rows[0].handle as string;
+    expect((await get(`/a/${first}`)).text).toContain("founding owner #1");
+    expect(await (await fetch(`${base}/badge/agent/${first}.svg`)).text()).toContain("founding #1");
+    expect((await get(`/a/${op.handle}`)).text).not.toContain("founding owner #");
+    if (owners.length === 25) expect(await store.foundingPlace(late.handle, "github:hmakt99")).toBeNull(); // places are full: no mark, ever
+    const s = (await call("GET", "/api/stats")).json;
+    expect(s.founding_places).toBe(25);
+    expect(s.operator_listings).toBeGreaterThanOrEqual(1);
+    const home = (await get("/")).text;
+    expect(home).toContain('id="founding"');
+    expect(home).toMatch(/of the listings are its maker's own/);
+    expect(home).toMatch(/verified agents? from <b>\d+<\/b> owners?/);
+  });
+
+  it("shows the climb only when the score rose under the same rules", async () => {
+    const key = "github:risez/tool";
+    await store.saveProject(key, "{}", JSON.stringify({ version: "9", total: 62, components: [] }), "9", 62, 0);
+    expect(await store.scoreRise(key)).toBeNull();
+    await (store as any).db.execute({ sql: "UPDATE score_history SET created_at = ? WHERE source_key = ?", args: [Date.now() - 3 * 86_400_000, key] });
+    await store.saveProject(key, "{}", JSON.stringify({ version: "9", total: 88, components: [] }), "9", 88, 0);
+    expect(await store.scoreRise(key)).toEqual({ from: 62, to: 88, days: 3 });
+    await store.saveProject(key, "{}", JSON.stringify({ version: "10", total: 95, components: [] }), "10", 95, 0);
+    expect(await store.scoreRise(key)).toBeNull(); // new rules: no earlier score to compare with
+    const { projectPage } = await import("./project.js");
+    const view = { owner: "risez", repo: "tool", description: null, stars: 0, fetchedAt: Date.now(), listed: false, result: { version: "9", total: 88, components: [] } as any, rise: { from: 62, to: 88, days: 3 } };
+    const html = projectPage(view, "http://t");
+    expect(html).toContain('id="rise"');
+    expect(html).toContain('og:image" content="http://t/og/github.com/risez/tool.png"');
+    expect(projectPage({ ...view, shareRise: true }, "http://t")).toContain('og:image" content="http://t/og/rise/github.com/risez/tool.png"');
+    expect(projectPage({ ...view, rise: null }, "http://t")).not.toContain('id="rise"');
+  });
+
+  it("counts pages, referring sites, campaign words and badges as daily totals, and skips bots", async () => {
+    const before = (await report()).events;
+    const d = (after: Record<string, number>, k: string) => (after[k] ?? 0) - (before[k] ?? 0);
+    await get("/agents?utm_source=producthunt", { ...ua, referer: "https://www.producthunt.com/posts/scbee?x=1" });
+    await get("/agents", { "user-agent": "Googlebot/2.1" });
+    await get("/agents?format=md", ua);
+    const after = (await report()).events;
+    expect(d(after, "view:agents")).toBe(1);
+    expect(d(after, "ref:producthunt.com")).toBe(1);
+    expect(d(after, "src:producthunt")).toBe(1);
+    expect(Object.keys(after).some((k) => k.includes("posts") || k.includes("x=1"))).toBe(false); // never the full referrer
+    seedRepo("badgez", "tool");
+    await get("/badge/github.com/badgez/tool.svg");
+    expect((await report()).badges.top.map((b: any) => b.path)).toContain("github.com/badgez/tool");
+    await store.bumpCount("view:<script>");
+    expect(Object.keys((await report()).events)).not.toContain("view:<script>");
   });
 });

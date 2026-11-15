@@ -20,6 +20,12 @@ export interface ProjectView {
   usage?: Usage | null;
   /** For an unclaimed project: what listing it would get the owner, from real data only. */
   preview?: ListingPreview;
+  /** Search engines may index the page: the owner listed it, or it is in the gallery and scored well. Everything else stays noindex. */
+  indexable?: boolean;
+  /** Set when the recorded score went up under the same rules: the earliest total, the latest, and the days between. */
+  rise?: { from: number; to: number; days: number } | null;
+  /** The page was opened from a "share the climb" link, so its preview image is the before-and-after card. */
+  shareRise?: boolean;
 }
 
 /** Real numbers only. Every list may be empty, and then nothing is said about it. */
@@ -156,10 +162,21 @@ export function projectPage(p: ProjectView, base: string, fc?: { forecast: Forec
     .sort((a, z) => z.max - z.points - (a.max - a.points)).slice(0, 3);
   const text = `${name} scores ${r.total}/100 for launch readiness on ScBee. What would yours score?`;
   const enc = encodeURIComponent;
-  const head = `<meta property="og:title" content="${esc(`${name}: ${r.total}/100 launch readiness`)}">
+  const rise = p.rise && path.startsWith("github.com/") ? p.rise : null;
+  const riseText = rise ? `${name} went from ${rise.from} to ${rise.to} out of 100 for launch readiness in ${rise.days} day${rise.days === 1 ? "" : "s"}, scored by ScBee.` : "";
+  const showRise = !!rise && !!p.shareRise;
+  const ogTitle = showRise ? `${name}: ${rise!.from} to ${rise!.to} for launch readiness` : `${name}: ${r.total}/100 launch readiness`;
+  const ogImage = showRise ? `${base}/og/rise/${path}.png` : `${base}/og/${path}.png`;
+  const head = `<meta property="og:title" content="${esc(ogTitle)}">
 <meta property="og:description" content="${esc(`${b.label}. See exactly what to fix before you launch.`)}">
-<meta property="og:image" content="${esc(`${base}/og/${path}.png`)}"><meta property="og:url" content="${esc(url)}">
-<meta name="twitter:card" content="summary_large_image">${p.listed ? "" : '\n<meta name="robots" content="noindex,follow">'}`;
+<meta property="og:image" content="${esc(ogImage)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${esc(ogTitle)}"><meta property="og:url" content="${esc(url)}">
+<meta name="twitter:card" content="summary_large_image">${p.indexable ?? p.listed ? "" : '\n<meta name="robots" content="noindex,follow">'}`;
+  const riseSection = rise
+    ? `<h2 class="h2s" id="rise">Share the climb</h2><div class="specimen"><p><strong>${rise.from} &rarr; ${rise.to}</strong> in ${rise.days} day${rise.days === 1 ? "" : "s"}. Both numbers are scores ScBee recorded under the same rules (version ${esc(r.version)}), so the change is the project's, not the scoring's.</p>
+<div class="share"><a class="btn sm" rel="noopener" href="https://twitter.com/intent/tweet?text=${enc(riseText)}&url=${enc(`${url}?rise`)}">Post on X</a>
+<a class="btn sm" rel="noopener" href="https://bsky.app/intent/compose?text=${enc(`${riseText} ${url}?rise`)}">Post on Bluesky</a>
+<button class="btn ghost sm" data-copy="${esc(`${url}?rise`)}">Copy link</button> <a class="btn ghost sm" href="/og/rise/${esc(path)}.png">See the card</a></div></div>`
+    : "";
   const comps = renderComps(r);
   const fixes = lost.length
     ? `<div class="fixes"><h2>Biggest wins first</h2><ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points} ${esc(i.c)})</span></li>`).join("")}</ol></div>`
@@ -173,6 +190,7 @@ ${fixes}
 ${p.agentReady ? agentReadySection(p.agentReady, path, base) : ""}
 ${graph ? constellationSection(graph) : ""}
 ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
+${riseSection}
 <h2 class="h2s">Share it</h2>
 <div class="share"><a class="btn sm" rel="noopener" href="https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}">Post on X</a>
 <a class="btn sm" rel="noopener" href="https://bsky.app/intent/compose?text=${enc(`${text} ${url}`)}">Post on Bluesky</a>
@@ -183,5 +201,9 @@ ${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner pr
   : p.claim === "pending" ? `<p class="note mt16" id="claim">A listing was started but the owner has not proved control yet. Until then it is not a verified agent. Owner? Follow the verify step in <a href="/join.md">join.md</a>, or recover the key from <a href="/manage">Manage a listing</a>.</p>`
   : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`, p.preview) : ""}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div></div>`;
-  return layout(`${name} · ScBee`, body, { head, description: `${name} scores ${r.total}/100 for launch readiness. ${b.label}. See exactly what to fix.` });
+  // Facts about the code for search engines. The score is in the page text, deliberately not marked up as a rating: it is readiness, not a review.
+  const jsonld = path.startsWith("github.com/")
+    ? { "@context": "https://schema.org", "@type": "SoftwareSourceCode", name, description: p.description ?? undefined, codeRepository: `https://${path}`, url }
+    : undefined;
+  return layout(`${name} · ScBee`, body, { head, jsonld, description: `${name} scores ${r.total}/100 for launch readiness. ${b.label}. See exactly what to fix.` });
 }
