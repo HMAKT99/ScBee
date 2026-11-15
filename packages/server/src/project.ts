@@ -24,6 +24,8 @@ export interface ProjectView {
   indexable?: boolean;
   /** Set when the recorded score went up under the same rules: the earliest total, the latest, and the days between. */
   rise?: { from: number; to: number; days: number } | null;
+  /** When the project was first featured on the Launch Radar (in a collection and scoring at least the radar line). */
+  featuredSince?: number | null;
   /** The page was opened from a "share the climb" link, so its preview image is the before-and-after card. */
   shareRise?: boolean;
 }
@@ -50,6 +52,12 @@ function previewHtml(pv: ListingPreview | undefined): string {
 }
 
 /** "Used by N agents · X% worked". Only called with a usage that met the minimum. */
+/** "Featured on the Launch Radar" badge: shown by the owner's choice only. It turns grey by itself if the project drops below the line. */
+export function featuredBadgeMarkdown(base: string, path: string): string {
+  return `[![Featured on ScBee Launch Radar](${base}/badge/featured/${path}.svg)](${base}/${path})`;
+}
+export const featuredMonth = (t: number) => new Date(t).toLocaleString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
 export const usageLine = (u: Usage) => `Used by ${u.agents} agents \u00b7 ${u.worked_pct}% worked`;
 
 export const CLAIM_LABEL = { unclaimed: "Scored \u00b7 unclaimed", pending: "Listed \u00b7 owner not verified yet", claimed: "Claimed by its owner" } as const;
@@ -191,6 +199,11 @@ ${p.agentReady ? agentReadySection(p.agentReady, path, base) : ""}
 ${graph ? constellationSection(graph) : ""}
 ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 ${riseSection}
+${p.featuredSince && path.startsWith("github.com/") ? `<h2 class="h2s" id="featured">Featured on the Launch Radar</h2><div class="specimen">
+<p>${esc(name)} is one of the new projects ScBee found that scored ${r.total}/100, above the Launch Radar line, in ${esc(featuredMonth(p.featuredSince))}. Nobody asked for this and nobody was contacted: ScBee scores new public projects by fixed rules and lists only strong results.</p>
+<p class="mute">Owner? If you like, show it in your README. The badge says "featured" while the project stays above the line, and turns grey by itself if it does not.</p>
+<div class="use"><code>${esc(featuredBadgeMarkdown(base, path))}</code><button class="btn sm" data-copy="${esc(featuredBadgeMarkdown(base, path))}">Copy</button></div>
+<p class="note">Rather not be listed? <a href="/optout">Remove it</a> in one step; it is gone the same day.</p></div>` : ""}
 <h2 class="h2s">Share it</h2>
 <div class="share"><a class="btn sm" rel="noopener" href="https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}">Post on X</a>
 <a class="btn sm" rel="noopener" href="https://bsky.app/intent/compose?text=${enc(`${text} ${url}`)}">Post on Bluesky</a>

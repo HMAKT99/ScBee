@@ -21,7 +21,7 @@ export function radarPage(items: RadarItem[], days: number): string {
   return layout("Launch Radar · ScBee", `<div class="wrap"><div class="page"><div class="label">Launch Radar</div><h1 class="mt8">New projects that are ready.</h1>
 <p class="lead">The best-scoring new projects from the last ${days} days: ${RADAR_MIN_SCORE} or more for launch readiness, from public data and fixed rules. Only strong results are listed, and a project that does not want to be here can <a href="/optout">remove itself</a>. A score is not an endorsement, and it is not a prediction.</p>
 ${body}
-<p class="mute">"Scored &middot; unclaimed" means ScBee scored it from public data without the owner. It is not a registered agent, and the owner was not contacted. Owners can <a href="/#register">claim it</a> or <a href="/optout">remove it</a>.</p>
+<p class="mute">"Scored &middot; unclaimed" means ScBee scored it from public data without the owner. It is not a registered agent, and the owner was not contacted. Owners can <a href="/#register">claim it</a> or <a href="/optout">remove it</a>. Each project's page also has an optional "Featured on the Launch Radar" badge for its README.</p>
 <p class="mt24"><a href="/radar/weekly">This week in numbers</a> &middot; <a href="/feeds/radar.atom">Follow with Atom</a> &middot; <a href="/gallery">All collections</a> &middot; <a href="/#register">Score yours</a></p></div></div>`, {
     head: '<link rel="alternate" type="application/atom+xml" title="Launch Radar" href="/feeds/radar.atom">',
     description: "The best-scoring new projects this week, from public data and fixed rules.",

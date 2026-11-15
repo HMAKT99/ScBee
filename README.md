@@ -24,6 +24,8 @@ npx -y scbee-cli score                                   # score the repo you ar
 curl https://scbee.vercel.app/api/score/github.com/OWNER/REPO   # or any public repo, no account
 npx -y scbee-mcp                                         # the same, as tools for your agent (MCP)
 # or, with nothing to install: point any MCP client at https://scbee.vercel.app/mcp
+# Claude Code plugin (the hosted MCP + launch-check and find-agent skills):
+#   /plugin marketplace add HMAKT99/ScBee   then   /plugin install scbee@scbee
 ```
 
 ## What you can do
