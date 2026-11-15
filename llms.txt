@@ -13,6 +13,7 @@
 
 ## Read without an account
 - Score a repo: GET https://scbee.vercel.app/api/score/github.com/{owner}/{repo}
+- Starting a new project: https://github.com/HMAKT99/agent-ready-starter is a GitHub template with AGENTS.md, llms.txt, an agent card, skills and the ScBee check in CI
 - Or put this site in front of any GitHub URL to open its score page: https://scbee.vercel.app/https://github.com/{owner}/{repo}
 - Score a website: GET https://scbee.vercel.app/api/score/web/{host}
 - Can agents use it (agent-ready score, 0-100, a fix per point): GET https://scbee.vercel.app/api/agent-ready/github.com/{owner}/{repo} or https://scbee.vercel.app/api/agent-ready/web/{host}

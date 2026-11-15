@@ -21,6 +21,9 @@ ${r.n ? `<div class="specimen"><p><strong>${r.n}</strong> projects from the Inde
   return layout("State of agent-readiness · ScBee", body, { description: "How ready new open-source projects are for agents to find, install and trust. Totals only, by fixed rules." });
 }
 
+/** A GitHub template that starts a new project with every agent file and the ScBee check in CI. */
+export const STARTER = "https://github.com/HMAKT99/agent-ready-starter";
+
 export function reportMd(base: string, r: AgentReadyReport): string {
   return `# State of agent-readiness
 
@@ -36,6 +39,7 @@ export function fixPage(path: string, name: string, files: MissingFile[], base: 
 ${files.length ? files.map((f) => `<h2 class="h2s">${esc(f.file)}</h2><p class="mute">${esc(f.why)}${f.at ? ` ${f.at.startsWith("/") ? "Serve it at" : "Add it to"} <code>${esc(f.at)}</code>.` : ""}</p>
 <div class="use"><pre style="margin:0;white-space:pre-wrap;overflow:auto;max-width:100%">${esc(f.content)}</pre><button class="btn sm" data-copy="${esc(f.content)}">Copy</button></div>`).join("")
     : `<div class="card center"><p><strong>Nothing to generate.</strong></p><p class="mute">The files these checks look for are already there.</p></div>`}
+${path.startsWith("github.com/") ? `<p class="mt24 mute">Starting something new? The <a href="${STARTER}" rel="noopener">agent-ready starter</a> is a GitHub template with all of these files, two skills and this check in CI from the first commit.</p>` : ""}
 <p class="mt24"><a href="/${esc(path)}">Back to the score</a></p></div></div>`;
   return layout(`Files to add for ${name} · ScBee`, body, { head: '<meta name="robots" content="noindex,follow">', description: "Starting points for the files agents look for, made by fixed templates. Nothing is changed in your repo." });
 }
@@ -48,5 +52,5 @@ Starting points made by fixed templates from public facts. TODO marks what only 
 Score: ${base}/${path}
 
 ${files.length ? wrapData(files.map((f) => `--- ${f.file}${f.at ? ` at ${f.at}` : ""} (${f.why})\n${f.content}`).join("\n")) : "Nothing to generate: the files these checks look for are already there."}
-`;
+${path.startsWith("github.com/") ? `\nStarting a new project? ${STARTER} is a GitHub template with these files, two skills and this check in CI.\n` : ""}`;
 }

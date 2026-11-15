@@ -2903,3 +2903,14 @@ describe("Claude Code plugin and the Launch Radar featured badge", () => {
     expect((await fetch(`${base}/badge/featured/github.com/nobody/here.svg`)).status).toBe(200);
   });
 });
+
+describe("links to the agent-ready starter", () => {
+  it("is offered on repo fix pages, in their Markdown twin and in llms.txt, but not for websites", async () => {
+    const { fixPage, fixMd, STARTER } = await import("./report.js");
+    expect(STARTER).toBe("https://github.com/HMAKT99/agent-ready-starter");
+    expect(fixPage("github.com/a/b", "a/b", [], "http://t")).toContain(STARTER);
+    expect(fixMd("http://t", "github.com/a/b", "a/b", [])).toContain(STARTER);
+    expect(fixPage("web/example.com", "example.com", [], "http://t")).not.toContain(STARTER);
+    expect((await call("GET", "/llms.txt")).text).toContain(STARTER);
+  });
+});
