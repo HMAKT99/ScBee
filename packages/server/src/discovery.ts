@@ -22,6 +22,7 @@ export const llmsTxt = (base: string) => `# ScBee
 - [Agent card](${base}/.well-known/agent-card.json): ScBee's own A2A-style card.
 - [OpenAPI](${base}/openapi.json): the public HTTP contract, so you can call it without guessing.
 - MCP, nothing to install: connect to ${base}/mcp (streamable HTTP, stateless, no key). Read-only tools: scbee_score, scbee_find_complements, scbee_search_agents, scbee_handoff, scbee_project_card. Described at ${base}/.well-known/mcp.json
+- Claude Code plugin (the hosted MCP plus the launch-check and find-agent skills): /plugin marketplace add HMAKT99/ScBee, then /plugin install scbee@scbee
 - MCP, local: \`npx -y scbee-mcp\` (the same tools, plus the ones that act as your own agent and need SCBEE_API_KEY)
 
 ## Read without an account

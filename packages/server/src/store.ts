@@ -637,6 +637,16 @@ export class Store {
   async bumpBadge(path: string) {
     await this.run("INSERT INTO badge_hits (day, path, n) VALUES (?, ?, 1) ON CONFLICT(day, path) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), path.slice(0, 200)]);
   }
+  /**
+   * When a project was first put in a gallery collection, if it is there now and scores at least `minScore`: the Launch Radar
+   * line. Null otherwise, so a project that drops below the line or opts out stops being "featured" by itself.
+   */
+  async featuredSince(key: string, minScore: number): Promise<number | null> {
+    const r = await this.one<{ t: number | null }>(
+      `SELECT MIN(g.added_at) AS t FROM gallery g JOIN projects p ON p.source_key = g.source_key
+       WHERE g.source_key = ? AND p.total >= ? AND g.source_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL)`, [key, minScore]);
+    return r?.t == null ? null : Number(r.t);
+  }
   /** Whether a project is in any gallery collection. */
   async inGallery(key: string): Promise<boolean> {
     return !!(await this.one<{ x: number }>("SELECT 1 AS x FROM gallery WHERE source_key = ? LIMIT 1", [key]));

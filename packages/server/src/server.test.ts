@@ -2862,3 +2862,44 @@ describe("get found: hosted MCP, indexing, paste-a-URL, founding owners, the cli
     expect(Object.keys((await report()).events)).not.toContain("view:<script>");
   });
 });
+
+describe("Claude Code plugin and the Launch Radar featured badge", () => {
+  const read = (f: string) => readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8");
+  it("the plugin files in the repo are generated from the code, point at the hosted MCP, and promise no outreach", async () => {
+    const { pluginFiles } = await import("./plugin.js");
+    const want = pluginFiles("https://scbee.vercel.app", "https://github.com/HMAKT99/ScBee");
+    for (const [path, body] of Object.entries(want)) expect(read(path), path).toBe(body);
+    expect(JSON.parse(want["plugin/.mcp.json"]!).mcpServers.scbee).toEqual({ type: "http", url: "https://scbee.vercel.app/mcp" });
+    const market = JSON.parse(want[".claude-plugin/marketplace.json"]!);
+    expect(market.plugins[0]).toMatchObject({ name: "scbee", source: "./plugin" });
+    expect(JSON.parse(want["plugin/.claude-plugin/plugin.json"]!).version).toBe(market.plugins[0].version);
+    const find = want["plugin/skills/find-agent/SKILL.md"]!;
+    expect(find).toMatch(/^---\nname: find-agent\ndescription: /);
+    expect(find).toContain("It never installs, runs or connects anything");
+    expect(find).toContain("scbee_handoff");
+    expect(want["plugin/skills/launch-check/SKILL.md"]).toBe(read("skills/launch-check/SKILL.md"));
+  });
+
+  it("offers the featured badge only to gallery projects above the radar line, and the badge follows the score", async () => {
+    const key = "github:featz/tool";
+    const seed = async (total: number) => store.saveProject(key, JSON.stringify({ fullName: "featz/tool", description: "d", stars: 1, topics: [] }), JSON.stringify({ version: "1", total, components: [] }), "1", total, 1);
+    const badge = async () => (await fetch(`${base}/badge/featured/github.com/featz/tool.svg`)).text();
+    await seed(90);
+    expect(await store.featuredSince(key, 75)).toBeNull(); // scored, but not in a collection
+    expect(await badge()).toContain("not featured");
+    await store.addToGallery("mcp-servers", key);
+    expect(await store.featuredSince(key, 75)).toEqual(expect.any(Number));
+    expect(await badge()).toMatch(/featured · [A-Z][a-z]{2} \d{4}/);
+    await seed(60);
+    expect(await badge()).toContain("not featured"); // dropped below the line: grey by itself
+    const { projectPage } = await import("./project.js");
+    const view = { owner: "featz", repo: "tool", description: null, stars: 0, fetchedAt: Date.now(), listed: false, result: { version: "1", total: 90, components: [] } as any };
+    const html = projectPage({ ...view, featuredSince: Date.UTC(2026, 10, 3) }, "http://t");
+    expect(html).toContain('id="featured"');
+    expect(html).toContain("http://t/badge/featured/github.com/featz/tool.svg");
+    expect(html).toContain("Nov 2026");
+    expect(html).toContain("nobody was contacted");
+    expect(projectPage(view, "http://t")).not.toContain('id="featured"');
+    expect((await fetch(`${base}/badge/featured/github.com/nobody/here.svg`)).status).toBe(200);
+  });
+});

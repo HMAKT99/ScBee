@@ -19,7 +19,7 @@ import { fixMd, fixPage, reportMd, reportPage } from "./report.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
-import { BADGE_CACHE, badgeMarkdown, badgeSvg, pillSvg, projectPage, type ListingPreview } from "./project.js";
+import { BADGE_CACHE, badgeMarkdown, badgeSvg, featuredMonth, pillSvg, projectPage, type ListingPreview } from "./project.js";
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
 import { handleMcp, mcpManifest } from "./mcpHttp.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
@@ -1344,6 +1344,14 @@ export function createApp(opts: AppOptions) {
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=3600" });
         return void res.end(png);
       }
+      // "Featured on the Launch Radar": read from the stored score only, so a README badge never costs a GitHub call.
+      const fbm = p.match(/^\/badge\/featured\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)\.svg$/);
+      if (fbm) {
+        const since = await store.featuredSince(`github:${fbm[1]!.toLowerCase()}/${fbm[2]!.toLowerCase()}`, RADAR_MIN_SCORE);
+        if (since) await countBadge(`github.com/${fbm[1]}/${fbm[2]}`, 0);
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/svg+xml; charset=utf-8", "cache-control": BADGE_CACHE });
+        return void res.end(pillSvg("ScBee Launch Radar", since ? `featured \u00b7 ${featuredMonth(since)}` : "not featured", since ? "#f2a20f" : "#9f9f9f"));
+      }
       const abm = p.match(/^\/badge\/agent-ready\/(?:github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)|web\/([A-Za-z0-9.-]{4,253}?))\.svg$/);
       if (abm) {
         let total: number | null = null;
@@ -1422,7 +1430,8 @@ export function createApp(opts: AppOptions) {
             const preview = claim === "unclaimed" ? await listingPreview(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`) : undefined;
             const key = `github:${owner.toLowerCase()}/${repo.toLowerCase()}`;
             const rise = await store.scoreRise(key);
-            return page(200, projectPage({ ...v, claim, usage, preview, rise, shareRise: url.searchParams.has("rise"), indexable: await indexable(key, v.listed || claim === "claimed", v.result.total) }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
+            const featuredSince = await store.featuredSince(key, RADAR_MIN_SCORE);
+            return page(200, projectPage({ ...v, claim, usage, preview, rise, featuredSince, shareRise: url.searchParams.has("rise"), indexable: await indexable(key, v.listed || claim === "claimed", v.result.total) }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
               scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage, preview }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));

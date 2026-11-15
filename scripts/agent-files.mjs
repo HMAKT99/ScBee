@@ -10,6 +10,9 @@ import { openapi } from "../packages/server/dist/openapi.js";
 import { llmsTxt } from "../packages/server/dist/discovery.js";
 import { skillMd } from "../packages/server/dist/skill.js";
 import { launchCheckMd } from "../packages/server/dist/launchCheck.js";
+import { pluginFiles } from "../packages/server/dist/plugin.js";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const base = (process.env.BASE_URL ?? "https://scbee.vercel.app").replace(/\/$/, "");
 writeFileSync(new URL("../openapi.json", import.meta.url), JSON.stringify(openapi(base), null, 2) + "\n");
@@ -18,4 +21,10 @@ mkdirSync(new URL("../skills/scbee/", import.meta.url), { recursive: true });
 writeFileSync(new URL("../skills/scbee/SKILL.md", import.meta.url), skillMd(base));
 mkdirSync(new URL("../skills/launch-check/", import.meta.url), { recursive: true });
 writeFileSync(new URL("../skills/launch-check/SKILL.md", import.meta.url), launchCheckMd(base));
-console.log(`wrote openapi.json, llms.txt, skills/scbee/SKILL.md and skills/launch-check/SKILL.md for ${base}`);
+// The Claude Code plugin (plugin/ and .claude-plugin/marketplace.json), always pointing at the public repo.
+for (const [path, body] of Object.entries(pluginFiles(base, "https://github.com/HMAKT99/ScBee"))) {
+  const file = fileURLToPath(new URL(`../${path}`, import.meta.url));
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, body);
+}
+console.log(`wrote the plugin, openapi.json, llms.txt, skills/scbee/SKILL.md and skills/launch-check/SKILL.md for ${base}`);
