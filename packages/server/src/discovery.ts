@@ -27,6 +27,7 @@ export const llmsTxt = (base: string) => `# ScBee
 
 ## Read without an account
 - Score a repo: GET ${base}/api/score/github.com/{owner}/{repo}
+- Starting a new project: https://github.com/HMAKT99/agent-ready-starter is a GitHub template with AGENTS.md, llms.txt, an agent card, skills and the ScBee check in CI
 - Or put this site in front of any GitHub URL to open its score page: ${base}/https://github.com/{owner}/{repo}
 - Score a website: GET ${base}/api/score/web/{host}
 - Can agents use it (agent-ready score, 0-100, a fix per point): GET ${base}/api/agent-ready/github.com/{owner}/{repo} or ${base}/api/agent-ready/web/{host}
