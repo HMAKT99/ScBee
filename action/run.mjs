@@ -37,7 +37,7 @@ export async function run(env, f = fetch, readEvent = (p) => JSON.parse(readFile
   const repo = env.INPUT_REPOSITORY || env.GITHUB_REPOSITORY;
   if (!repo || !/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) return { code: 1, log: "No repository to score (set the repository input or run inside GitHub Actions).", summary: "" };
   const project = `github.com/${repo}`;
-  const [s, a] = await Promise.all([getJson(f, `${url}/api/score/${project}`), getJson(f, `${url}/api/agent-ready/${project}`)]);
+  const [s, a] = await Promise.all([getJson(f, `${url}/api/score/${project}?via=action`), getJson(f, `${url}/api/agent-ready/${project}`)]);
   if (!s.ok) return { code: 1, log: `ScBee could not score ${repo}: ${s.j?.error ?? `HTTP ${s.status}`}. Private repositories cannot be scored.`, summary: "" };
   const summary = markdown(project, s.j, a.ok ? a.j : null, url);
   const min = num(env.INPUT_MIN_SCORE), minAgent = num(env.INPUT_MIN_AGENT_READY);

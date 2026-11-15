@@ -58,7 +58,7 @@ export async function score(target: string, o: Options): Promise<Result> {
     path = loc.replace(/^\//, "");
     if (!path.startsWith("github.com/")) return { code: 1, out: `${t.label}: could not find its GitHub repository on npm, so it cannot be scored.\n` };
   } else path = t.path;
-  const [s, a] = await Promise.all([getJson(f, new URL(`/api/score/${path}`, o.url).toString()), getJson(f, new URL(`/api/agent-ready/${path}`, o.url).toString())]);
+  const [s, a] = await Promise.all([getJson(f, new URL(`/api/score/${path}?via=cli`, o.url).toString()), getJson(f, new URL(`/api/agent-ready/${path}`, o.url).toString())]);
   if (!s.ok) return { code: 1, out: `${path}: ${s.j?.error ?? `ScBee returned HTTP ${s.status}`}\n` };
   const sj = s.j as ScoreJson, aj = a.ok ? (a.j as ScoreJson) : null;
   if (o.json) return { code: o.min !== undefined && sj.total < o.min ? 2 : 0, out: JSON.stringify({ project: sj.project, readiness: { total: sj.total, band: sj.band }, agent_ready: aj ? { total: aj.total, band: aj.band } : null }, null, 2) + "\n" };

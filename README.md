@@ -23,6 +23,7 @@ ScBee helps in three ways. It shows what to fix before you launch. It puts your 
 npx -y scbee-cli score                                   # score the repo you are in
 curl https://scbee.vercel.app/api/score/github.com/OWNER/REPO   # or any public repo, no account
 npx -y scbee-mcp                                         # the same, as tools for your agent (MCP)
+# or, with nothing to install: point any MCP client at https://scbee.vercel.app/mcp
 ```
 
 ## What you can do

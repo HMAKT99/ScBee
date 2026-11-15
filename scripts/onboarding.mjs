@@ -33,6 +33,17 @@ console.log(`  register: ${e("register_ok")} new, ${e("register_replaced")} repl
 console.log(`  verify:   ${e("verify_ok")} ok, ${e("verify_fail")} token not found`);
 console.log(`  recover:  ${e("recover_ok")} ok, ${e("recover_fail")} failed`);
 console.log(`  profile:  ${e("profile_set")} updates`);
+const via = ["launch_check", "mcp", "mcp_http", "cli", "action"].map((k) => [k, e(`score_via_${k}`)]);
+console.log("\nWhere scores come from (requests that said ?via=, counted per day: calls, not people)");
+console.log(`  ${via.map(([k, n]) => `${k.replace("_", "-")}: ${n}`).join(", ")}`);
+console.log(`  hosted MCP (/mcp) tool calls: ${e("mcp_http_call")}`);
+const top = (prefix, n = 10) => Object.entries(r.events).filter(([k]) => k.startsWith(prefix)).sort((a, b) => b[1] - a[1]).slice(0, n);
+const line = (rows) => (rows.length ? rows.map(([k, n]) => `${k.slice(k.indexOf(":") + 1)} ${n}`).join(", ") : "none yet");
+console.log("\nTraffic (pages opened by people, counted per day; a floor, because pages are cached at the edge)");
+console.log(`  by page:      ${line(top("view:"))}`);
+console.log(`  from sites:   ${line(top("ref:"))}`);
+console.log(`  campaigns:    ${line(top("src:"))}`);
+console.log(`\nBadges in the wild: ${r.badges?.distinct_projects ?? 0} projects had their badge requested${r.badges?.top?.length ? ` (top: ${r.badges.top.map((b) => `${b.path} ${b.requests}`).join(", ")})` : ""}`);
 if (r.stalled.length) {
   console.log("\nStalled: registered over an hour ago, not verified");
   for (const s of r.stalled) console.log(`  @${s.handle}  ${s.source}  ${s.hours_waiting}h${s.card_found ? "" : "  (no agent.json)"}`);

@@ -49,13 +49,38 @@ export async function renderCard(owner: string, repo: string, r: ScoreResult): P
 }
 
 
-export interface AgentCardFacts { name: string; handle: string; tagline: string | null; verified: boolean; outcomes: { collaborations: number; connections: number } }
+/** Share card for a score that went up: "62 to 88 in 3 days". Only drawn from recorded scores under the same rules. 1200x630 PNG. */
+export async function renderRiseCard(name: string, rise: { from: number; to: number; days: number }): Promise<Buffer> {
+  const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
+  const b = band(rise.to);
+  const tree = h("div", { width: 1200, height: 630, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "52px 64px 48px", background: PAPER, color: INK, fontFamily: "Inter" }, [
+    h("div", { display: "flex", width: 1072, justifyContent: "space-between", alignItems: "center" }, [
+      h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 38, fontWeight: 500 }, [h("div", { width: 26, height: 26, background: AMBER, borderRadius: 6, marginRight: 14 }), "ScBee"]),
+      h("div", { fontSize: 20, color: MUTE, letterSpacing: 2 }, "LAUNCH READINESS"),
+    ]),
+    h("div", { display: "flex", flexDirection: "column", position: "absolute", left: 64, top: 150, width: 1072 }, [
+      h("div", { display: "flex", alignItems: "flex-end" }, [
+        h("div", { fontFamily: "Fraunces", fontWeight: 300, fontSize: 150, lineHeight: 0.9, letterSpacing: -5, color: MUTE }, String(rise.from)),
+        h("div", { width: 150, height: 6, background: AMBER, margin: "0 36px 52px" }),
+        h("div", { fontFamily: "Fraunces", fontWeight: 300, fontSize: 230, lineHeight: 0.85, letterSpacing: -8 }, String(rise.to)),
+        h("div", { fontSize: 30, color: MUTE, marginLeft: 10, marginBottom: 14 }, "/100"),
+      ]),
+      h("div", { marginTop: 40, fontFamily: "Fraunces", fontWeight: 500, fontSize: name.length > 30 ? 40 : 54, lineHeight: 1.05, wordBreak: "break-all" }, name),
+    ]),
+    h("div", { display: "flex", position: "absolute", left: 64, bottom: 44, width: 1072, borderTop: `1px solid ${INK}`, paddingTop: 18, fontSize: 21, color: MUTE },
+      `Up ${rise.to - rise.from} points in ${rise.days} day${rise.days === 1 ? "" : "s"}   ·   ${b.label}   ·   fixed rules, no AI`),
+  ]);
+  const svg = await satori(tree as never, { width: 1200, height: 630, fonts: loadFonts() });
+  return Buffer.from(new Resvg(svg).render().asPng());
+}
+
+export interface AgentCardFacts { name: string; handle: string; tagline: string | null; verified: boolean; outcomes: { collaborations: number; connections: number }; /** Founding place of the owner (1-based), if any. */ founding?: number | null }
 
 /** Share card for an agent's page: who it is, whether its owner proved ownership, and real outcomes only. 1200x630 PNG. */
 export async function renderAgentCard(a: AgentCardFacts): Promise<Buffer> {
   const [{ default: satori }, { Resvg }] = await Promise.all([import("satori"), import("@resvg/resvg-js")]);
   const tag = (a.tagline ?? "").slice(0, 140);
-  const facts = [a.outcomes.connections ? `${a.outcomes.connections} connection${a.outcomes.connections === 1 ? "" : "s"}` : "", a.outcomes.collaborations ? `${a.outcomes.collaborations} collaboration${a.outcomes.collaborations === 1 ? "" : "s"} confirmed by both owners` : ""].filter(Boolean);
+  const facts = [a.founding ? `Founding owner #${a.founding}` : "", a.outcomes.connections ? `${a.outcomes.connections} connection${a.outcomes.connections === 1 ? "" : "s"}` : "", a.outcomes.collaborations ? `${a.outcomes.collaborations} collaboration${a.outcomes.collaborations === 1 ? "" : "s"} confirmed by both owners` : ""].filter(Boolean);
   const tree = h("div", { width: 1200, height: 630, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "52px 64px 48px", background: PAPER, color: INK, fontFamily: "Inter" }, [
     h("div", { display: "flex", width: 1072, justifyContent: "space-between", alignItems: "center" }, [
       h("div", { display: "flex", alignItems: "center", fontFamily: "Fraunces", fontSize: 38, fontWeight: 500 }, [h("div", { width: 26, height: 26, background: AMBER, borderRadius: 6, marginRight: 14 }), "ScBee"]),

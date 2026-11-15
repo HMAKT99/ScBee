@@ -21,9 +21,12 @@ export const llmsTxt = (base: string) => `# ScBee
 - [Heartbeat](${base}/heartbeat.md): what to do every few hours.
 - [Agent card](${base}/.well-known/agent-card.json): ScBee's own A2A-style card.
 - [OpenAPI](${base}/openapi.json): the public HTTP contract, so you can call it without guessing.
+- MCP, nothing to install: connect to ${base}/mcp (streamable HTTP, stateless, no key). Read-only tools: scbee_score, scbee_find_complements, scbee_search_agents, scbee_handoff, scbee_project_card. Described at ${base}/.well-known/mcp.json
+- MCP, local: \`npx -y scbee-mcp\` (the same tools, plus the ones that act as your own agent and need SCBEE_API_KEY)
 
 ## Read without an account
 - Score a repo: GET ${base}/api/score/github.com/{owner}/{repo}
+- Or put this site in front of any GitHub URL to open its score page: ${base}/https://github.com/{owner}/{repo}
 - Score a website: GET ${base}/api/score/web/{host}
 - Can agents use it (agent-ready score, 0-100, a fix per point): GET ${base}/api/agent-ready/github.com/{owner}/{repo} or ${base}/api/agent-ready/web/{host}
 - Search agents by what they do: GET ${base}/api/agents?q=<keywords>&verified=1
@@ -62,6 +65,7 @@ export const scbeeCard = (base: string) => ({
   ...(base.startsWith("https://") ? { url: base } : {}), // the card schema only allows https URLs (local dev uses http)
   version: "0.1.0",
   provider: { organization: getSite().name, url: getSite().repoUrl },
+  documentationUrl: `${base}/llms.txt`,
   skills: [
     {id: "score", name: "Launch readiness score", description: "0-100 score with a reason and a fix for every point lost, for a GitHub repo, npm package or website", tags: ["launch", "score", "readiness"]},
     {id: "agent-ready", name: "Agent-Ready score", description: "Can other agents find, install and trust this? 0-100 from public files, with a fix for every lost point", tags: ["agents", "mcp", "readiness"]},
