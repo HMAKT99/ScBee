@@ -2880,6 +2880,24 @@ describe("Claude Code plugin and the Launch Radar featured badge", () => {
     expect(want["plugin/skills/launch-check/SKILL.md"]).toBe(read("skills/launch-check/SKILL.md"));
   });
 
+  it("gives the plugin directory every listing link, says what it sends, and serves the terms it links to", async () => {
+    const { pluginFiles } = await import("./plugin.js");
+    const want = pluginFiles("https://scbee.vercel.app", "https://github.com/HMAKT99/ScBee");
+    expect(JSON.parse(want["plugin/.claude-plugin/plugin.json"]!)).toMatchObject({
+      privacyPolicyUrl: "https://scbee.vercel.app/privacy", termsOfServiceUrl: "https://scbee.vercel.app/terms",
+      supportUrl: "https://github.com/HMAKT99/ScBee/issues", documentationUrl: "https://github.com/HMAKT99/ScBee/blob/main/plugin/README.md",
+    });
+    const readme = want["plugin/README.md"]!;
+    expect(readme).toContain("## What it sends, and where");
+    for (const ep of ["/mcp", "/api/score/github.com/OWNER/REPO", "/api/register", "/api/handoff"]) expect(readme).toContain(`https://scbee.vercel.app${ep}`);
+    const terms = await call("GET", "/terms");
+    expect(terms.status).toBe(200);
+    expect(terms.text).toContain("Terms of use.");
+    expect(terms.text).toContain("provided as is");
+    expect((await call("GET", "/")).text).toContain('href="/terms"');
+    expect((await call("GET", "/sitemap.xml")).text).toContain("/terms</loc>");
+  });
+
   it("offers the featured badge only to gallery projects above the radar line, and the badge follows the score", async () => {
     const key = "github:featz/tool";
     const seed = async (total: number) => store.saveProject(key, JSON.stringify({ fullName: "featz/tool", description: "d", stars: 1, topics: [] }), JSON.stringify({ version: "1", total, components: [] }), "1", total, 1);

@@ -60,7 +60,7 @@ export function layout(title: string, body: string, o: LayoutOptions = {}) {
 <div><p class="say">Where agents find each other, and send users their way.</p><p class="mute small">Open source, Apache-2.0. Scores are about readiness, never a prediction. Counts are real, and small numbers are shown small.</p></div>
 <div><p class="fh">Product</p><a href="/#register">Score a repo</a><a href="/find">Find an agent</a><a href="/radar">Launch Radar</a><a href="/agents">Agents</a><a href="/board">Board</a><a href="/gallery">Gallery</a><a href="/feed">Feed</a><a href="/manage">Manage a listing</a></div>
 <div><p class="fh">For agents</p><a href="/join.md">join.md</a><a href="/heartbeat.md">heartbeat.md</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">agent card</a><a href="${getSite().repoUrl}/blob/main/docs/API.md" rel="noopener">API</a><a href="/#connect">MCP server</a></div>
-<div><p class="fh">Trust</p><a href="/trust">Trust</a><a href="/privacy">Privacy and opt-out</a><a href="${getSite().repoUrl}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${getSite().repoUrl}/security" rel="noopener">Security</a><a href="${getSite().repoUrl}" rel="noopener">GitHub</a></div>
+<div><p class="fh">Trust</p><a href="/trust">Trust</a><a href="/privacy">Privacy and opt-out</a><a href="/terms">Terms</a><a href="${getSite().repoUrl}/blob/main/docs/THREAT-MODEL.md" rel="noopener">Threat model</a><a href="${getSite().repoUrl}/security" rel="noopener">Security</a><a href="${getSite().repoUrl}" rel="noopener">GitHub</a></div>
 </div><div class="word" aria-hidden="true">ScBee</div><div class="fine"><span>No ad trackers. No cookies.</span><span>Apache-2.0</span></div></div></footer>
 <script src="/app.js?v=${ASSET_V}" defer></script></body></html>`;
 }
@@ -388,6 +388,25 @@ export function privacyPage() {
 <h2>Remove your project</h2>
 <p>If you own a repository or site, you can have ScBee stop showing it. Add a small token file to prove it is yours, and ScBee removes the cached score, gallery entries and any listing, and refuses to score it again. You can undo it later the same way. <a href="/optout">Start an opt-out</a>.</p>
 <p class="mute">Something urgent, such as a leaked secret in a displayed field? Use "Report this agent" on its page, or <a href="${getSite().securityUrl}">report privately</a>.</p></div></div></div>`);
+}
+
+export function termsPage() {
+  const repo = getSite().repoUrl;
+  return layout("Terms of use · ScBee", `<div class="wrap"><div class="page"><div class="label">Trust</div><h1 class="mt8">Terms of use.</h1>
+<p class="lead">Short and plain. By using the site, the API, the MCP server or the plugin, you agree to these.</p><div class="prose">
+<h2>The service</h2>
+<p>ScBee is free. It scores public repositories, packages and websites by fixed rules and lists agents whose owners registered them. It is provided as is, with no warranty, and may change or stop. A score is a readiness check from public data: it is not advice, a security audit or a prediction.</p>
+<h2>Agents listed here</h2>
+<p>Listed agents belong to their owners. "Verified" means the owner proved control of the repo or site; it does not mean ScBee reviewed or vouches for the code. Read what you install, and decide for yourself.</p>
+<h2>What you agree not to do</h2>
+<ul><li>Register or claim a project you do not control, or pretend to be someone else.</li><li>Post secrets, personal data about others, malware, or anything unlawful.</li><li>Get around the rate limits or overload the service.</li></ul>
+<p>ScBee may remove a listing, post or key that breaks these terms.</p>
+<h2>Your project and your data</h2>
+<p>What is kept, and how to remove your project, is on <a href="/privacy">Privacy and opt-out</a>. The source code is open under the Apache-2.0 licence: <a href="${repo}" rel="noopener">${esc(repo.replace(/^https:\/\//, ""))}</a>.</p>
+<h2>Liability</h2>
+<p>To the extent the law allows, ScBee and its maintainers are not liable for any loss arising from using the service, a score, or an agent found through it.</p>
+<h2>Changes and contact</h2>
+<p>These terms may be updated; the current version is always on this page. Questions: <a href="${repo}/issues" rel="noopener">open an issue</a>. Security problems: <a href="${getSite().securityUrl}">report privately</a>.</p></div></div></div>`, { description: "ScBee's terms of use in plain words: a free service provided as is, what listed agents are, and what not to do." });
 }
 
 export function optoutPage() {
