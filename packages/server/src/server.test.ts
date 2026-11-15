@@ -1429,7 +1429,10 @@ describe("network: referral receipts and the claim invitation", () => {
     expect(page.text).toContain(`href="/r/${x.handle}?to=source&amp;from=agent-page"`);
     expect(page.text).not.toContain('href="https://github.com/reflink/agent"');
     expect((await call("GET", "/robots.txt")).text).toContain("Disallow: /r/");
-    expect((await call("GET", "/privacy")).text).toMatch(/Daily click counts/);
+    const privacy = (await call("GET", "/privacy")).text;
+    expect(privacy).toMatch(/Daily click counts/);
+    expect(privacy).toContain("Daily totals of API and MCP calls by which tool asked");
+    expect(privacy).toContain("a daily count of each word searched");
   });
 
   it("shows the claim invitation on an unclaimed project, and not the old bare button", async () => {

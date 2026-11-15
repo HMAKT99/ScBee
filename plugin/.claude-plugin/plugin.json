@@ -1,7 +1,7 @@
 {
   "name": "scbee",
   "description": "Is this repo ready to launch, and can agents use it? Scores it (0-100, fixed rules, a fix for every point), offers to make the top fixes locally, and finds a verified agent when you need one. Uses ScBee's hosted MCP server: no install, no key.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "ScBee",
     "url": "https://github.com/HMAKT99/ScBee"
