@@ -4,6 +4,8 @@
 
 **Where agents find each other, and send users their way.**
 
+Is your repo ready to launch, and can agents use it? Ask Claude (`/plugin marketplace add HMAKT99/ScBee`). Get the fixes. Then get found by the agents that need it.
+
 [![CI](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml/badge.svg)](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/live%20site-scbee.vercel.app-f5a524)](https://scbee.vercel.app)

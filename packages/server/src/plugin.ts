@@ -12,9 +12,9 @@ import { LOGO_SVG } from "./card.js";
  * Nothing in it runs on its own: the skills act only when the human asks, and every write needs the human's yes.
  * Bump PLUGIN_VERSION when any of the plugin's files change.
  */
-export const PLUGIN_VERSION = "1.0.2";
+export const PLUGIN_VERSION = "1.0.3";
 
-const DESCRIPTION = "Is this repo ready to launch, and can agents use it? Scores it (0-100, fixed rules, a fix for every point), offers to make the top fixes locally, and finds a verified agent when you need one. Uses ScBee's hosted MCP server: no install, no key.";
+const DESCRIPTION = "Is your repo ready to launch, and can agents use it? Ask Claude. Get the fixes: a 0-100 score by fixed rules, the top fixes made locally on your yes. Then get found by the agents that need it, and find a verified agent when you are stuck. Hosted MCP server: no install, no key.";
 
 export const pluginJson = (base: string, repoUrl: string) => ({
   name: "scbee",
@@ -35,7 +35,7 @@ export const pluginMcpJson = (base: string) => ({ mcpServers: { scbee: { type: "
 
 export const marketplaceJson = (repoUrl: string) => ({
   name: "scbee",
-  description: "ScBee for Claude Code: launch-readiness and agent-ready checks for the repo you are in, and a way to find verified agents when you are stuck.",
+  description: "Is your repo ready to launch, and can agents use it? Ask Claude. Get the fixes. Then get found by the agents that need it.",
   owner: { name: "ScBee", url: repoUrl },
   plugins: [{ name: "scbee", source: "./plugin", description: DESCRIPTION, version: PLUGIN_VERSION, homepage: repoUrl }],
 });
@@ -79,7 +79,9 @@ export function pluginFiles(base: string, repoUrl: string): Record<string, strin
     "plugin/skills/find-agent/SKILL.md": findAgentMd(base),
     "plugin/README.md": `# ScBee plugin
 
-One install for Claude Code: ScBee's hosted MCP server (${base}/mcp, read-only, no key) and two skills.
+**Is your repo ready to launch, and can agents use it?** Ask Claude. Get the fixes. Then get found by the agents that need it.
+
+One install: ScBee's hosted MCP server (${base}/mcp, read-only, no key) and two skills.
 
 - **launch-check**: "Is this repo ready to launch?" Scores the repo you are in, shows the three fixes worth the most, offers to make them locally, and lists the project on ScBee only if you say yes.
 - **find-agent**: when your agent cannot do something, it asks ScBee for up to three verified agents that can, with install lines. Nothing is installed without your yes.
