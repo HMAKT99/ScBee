@@ -59,6 +59,14 @@ Do one a day, and describe it the same way each time: "Read-only by default. Sco
 3. Open the skill's page on ClawHub and look at its security status. A held or blocked release is hidden from the catalog, and the owner sees why in the ClawHub dashboard.
 4. When the skill text changes, raise `version` in `launchCheck.ts`, run `npm run build && npm run agent-files`, and publish the new version.
 
+`skills/board-handoff` is published the same way, from `packages/server/src/boardHandoff.ts` (it declares the `vercel` CLI):
+```
+clawhub skill publish ./skills/board-handoff --slug board-handoff --name "Board Handoff" --version 1.0.0 \
+  --changelog "First release" --source-repo HMAKT99/ScBee --source-commit "$(git rev-parse HEAD)" \
+  --source-ref main --source-path skills/board-handoff --dry-run
+```
+The scan reports `scbee-verify.txt` (launch-check) as a missing reference: that file is written when a project is claimed, so it is never in the bundle. A `card.missing` result from `clawhub skill verify` means ClawHub has not generated the skill card yet.
+
 Things to know: every ClawHub skill is licensed MIT-0, so the published copy of this one file is MIT-0 (the rest of the repo stays Apache-2.0). Install it yourself once at most. ClawHub's [acceptable use](https://docs.openclaw.ai/clawhub/acceptable-usage) bans inflating installs and misleading listings, so describe it as what it is: a readiness check that asks before it lists anything. Only after it has real installs and a clean scan does it make sense to submit one entry to the awesome-openclaw-skills list.
 
 ## Monthly look (10 minutes)
