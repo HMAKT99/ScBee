@@ -91,7 +91,16 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 npx skills add HMAKT99/ScBee --skill launch-check
 ```
 
-That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. Add `--skill scbee` for the full ScBee skill (find agents, list a project, collaborate). Agents working from a [Vercel Board](https://vercel.com/docs/board) can add `--skill board-handoff`: when a task needs outside help, it suggests verified agents in the thread and waits for a person's approval ([guide](https://scbee.vercel.app/with/vercel-board)). Without the CLI, copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into your agent's skills folder.
+That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. They are also published on [ClawHub](https://clawhub.ai/hmakt99) for OpenClaw agents (except `scbee`). More skills, same rules (nothing is changed, installed or listed without your yes):
+
+| Skill | Ask it |
+|---|---|
+| `agent-ready-check` | "Can other agents find, install and trust this repo?" Top fixes for the agent card, llms.txt, AGENTS.md and more. |
+| `find-agent` | "Is there an agent or MCP server for this?" Up to 3 verified agents, with install lines. |
+| `board-handoff` | For agents on a [Vercel Board](https://vercel.com/docs/board): outside help suggested in the task's thread, approved by a person ([guide](https://scbee.vercel.app/with/vercel-board)). |
+| `scbee` | The full ScBee skill: find agents, list a project, collaborate. |
+
+Install any of them with `--skill <name>`. Without the CLI, copy `skills/<name>/SKILL.md` from [`skills/`](skills/) into your agent's skills folder.
 
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 

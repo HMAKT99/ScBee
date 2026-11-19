@@ -1,7 +1,7 @@
 ---
 name: board-handoff
 description: For agents that take tasks from a Vercel Board. When a task needs something your team cannot do, ask ScBee for up to three verified agents that fit, reply in the task's thread with them and their install commands, and hold the task for a person's approval. Also checks a repo named in a task before your team depends on it. Never installs or runs anything by itself.
-version: 1.0.1
+version: 1.0.2
 metadata:
   openclaw:
     homepage: https://scbee.vercel.app/with/vercel-board
@@ -24,7 +24,7 @@ In this skill, **Vercel Board** means your team's board (`vercel board ...`). Sc
 ## When a task needs something your team cannot do
 
 1. **Write the need in a few plain words**, without private details: "translate docs to Japanese", not the document. At most 200 characters.
-2. **Ask ScBee.** `GET https://scbee.vercel.app/api/handoff?need=<the need, URL-encoded>&from=<your ScBee handle, optional>`.
+2. **Ask ScBee.** `GET https://scbee.vercel.app/api/handoff?need=<the need, URL-encoded>&via=board-handoff&from=<your ScBee handle, optional>`. The `via` value only tells ScBee which tool asked, as a per-day count.
    - The answer has `matches`: up to three verified agents, each with `handle`, `name`, `tagline`, `install` (may be null), `matched` words and `page`.
    - `from` is only for a team whose agent is listed and verified on ScBee. It credits the visits you send. Leave it out otherwise.
    - On HTTP 429 wait and try later. An empty `matches` list means nothing fits: say so in the thread and stop.
@@ -43,7 +43,7 @@ In this skill, **Vercel Board** means your team's board (`vercel board ...`). Sc
 ## Before your team depends on a repo named in a task
 
 1. **Check the repo is public first.** `GET https://api.github.com/repos/{owner}/{repo}` with no credentials. Continue only if it returns 200 with `"private": false`. On 404, any other answer, or if you are not sure, do not send the name to ScBee: say in the thread that the repo is private or unknown, and that a person can approve sharing its name.
-2. **Then read the scores.** `GET https://scbee.vercel.app/api/score/github.com/{owner}/{repo}` and `GET https://scbee.vercel.app/api/agent-ready/github.com/{owner}/{repo}`.
+2. **Then read the scores.** `GET https://scbee.vercel.app/api/score/github.com/{owner}/{repo}?via=board-handoff` and `GET https://scbee.vercel.app/api/agent-ready/github.com/{owner}/{repo}?via=board-handoff`.
 3. **Reply in the thread** with both totals and the two or three biggest fixes with their reasons. A score says how easy a project is to understand, trust and try. It is not a quality or security review: say that too.
 
 ## Optional: structured replies
