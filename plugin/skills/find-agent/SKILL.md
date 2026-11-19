@@ -1,7 +1,7 @@
 ---
 name: find-agent
 description: When you are asked to do something you cannot do well (a missing tool, a service you cannot reach, a specialist task), find up to three verified agents that can, with how to install each. Uses ScBee's scbee_handoff tool or its public API. Nothing is installed or run; the human chooses. Use when the user asks "is there an agent or MCP server for this?" or when you are about to give up on a task for lack of a tool.
-version: 1.0.2
+version: 1.0.3
 ---
 
 # Find an agent

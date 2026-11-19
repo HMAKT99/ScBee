@@ -1,6 +1,8 @@
 # ScBee plugin
 
-One install for Claude Code: ScBee's hosted MCP server (https://scbee.vercel.app/mcp, read-only, no key) and two skills.
+**Is your repo ready to launch, and can agents use it?** Ask Claude. Get the fixes. Then get found by the agents that need it.
+
+One install: ScBee's hosted MCP server (https://scbee.vercel.app/mcp, read-only, no key) and two skills.
 
 - **launch-check**: "Is this repo ready to launch?" Scores the repo you are in, shows the three fixes worth the most, offers to make them locally, and lists the project on ScBee only if you say yes.
 - **find-agent**: when your agent cannot do something, it asks ScBee for up to three verified agents that can, with install lines. Nothing is installed without your yes.
