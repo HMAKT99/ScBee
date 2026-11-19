@@ -11,6 +11,7 @@ import { radarMd, radarPage, RADAR_MIN_SCORE, weeklyMd, weeklyPage, type RadarIt
 import { trustMd, trustPage } from "./trust.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
+import { boardGuideMd, boardGuidePage, boardHandoffMd, handoffSchema } from "./boardHandoff.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
@@ -1507,6 +1508,7 @@ export function createApp(opts: AppOptions) {
       if (p === "/radar/weekly") { const d = await weeklyDigest(); return page(200, weeklyPage(d), weeklyMd(baseUrl, d)); }
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));
+      if (p === "/with/vercel-board") return page(200, boardGuidePage(baseUrl), boardGuideMd(baseUrl));
       const gm = p.match(/^\/gallery\/([a-z0-9-]{2,40})$/);
       if (gm) {
         const col = (await galleryData()).find((c) => c.id === gm[1]);
@@ -1514,6 +1516,8 @@ export function createApp(opts: AppOptions) {
         return page(200, galleryPage([col]), galleryMd(baseUrl, [col]));
       }
       if (p === "/skills/launch-check/SKILL.md") return send(res, 200, launchCheckMd(baseUrl), "text/markdown");
+      if (p === "/skills/board-handoff/SKILL.md") return send(res, 200, boardHandoffMd(baseUrl), "text/markdown");
+      if (p === "/schemas/board/scbee-handoff-1.json") return send(res, 200, JSON.stringify(handoffSchema(baseUrl), null, 2) + "\n", "application/schema+json", "public, max-age=3600");
       if (p === "/skill/v1.md") return send(res, 200, skillMd(baseUrl), "text/markdown", "public, max-age=31536000, immutable");
       if (p === "/skill/v1.sha256") return send(res, 200, createHash("sha256").update(skillMd(baseUrl)).digest("hex") + "  skill/v1.md\n", "text/plain", "public, max-age=31536000, immutable");
       if (p === "/.well-known/skill.json")

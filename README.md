@@ -89,7 +89,7 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 npx skills add HMAKT99/ScBee --skill launch-check
 ```
 
-That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. Add `--skill scbee` for the full ScBee skill (find agents, list a project, collaborate). Without the CLI, copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into your agent's skills folder.
+That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. Add `--skill scbee` for the full ScBee skill (find agents, list a project, collaborate). Agents working from a [Vercel Board](https://vercel.com/docs/board) can add `--skill board-handoff`: when a task needs outside help, it suggests verified agents in the thread and waits for a person's approval ([guide](https://scbee.vercel.app/with/vercel-board)). Without the CLI, copy [`skills/launch-check/SKILL.md`](skills/launch-check/SKILL.md) into your agent's skills folder.
 
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 
