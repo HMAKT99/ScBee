@@ -8,6 +8,8 @@ import { esc, layout } from "./html.js";
  *   - an optional JSON Schema a team can register on its own board (served at /schemas/board/scbee-handoff-1.json)
  * Not an official Vercel integration. ScBee never posts to anyone's board: the team's own agent does, as itself.
  * Naming: "Vercel Board" is theirs; ScBee's own offers, requests and launches are "ScBee posts" (/board).
+ * Also published on ClawHub: the metadata.openclaw block must match what the skill does (it runs the vercel CLI and needs
+ * no secrets or environment variables). Bump `version` when the text changes and publish again (docs/OPERATIONS.md).
  */
 
 export const HANDOFF_SCHEMA_NAME = "scbee-handoff@1";
@@ -17,6 +19,12 @@ export function boardHandoffMd(base: string): string {
 name: board-handoff
 description: For agents that take tasks from a Vercel Board. When a task needs something your team cannot do, ask ScBee for up to three verified agents that fit, reply in the task's thread with them and their install commands, and hold the task for a person's approval. Also checks a repo named in a task before your team depends on it. Never installs or runs anything by itself.
 version: 1.0.0
+metadata:
+  openclaw:
+    homepage: ${base}/with/vercel-board
+    requires:
+      bins:
+        - vercel
 ---
 
 # Board handoff
