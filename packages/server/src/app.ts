@@ -12,6 +12,8 @@ import { trustMd, trustPage } from "./trust.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
 import { boardGuideMd, boardGuidePage, boardHandoffMd, handoffSchema } from "./boardHandoff.js";
+import { agentReadyMd } from "./agentReadySkill.js";
+import { findAgentMd } from "./plugin.js";
 import { findMd, findPage, exampleNeeds } from "./find.js";
 import { openapi } from "./openapi.js";
 import { pairMd, pairPage, pairPath } from "./pair.js";
@@ -97,7 +99,9 @@ const json = (res: ServerResponse, status: number, obj: unknown) => {
 
 /** Anonymous GET endpoints that are safe to cache at the edge. Anything needing a key is deliberately not listed. */
 /** The channels that may say where a score request came from, with ?via=. Only these exact values are counted; anything else is ignored. */
-const SCORE_VIA: Record<string, FunnelEvent> = { "launch-check": "score_via_launch_check", mcp: "score_via_mcp", "mcp-http": "score_via_mcp_http", cli: "score_via_cli", action: "score_via_action" };
+const SCORE_VIA: Record<string, FunnelEvent> = { "launch-check": "score_via_launch_check", "agent-ready-check": "score_via_agent_ready", "board-handoff": "score_via_board_handoff", mcp: "score_via_mcp", "mcp-http": "score_via_mcp_http", cli: "score_via_cli", action: "score_via_action" };
+/** The same for handoff requests (?via= on /api/handoff): which skill asked, as a per-day count. */
+const HANDOFF_VIA: Record<string, FunnelEvent> = { "find-agent": "handoff_via_find_agent", "board-handoff": "handoff_via_board_handoff" };
 
 /** Words too broad to say what a project does: they would match almost every agent and every search. */
 const GENERIC_WORDS = new Set(["agent", "agents", "ai-agent", "ai-agents", "mcp", "mcp-server", "mcp-servers", "server", "servers", "llm", "llms", "tool", "tools",
@@ -670,6 +674,8 @@ export function createApp(opts: AppOptions) {
       const parts = arm[1]!.split("/");
       const v = parts[0] === "web" ? await siteScore(parts[1]!, ip) : await projectScore(parts[1]!, parts[2]!, ip);
       if (!v.agentReady) throw new HttpError(503, "the agent-ready check is being prepared for this project; try again in a minute");
+      const via = SCORE_VIA[url.searchParams.get("via") ?? ""];
+      if (via) await funnel(via);
       return json(res, 200, { project: arm[1], band: agentBand(v.agentReady.total).label, checked_at: v.fetchedAt, ...v.agentReady,
         note: "Whether other agents can find, install and trust this, from public files and fixed rules. Not a prediction." });
     }
@@ -968,6 +974,8 @@ export function createApp(opts: AppOptions) {
       const from = /^[a-z0-9-]{3,39}$/.test(fromRaw) ? await store.publicAgent(fromRaw) : undefined;
       const credit = from?.verified ? `?from=${from.handle}` : "";
       const matches = rankForNeed(need, await store.list("", true, 500), from ? [from.handle] : []);
+      const via = HANDOFF_VIA[url.searchParams.get("via") ?? ""];
+      if (via) await funnel(via); // which skill asked; a per-day count, no need text or identity stored
       return json(res, 200, {
         need_words: needWords(need),
         matches: matches.map((m) => ({ handle: m.agent.handle, name: m.agent.name, tagline: m.agent.tagline, install: m.agent.install, matched: m.matched, page: `${baseUrl}/r/${m.agent.handle}${credit}` })),
@@ -1517,6 +1525,8 @@ export function createApp(opts: AppOptions) {
       }
       if (p === "/skills/launch-check/SKILL.md") return send(res, 200, launchCheckMd(baseUrl), "text/markdown");
       if (p === "/skills/board-handoff/SKILL.md") return send(res, 200, boardHandoffMd(baseUrl), "text/markdown");
+      if (p === "/skills/agent-ready-check/SKILL.md") return send(res, 200, agentReadyMd(baseUrl), "text/markdown");
+      if (p === "/skills/find-agent/SKILL.md") return send(res, 200, findAgentMd(baseUrl), "text/markdown");
       if (p === "/schemas/board/scbee-handoff-1.json") return send(res, 200, JSON.stringify(handoffSchema(baseUrl), null, 2) + "\n", "application/schema+json", "public, max-age=3600");
       if (p === "/skill/v1.md") return send(res, 200, skillMd(baseUrl), "text/markdown", "public, max-age=31536000, immutable");
       if (p === "/skill/v1.sha256") return send(res, 200, createHash("sha256").update(skillMd(baseUrl)).digest("hex") + "  skill/v1.md\n", "text/plain", "public, max-age=31536000, immutable");

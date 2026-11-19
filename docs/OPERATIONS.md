@@ -59,7 +59,15 @@ Do one a day, and describe it the same way each time: "Read-only by default. Sco
 3. Open the skill's page on ClawHub and look at its security status. A held or blocked release is hidden from the catalog, and the owner sees why in the ClawHub dashboard.
 4. When the skill text changes, raise `version` in `launchCheck.ts`, run `npm run build && npm run agent-files`, and publish the new version.
 
-`skills/board-handoff` is published the same way, from `packages/server/src/boardHandoff.ts` (it declares the `vercel` CLI):
+The other skills are published the same way, each from its own source and with its own `version`:
+
+| Folder | Source | Declares |
+|---|---|---|
+| `skills/agent-ready-check` | `packages/server/src/agentReadySkill.ts` | `git` |
+| `skills/find-agent` | `findAgentMd` in `packages/server/src/plugin.ts` (`FIND_AGENT_VERSION`) | nothing: an HTTP read or an MCP tool call |
+| `skills/board-handoff` | `packages/server/src/boardHandoff.ts` | the `vercel` CLI |
+
+Each skill tags its own calls with `?via=<its name>`, so the onboarding report shows real use per skill. For example, board-handoff:
 ```
 clawhub skill publish ./skills/board-handoff --slug board-handoff --name "Board Handoff" --version 1.0.0 \
   --changelog "First release" --source-repo HMAKT99/ScBee --source-commit "$(git rev-parse HEAD)" \

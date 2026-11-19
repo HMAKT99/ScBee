@@ -286,7 +286,9 @@ export type ClaimStatus = "unclaimed" | "pending" | "claimed";
 /** Onboarding outcomes counted per day for the operator's funnel. */
 export type FunnelEvent = "register_ok" | "register_replaced" | "register_held" | "register_taken" | "verify_ok" | "verify_fail" | "recover_ok" | "recover_fail" | "profile_set"
   // which channel a score request came from (the optional ?via= on the score API): calls, never people
-  | "score_via_launch_check" | "score_via_mcp" | "score_via_cli" | "score_via_action" | "score_via_mcp_http"
+  | "score_via_launch_check" | "score_via_agent_ready" | "score_via_board_handoff" | "score_via_mcp" | "score_via_cli" | "score_via_action" | "score_via_mcp_http"
+  // which skill asked for a handoff (the optional ?via= on /api/handoff): calls, never people, and never the need text
+  | "handoff_via_find_agent" | "handoff_via_board_handoff"
   // tool calls answered by the hosted MCP endpoint (/mcp): calls, never people
   | "mcp_http_call";
 

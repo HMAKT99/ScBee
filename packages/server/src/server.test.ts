@@ -1885,6 +1885,34 @@ describe("ScBee's own agent files", () => {
     expect((await call("GET", "/join.md")).text).toContain("/skills/launch-check/SKILL.md");
   });
 
+  it("serves the agent-ready and find-agent skills, generated, with ClawHub declarations that match what they do", async () => {
+    const { findAgentMd } = await import("./plugin.js");
+    const { agentReadyMd } = await import("./agentReadySkill.js");
+    expect(read("skills/agent-ready-check/SKILL.md")).toBe(agentReadyMd("https://scbee.vercel.app"));
+    expect(read("skills/find-agent/SKILL.md")).toBe(findAgentMd("https://scbee.vercel.app"));
+    const ar = await call("GET", "/skills/agent-ready-check/SKILL.md");
+    expect(ar.status).toBe(200);
+    expect(ar.headers.get("content-type")).toMatch(/text\/markdown/);
+    expect(ar.text).toMatch(/^---\nname: agent-ready-check\ndescription: /);
+    for (const needle of ["git remote get-url origin", "GET http://t/api/agent-ready/github.com/OWNER/REPO?via=agent-ready-check", "Continue only on an explicit yes",
+      "Only after a yes, make the changes", "never opens issues, pull requests, comments", "http://t/badge/agent-ready/github.com/OWNER/REPO.svg"])
+      expect(ar.text, needle).toContain(needle);
+    const arFront = ar.text.split("\n---\n")[0]!;
+    expect(arFront).toMatch(/\nversion: \d+\.\d+\.\d+\n/);
+    expect(arFront.endsWith("metadata:\n  openclaw:\n    homepage: http://t\n    requires:\n      bins:\n        - git")).toBe(true);
+    const fa = await call("GET", "/skills/find-agent/SKILL.md");
+    expect(fa.status).toBe(200);
+    expect(fa.text).toMatch(/^---\nname: find-agent\ndescription: /);
+    expect(fa.text).toContain("GET http://t/api/handoff?need=<url-encoded need>&via=find-agent");
+    expect(fa.text.split("\n---\n")[0]!.endsWith("metadata:\n  openclaw:\n    homepage: http://t/find")).toBe(true);
+    for (const t of [ar.text, fa.text]) {
+      expect(t.split("\n---\n")[0]).not.toMatch(/\b(env|envVars|primaryEnv)\b/);
+      expect(t).not.toMatch(/\b[A-Z][A-Z0-9]*_(?:API_KEY|KEY|TOKEN|SECRET|PASSWORD)\b/);
+    }
+    const llms = (await call("GET", "/llms.txt")).text;
+    for (const s of ["/skills/agent-ready-check/SKILL.md", "/skills/find-agent/SKILL.md"]) expect(llms).toContain(s);
+  });
+
   it("serves the board-handoff skill: suggests only, waits for a person, and its repo copy is generated", async () => {
     expect(read("skills/board-handoff/SKILL.md")).toBe(boardHandoffMd("https://scbee.vercel.app"));
     const r = await call("GET", "/skills/board-handoff/SKILL.md");
@@ -2751,6 +2779,26 @@ describe("where score requests come from (?via=)", () => {
     const withVia = (await call("GET", "/api/score/github.com/viaz/tool?via=cli")).json;
     expect({ ...withVia, checked_at: 0 }).toEqual({ ...body0, checked_at: 0 });
   });
+  it("counts the agent-ready and board-handoff skills on scores, and find-agent and board-handoff on handoffs", async () => {
+    const api = "https://api.github.com/repos/viaz/tool2";
+    files[api] = JSON.stringify({ full_name: "viaz/tool2", description: "a tool", topics: ["demo"], stargazers_count: 0, created_at: new Date().toISOString(), pushed_at: new Date().toISOString() });
+    files[`${api}/contents`] = "[]";
+    const n = (e: Record<string, number>, k: string) => e[k] ?? 0;
+    const before = await events();
+    expect((await call("GET", "/api/score/github.com/viaz/tool2?via=board-handoff")).status).toBe(200);
+    const ar = await call("GET", "/api/agent-ready/github.com/viaz/tool2?via=agent-ready-check");
+    expect(ar.status).toBe(200);
+    expect(ar.json.total).toEqual(expect.any(Number));
+    for (const via of ["find-agent", "board-handoff"]) expect((await call("GET", `/api/handoff?need=lint+markdown+files&via=${via}`)).status).toBe(200);
+    for (const bad of ["", "launch-check", "FIND-AGENT", "evil"]) expect((await call("GET", `/api/handoff?need=lint+markdown+files&via=${bad}`)).status).toBe(200);
+    const after = await events();
+    expect(n(after, "score_via_board_handoff") - n(before, "score_via_board_handoff")).toBe(1);
+    expect(n(after, "score_via_agent_ready") - n(before, "score_via_agent_ready")).toBe(1);
+    expect(n(after, "handoff_via_find_agent") - n(before, "handoff_via_find_agent")).toBe(1);
+    expect(n(after, "handoff_via_board_handoff") - n(before, "handoff_via_board_handoff")).toBe(1);
+    // the need text is never stored as an event name
+    expect(Object.keys(after).some((k) => k.includes("lint"))).toBe(false);
+  });
   it("the skill and the other clients say which channel they are", async () => {
     expect((await call("GET", "/skills/launch-check/SKILL.md")).text).toContain("/api/score/github.com/OWNER/REPO?via=launch-check");
     const { readFileSync } = await import("node:fs");
@@ -2921,6 +2969,10 @@ describe("Claude Code plugin and the Launch Radar featured badge", () => {
     expect(find).toContain("It never installs, runs or connects anything");
     expect(find).toContain("scbee_handoff");
     expect(want["plugin/skills/launch-check/SKILL.md"]).toBe(read("skills/launch-check/SKILL.md"));
+    // the plugin carries the same text as the standalone skills that are published on ClawHub and skills.sh
+    expect(want["plugin/skills/agent-ready-check/SKILL.md"]).toBe(read("skills/agent-ready-check/SKILL.md"));
+    expect(find).toBe(read("skills/find-agent/SKILL.md"));
+    expect(want["plugin/README.md"]).toContain("three skills");
   });
 
   it("gives the plugin directory every listing link, says what it sends, and serves the terms it links to", async () => {

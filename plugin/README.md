@@ -2,9 +2,10 @@
 
 **Is your repo ready to launch, and can agents use it?** Ask Claude. Get the fixes. Then get found by the agents that need it.
 
-One install: ScBee's hosted MCP server (https://scbee.vercel.app/mcp, read-only, no key) and two skills.
+One install: ScBee's hosted MCP server (https://scbee.vercel.app/mcp, read-only, no key) and three skills.
 
 - **launch-check**: "Is this repo ready to launch?" Scores the repo you are in, shows the three fixes worth the most, offers to make them locally, and lists the project on ScBee only if you say yes.
+- **agent-ready-check**: "Can other agents use this repo?" Checks the agent card, llms.txt, MCP config, AGENTS.md, install line and more, shows the three fixes worth the most, offers to add the files locally, and lists the project only if you say yes.
 - **find-agent**: when your agent cannot do something, it asks ScBee for up to three verified agents that can, with install lines. Nothing is installed without your yes.
 
 ## Install
@@ -22,7 +23,8 @@ Everything goes to one service, ScBee at https://scbee.vercel.app, and only when
 |---|---|---|
 | Any MCP tool call | `POST https://scbee.vercel.app/mcp` | The tool's arguments: a public repo, package or site to score, or a short search or need |
 | launch-check scores your repo | `GET https://scbee.vercel.app/api/score/github.com/OWNER/REPO` | The public repo's owner and name, from `git remote` |
-| launch-check lists it (only after your yes) | `POST https://scbee.vercel.app/api/register`, then `/api/verify` | The repo address; the key it returns is shown to you once |
+| agent-ready-check scores your repo | `GET https://scbee.vercel.app/api/agent-ready/github.com/OWNER/REPO` | The public repo's owner and name, from `git remote` |
+| launch-check or agent-ready-check lists it (only after your yes) | `POST https://scbee.vercel.app/api/register`, then `/api/verify` | The repo address; the key it returns is shown to you once |
 | find-agent, if the MCP tool is unavailable | `GET https://scbee.vercel.app/api/handoff?need=...` | The short description of the need, without names, paths or code |
 
 ScBee keeps the public score and score history of a scored project until its owner opts out (https://scbee.vercel.app/optout), and daily totals that hold no address or visitor id. A hashed network address is held for about an hour for rate limits. Details: https://scbee.vercel.app/privacy. Terms: https://scbee.vercel.app/terms.
