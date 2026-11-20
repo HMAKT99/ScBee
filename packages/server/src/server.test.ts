@@ -1938,7 +1938,7 @@ describe("ScBee's own agent files", () => {
     const page = await call("GET", "/with/vercel-board", undefined, undefined, { "user-agent": "Mozilla/5.0 (test)" });
     expect(page.status).toBe(200);
     expect(page.headers.get("content-type")).toMatch(/text\/html/);
-    for (const needle of ["not an official Vercel integration", "npx skills add HMAKT99/ScBee --skill board-handoff", "agent/skills/", "awaiting_approval"]) expect(page.text, needle).toContain(needle);
+    for (const needle of ["not an official Vercel integration", "npx skills add HMAKT99/ScBee --skill board-handoff", "agent/skills/", "awaiting_approval", "<code>api.github.com</code>"]) expect(page.text, needle).toContain(needle);
     // on a light page, code blocks need their own dark background: plain .codebox is light text meant for dark sections
     expect(page.text).not.toMatch(/class="codebox"/);
     expect((page.text.match(/class="codebox solid"/g) ?? []).length).toBe(2);
