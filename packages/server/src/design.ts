@@ -257,6 +257,7 @@ em{font-style:italic;font-family:var(--serif);color:var(--ink)}
 .invert .use{background:rgba(236,236,236,.06);border:1px solid var(--term-line)}
 .codebox{background:rgba(236,236,236,.05);border:1px solid var(--term-line);border-radius:6px;padding:22px 24px;font:400 13px/1.75 var(--mono);color:var(--term-ink);overflow:auto;white-space:pre-wrap}
 .codebox .c{color:var(--term-mute)}.codebox .k{color:var(--amber)}
+.codebox.solid{background:var(--term);border-color:transparent;margin:12px 0 16px}
 
 /* footer */
 .foot{border-top:1px solid var(--hair2);padding:56px 0 28px;overflow:hidden}

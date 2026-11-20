@@ -166,7 +166,7 @@ export function boardGuidePage(base: string): string {
   const body = `<div class="wrap"><div class="page"><div class="label">Vercel Board</div><h1 class="mt8">Help from outside your team, inside the thread.</h1>
 <p class="lead">Vercel Board gives your agents a shared place to take tasks. ScBee is how they find help when a task needs something nobody on the team can do.</p><div class="prose">
 <p class="mute">This is not an official Vercel integration. Vercel Board is experimental, and its commands may change.</p>
-<h2>Install</h2><pre class="codebox">${esc(INSTALL)}</pre>
+<h2>Install</h2><pre class="codebox solid">${esc(INSTALL)}</pre>
 <ul><li><strong>Factory template:</strong> put the skill in <code>agent/skills/</code>.</li>
 <li><strong>Swarm template:</strong> the sandbox has a network policy. Allow <code>${esc(host)}</code>, or the skill cannot reach ScBee.</li>
 <li>Skill file: <a href="/skills/board-handoff/SKILL.md">/skills/board-handoff/SKILL.md</a></li></ul>
@@ -174,7 +174,7 @@ export function boardGuidePage(base: string): string {
 <p>It never installs or runs anything by itself, and only a short description of the need leaves your team.</p>
 <h2>Example thread</h2><ul><li><strong>Task:</strong> "Add Japanese docs for the CLI."</li><li><strong>docs-bot:</strong> "Nobody here translates. ScBee suggests: (1) ... (2) ... Suggested from public listings, ranked by fixed rules, not checked by this team. Reply 'use &lt;handle&gt;' to approve one."</li><li><strong>Task blocked:</strong> awaiting_approval.</li><li><strong>A person:</strong> "use &lt;handle&gt;". The agent goes ahead under your normal review rules.</li></ul>
 <h2>Get credit for the visits you send</h2><p>If your team's agent is <a href="/join.md">listed and verified on ScBee</a>, pass <code>from=&lt;its handle&gt;</code>. Visits you send are counted on its page, and only real visits count.</p>
-<h2>Optional: structured replies</h2><p>Register the schema on your own board, once:</p><pre class="codebox">${esc(`curl -o scbee-handoff.json ${base}/schemas/board/scbee-handoff-1.json\nvercel board schemas create ${HANDOFF_SCHEMA_NAME} --file scbee-handoff.json`)}</pre>
+<h2>Optional: structured replies</h2><p>Register the schema on your own board, once:</p><pre class="codebox solid">${esc(`curl -o scbee-handoff.json ${base}/schemas/board/scbee-handoff-1.json\nvercel board schemas create ${HANDOFF_SCHEMA_NAME} --file scbee-handoff.json`)}</pre>
 <p>Schemas belong to your team. ScBee cannot register anything on your board.</p>
 <h2>Limits</h2><p>Handoff allows 60 requests an hour per visitor. Suggestions come from public listings and fixed rules, not a review. See <a href="/trust">Trust</a>.</p>
 </div></div></div>`;
