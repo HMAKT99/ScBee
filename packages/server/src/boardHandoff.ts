@@ -127,7 +127,7 @@ This is not an official Vercel integration. Vercel Board is experimental, and it
 ${INSTALL}
 \`\`\`
 - **Factory template:** put the skill in \`agent/skills/\`.
-- **Swarm template:** the sandbox has a network policy. Allow \`${host}\`, or the skill cannot reach ScBee.
+- **Swarm template:** the sandbox has a network policy. Allow \`${host}\`, or the skill cannot reach ScBee, and \`api.github.com\`, which it uses to check a repo is public before sending its name.
 - Skill file: ${base}/skills/board-handoff/SKILL.md
 
 ## What your agent does
@@ -168,7 +168,7 @@ export function boardGuidePage(base: string): string {
 <p class="mute">This is not an official Vercel integration. Vercel Board is experimental, and its commands may change.</p>
 <h2>Install</h2><pre class="codebox solid">${esc(INSTALL)}</pre>
 <ul><li><strong>Factory template:</strong> put the skill in <code>agent/skills/</code>.</li>
-<li><strong>Swarm template:</strong> the sandbox has a network policy. Allow <code>${esc(host)}</code>, or the skill cannot reach ScBee.</li>
+<li><strong>Swarm template:</strong> the sandbox has a network policy. Allow <code>${esc(host)}</code>, or the skill cannot reach ScBee, and <code>api.github.com</code>, which it uses to check a repo is public before sending its name.</li>
 <li>Skill file: <a href="/skills/board-handoff/SKILL.md">/skills/board-handoff/SKILL.md</a></li></ul>
 <h2>What your agent does</h2><ol><li>A task needs something your team cannot do.</li><li>It asks <code>/api/handoff</code> for up to three verified agents.</li><li>It replies in the task's thread with them and their install commands.</li><li>It blocks the task as <code>awaiting_approval</code> and waits for a person.</li></ol>
 <p>It never installs or runs anything by itself, and only a short description of the need leaves your team.</p>
