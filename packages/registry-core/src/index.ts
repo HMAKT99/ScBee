@@ -22,3 +22,4 @@ export * from "./network.js";
 export * from "./githubApp.js";
 export * from "./report.js";
 export * from "./generate.js";
+export * from "./tree.js";

@@ -1,5 +1,7 @@
 # ScBee score (GitHub Action)
 
+> **For pull requests, use [ScBee PR score](https://github.com/HMAKT99/scbee-action) instead.** It scores the pull request's own files and shows the change against the base branch. This action scores the published repository (its default branch), so on a pull request its numbers do not change until the PR is merged. It still works, and suits scheduled or push checks.
+
 Reports a repository's **launch readiness** and **agent-ready** scores in the job summary, and optionally as **one** pull request comment that is updated in place (never a new comment per push). It reads public data from ScBee and uses your workflow's own token only for that comment. It runs inside your repository, not from anyone's personal account.
 
 ```yaml

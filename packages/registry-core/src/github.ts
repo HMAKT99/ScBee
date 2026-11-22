@@ -1,6 +1,6 @@
 import { safeFetchJson, safeFetchText, UnsafeUrlError, type FetchOptions } from "./safeFetch.js";
-import { fetchNpmFacts } from "./npm.js";
 import { analyseReadme, type ProjectSignals } from "./signals.js";
+import { readTreeFacts, type RepoTree } from "./tree.js";
 
 export class ProjectError extends Error {
   constructor(message: string, readonly status: 404 | 429 | 502 = 502) {
@@ -61,58 +61,29 @@ export async function fetchGithubSignals(
   const meta = (await call("")) as GhRepo | null;
   if (!meta) throw new ProjectError("repository not found, or it is private", 404);
 
-  const [root, ghDir, release] = await Promise.all([call("/contents"), call("/contents/.github"), call("/releases/latest")]);
-  const names = new Set(((Array.isArray(root) ? root : []) as GhEntry[]).map((e) => e.name.toLowerCase()));
-  const ghNames = new Set(((Array.isArray(ghDir) ? ghDir : []) as GhEntry[]).map((e) => e.name.toLowerCase()));
-  const hasCi = ghNames.has("workflows") || names.has(".travis.yml") || names.has(".circleci") || names.has(".gitlab-ci.yml");
-
   const raw = (file: string) => `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${file}`;
-  const text = async (file: string): Promise<string | null> => {
-    try {
-      const r = await safeFetchText(raw(file), { ...opts, maxBytes: 512 * 1024 });
-      return r.status === 200 ? r.body : null;
-    } catch { return null; }
+  // The default branch, read through GitHub: the same file rules as a checked-out tree (see tree.ts).
+  const tree: RepoTree = {
+    root: async () => {
+      const r = await call("/contents");
+      return ((Array.isArray(r) ? r : []) as GhEntry[]).map((e) => ({ name: e.name, type: e.type === "dir" ? "dir" as const : "file" as const }));
+    },
+    names: async (dir) => {
+      const r = await call(`/contents/${dir}`);
+      return new Set(((Array.isArray(r) ? r : []) as GhEntry[]).map((e) => e.name.toLowerCase()));
+    },
+    text: async (file) => {
+      try {
+        const r = await safeFetchText(raw(file.split("/").map(encodeURIComponent).join("/")), { ...opts, maxBytes: 512 * 1024 });
+        return r.status === 200 ? r.body : null;
+      } catch { return null; }
+    },
+    exists: async (file) => (await call(`/contents/${file}`)) != null,
   };
-  const readmeEntry = ((Array.isArray(root) ? root : []) as GhEntry[]).find((e) => e.type === "file" && /^readme(\.(md|markdown|rst|txt))?$/i.test(e.name));
-  const readme = readmeEntry ? await text(encodeURIComponent(readmeEntry.name)) : null;
-
-  let runtimeDeclared = names.has(".nvmrc") || names.has(".node-version") || names.has(".python-version") || names.has(".tool-versions") || names.has("go.mod") || names.has("cargo.toml") || names.has("dockerfile");
-  let npmPackage: string | undefined;
-  let dependencies: string[] | undefined;
-  let npmDownloadsMonthly: number | undefined;
-  if (names.has("package.json")) {
-    const pj = await text("package.json");
-    try {
-      const j = JSON.parse(pj ?? "{}") as { engines?: unknown; name?: unknown; private?: unknown; dependencies?: Record<string, unknown>; peerDependencies?: Record<string, unknown> };
-      dependencies = Object.keys({ ...(j.dependencies ?? {}), ...(j.peerDependencies ?? {}) }).slice(0, 200).map((d) => `npm:${d.toLowerCase()}`);
-      runtimeDeclared = runtimeDeclared || !!j.engines;
-      if (typeof j.name === "string" && !j.private) {
-        // The same project: only count the package if it points back at this repo.
-        const facts = await fetchNpmFacts(j.name, opts);
-        if (facts?.repo?.owner === owner.toLowerCase() && facts.repo.repo === repo.toLowerCase()) {
-          npmPackage = facts.name;
-          npmDownloadsMonthly = facts.downloadsLastMonth;
-          runtimeDeclared = runtimeDeclared || facts.engines;
-        }
-      }
-    } catch { /* ignore unreadable package.json */ }
-  }
-  if (!runtimeDeclared && names.has("pyproject.toml")) runtimeDeclared = /requires-python/.test((await text("pyproject.toml")) ?? "");
-
-  // Standard places a project describes itself to agents: ScBee's agent.json, or an A2A agent card at the root or under .well-known.
-  let hasAgentCard = names.has("agent.json") || names.has("agent-card.json");
-  if (!hasAgentCard) hasAgentCard = (await safeFetchJson(raw(".well-known/agent-card.json"), opts).catch(() => null)) != null;
-
-  const readmeFacts = analyseReadme(readme);
-
-  // A security policy may also live in docs/ (GitHub reads all three places).
-  let hasSecurityPolicy = names.has("security.md") || ghNames.has("security.md");
-  if (!hasSecurityPolicy && names.has("docs")) hasSecurityPolicy = (await call("/contents/docs/SECURITY.md")) != null;
+  const [facts, release] = await Promise.all([readTreeFacts(tree, { owner, repo }, opts), call("/releases/latest")]);
   // A pushed version tag lets people pin a version even without a GitHub Release.
   let hasRelease = release != null && typeof release === "object" && "tag_name" in (release as object);
   if (!hasRelease) { const tags = await call("/tags?per_page=1"); hasRelease = Array.isArray(tags) && tags.length > 0; }
-  const mcpManifest = ["server.json", "mcp.json", ".mcp.json", "smithery.yaml", "mcp.yaml"].some((n) => names.has(n));
-
   return {
     source: `github:${owner}/${repo}`,
     fullName: meta.full_name,
@@ -126,24 +97,17 @@ export async function fetchGithubSignals(
     createdAt: meta.created_at ?? null,
     pushedAt: meta.pushed_at ?? null,
     archived: !!meta.archived,
-    hasCi,
-    hasSecurityPolicy,
+    hasCi: facts.hasCi,
+    hasSecurityPolicy: facts.hasSecurityPolicy,
     hasRelease,
-    runtimeDeclared,
-    hasAgentCard,
-    agent: {
-      llmsTxt: names.has("llms.txt") || names.has("llms-full.txt"),
-      agentsMd: names.has("agents.md") || names.has("claude.md") || names.has(".cursorrules") || ghNames.has("copilot-instructions.md"),
-      mcp: mcpManifest || !!readmeFacts.mentionsMcp,
-      mcpManifest,
-      skill: names.has("skill.md") || names.has("skills"),
-      api: ["openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml", "swagger.yml"].some((n) => names.has(n)),
-    },
-    ...(npmPackage ? { npmPackage, npmDownloadsMonthly } : {}),
-    ...(dependencies?.length ? { dependencies } : {}),
+    runtimeDeclared: facts.runtimeDeclared,
+    hasAgentCard: facts.hasAgentCard,
+    agent: facts.agent,
+    ...(facts.npmPackage ? { npmPackage: facts.npmPackage, npmDownloadsMonthly: facts.npmDownloadsMonthly } : {}),
+    ...(facts.dependencies?.length ? { dependencies: facts.dependencies } : {}),
     listedOnScbee: scbee.listed,
     verifiedOnScbee: scbee.verified,
-    readme: readmeFacts,
+    readme: facts.readme,
   };
 }
 
