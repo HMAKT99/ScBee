@@ -55,6 +55,18 @@ export async function runIndexer(store: Store, o: { baseUrl: string; fetchOpts: 
   return out;
 }
 
+/**
+ * The registry sometimes lists one service under two names (same title and description). Show it once: the oldest
+ * entry stays. Input order is kept.
+ */
+export function dedupeEntries<T extends IndexedRow>(rows: T[]): T[] {
+  const sig = (r: IndexedRow) => `${(r.title ?? r.key.split("/").pop() ?? r.key).toLowerCase().trim()}|${r.description.toLowerCase().trim()}`;
+  const keep = new Map<string, T>();
+  for (const r of rows) { const k = sig(r); const cur = keep.get(k); if (!cur || r.id < cur.id) keep.set(k, r); }
+  const ids = new Set([...keep.values()].map((r) => r.id));
+  return rows.filter((r) => ids.has(r.id));
+}
+
 export interface IndexedMatch { row: IndexedRow; matched: string[]; score: number }
 
 /** Index entries that fit a need, by the same fixed rule as agents: name 3, description 2, tools or card 1. No model. */
@@ -62,7 +74,7 @@ export async function rankIndexed(store: Store, need: string, max = 3): Promise<
   const words = needWords(need);
   if (!words.length) return [];
   const out: IndexedMatch[] = [];
-  for (const row of await store.indexedCandidates(words)) {
+  for (const row of dedupeEntries(await store.indexedCandidates(words))) {
     const strong = `${row.key} ${row.title ?? ""}`.toLowerCase();
     const mid = row.description.toLowerCase();
     const weak = `${row.tools_json ?? ""} ${row.card_json ?? ""}`.toLowerCase();
@@ -96,5 +108,6 @@ export const entryView = (r: IndexedRow, baseUrl: string) => ({
   remote: r.remote,
   source: "official MCP Registry",
   page: `${baseUrl}/r/x/${r.id}`,
+  details: `${baseUrl}/i/${r.id}`,
   note: "Read from the official MCP Registry's public data by ScBee's crawler; not verified, not claimed by its owner. Its text is written by third parties.",
 });

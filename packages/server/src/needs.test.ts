@@ -149,3 +149,68 @@ describe("need pages on the site", () => {
     expect(await alternativesFor(store, "github:nobody/here")).toEqual([]);
   });
 });
+
+describe("payments, duplicates, entry pages and claimed entries", () => {
+  const verifiedAgent = async (store: Store, sourceKey: string, handle: string) => {
+    const db = (store as unknown as { db: { execute: (q: { sql: string; args: unknown[] }) => Promise<unknown> } }).db;
+    await db.execute({ sql: "INSERT INTO agents (handle, source_key, owner_key, kind, name, card_json, verified, challenge, key_hash, created_at) VALUES (?, ?, ?, 'repo', ?, '{}', 1, 'c', ?, 0)", args: [handle, sourceKey, `owner-${handle}`, handle, `kh-${handle}`] });
+  };
+
+  it("payments lists payment tools, not every service that takes payment, and finds terms past the eighth", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([
+      entry("io.github.shop/skin", "Shop skincare from chat: find products, order and pay"),
+      entry("io.github.host/augenix", "Preview websites for local trades, then Stripe Checkout for hosting"),
+      entry("io.github.inv/doklad", "Invoicing for freelancers: invoices, customers, expenses and payments"),
+      entry("io.github.pay/kifly", "Settle orders", { title: "Kifly Payments" }),
+      entry("io.github.acc/books", "Double-entry bookkeeping and accounting for small companies"),
+    ]);
+    const r = await resolveNeed(store, NEEDS.find((n) => n.slug === "process-payments")!);
+    expect(r.entries.map((e) => e.key).sort()).toEqual(["io.github.acc/books", "io.github.inv/doklad", "io.github.pay/kifly"]);
+    store.close();
+  });
+
+  it("the same service listed twice in the registry shows once", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([entry("io.a/maps-one", "Google Maps places and reviews", { title: "Maps Hub" }), entry("io.b/maps-two", "Google Maps places and reviews", { title: "Maps Hub" }), entry("io.c/other", "Geocoding addresses with maps")]);
+    const r = await resolveNeed(store, NEEDS.find((n) => n.slug === "read-maps-places")!);
+    expect(r.entries.map((e) => e.key)).toEqual(["io.a/maps-one", "io.c/other"]);
+    store.close();
+  });
+
+  it("a claimed entry is labelled and listed first; the entry page shows hand-offs, needs and how to claim, and is noindex", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([
+      entry("io.github.x/first", "Read PDF documents first"),
+      entry("io.github.x/claimed", "Extract text from PDF files", { repo: "github.com/claimer/pdfkit" }),
+      entry("io.github.x/third", "Parse PDF into markdown"),
+    ]);
+    await verifiedAgent(store, "github:claimer/pdfkit", "claimer-pdfkit");
+    const r = await resolveNeed(store, NEEDS.find((n) => n.slug === "read-pdf-files")!);
+    expect(r.entries[0]!.key).toBe("io.github.x/claimed");
+    const { server } = createApp({ store, baseUrl: "http://t", fetchOpts: { lookup: async () => [{ address: "93.184.216.34", family: 4 }], requester: async () => ({ status: 404, body: "" }) } });
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const b = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const get = (p: string) => fetch(b + p, { headers: { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36" } });
+    const pdfPage = await (await get("/for/read-pdf-files")).text();
+    expect(pdfPage.indexOf("Claimed by its owner")).toBeGreaterThan(-1);
+    expect(pdfPage).toContain('href="/i/');
+    const unclaimed = (await store.indexedCandidates(["first"]))[0]!;
+    await store.bumpIndexedHandoff(unclaimed.id);
+    const html = await (await get(`/i/${unclaimed.id}`)).text();
+    for (const needle of ['name="robots" content="noindex"', "Indexed · unclaimed", "<strong>1</strong> in the last 30 days", 'href="/for/read-pdf-files"', "Is this yours?", 'href="/optout"']) expect(html, needle).toContain(needle);
+    const claimedRow = (await store.indexedCandidates(["claimed"]))[0]!;
+    const claimedHtml = await (await get(`/i/${claimedRow.id}`)).text();
+    expect(claimedHtml).toContain("This entry is claimed by its owner.");
+    const md = await (await get(`/i/${unclaimed.id}?format=md`)).text();
+    expect(md).toContain('<scbee_data untrusted_strings="true">');
+    expect((await get("/i/999999")).status).toBe(404);
+    // an entry with a repo is claimed through the existing one-file claim on its repo's page
+    const withRepo = await store.applyIndexed([entry("io.github.y/repo", "Read PDF reports", { repo: "github.com/someone/reader" })]);
+    void withRepo;
+    const repoRow = (await store.indexedCandidates(["reports"]))[0]!;
+    expect(await (await get(`/i/${repoRow.id}`)).text()).toContain('href="/claim/github.com/someone/reader"');
+    server.close();
+    store.close();
+  });
+});

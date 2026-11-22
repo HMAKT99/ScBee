@@ -12,6 +12,7 @@ import { trustMd, trustPage } from "./trust.js";
 import { callerHash, classify, isAsset, pathGroup, seenFrom } from "./traffic.js";
 import { entryDestination, entryView, rankIndexed, runIndexer } from "./indexer.js";
 import { botMd, botPage } from "./bot.js";
+import { entryMd, entryPage } from "./entry.js";
 import { alternativesFor, MIN_ENTRIES, NEEDS, needMd, needPage, needPath, needsIndexMd, needsIndexPage, qualifyNeeds, resolveNeed, entryCount } from "./needs.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
@@ -1680,6 +1681,15 @@ export function createApp(opts: AppOptions) {
         }
         const view = { a: pa, b: pb, since: conn.created_at, reason, collabs: (await store.doneCollabs({ pair: [x, y] })).map((d) => ({ kind: d.kind, title: d.title, same_owner: d.same_owner })) };
         return page(200, pairPage(view, baseUrl), pairMd(view, baseUrl));
+      }
+      const ix = p.match(/^\/i\/([0-9]{1,9})$/);
+      if (ix) {
+        // One index entry, for its owner: what ScBee knows, the hand-offs it sent, and how to claim or remove it (noindex).
+        const row = await store.indexedById(Number(ix[1]));
+        if (!row) return page(404, notFound());
+        const claimed = (await store.verifiedKeys([row.repo_key ?? "", row.site_key ?? ""])).size > 0;
+        const v = { row, handoffs: await store.indexedHandoffs(row.id), claimed };
+        return page(200, entryPage(baseUrl, v), entryMd(baseUrl, v));
       }
       const rx = p.match(/^\/r\/x\/([0-9]{1,9})$/);
       if (rx) {
