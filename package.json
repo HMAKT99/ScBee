@@ -15,7 +15,8 @@
     "backup": "node scripts/backup.mjs",
     "agent-files": "node scripts/agent-files.mjs",
     "onboarding": "node scripts/onboarding.mjs",
-    "journey": "node scripts/journey.mjs"
+    "journey": "node scripts/journey.mjs",
+    "traffic": "node scripts/traffic.mjs"
   },
   "engines": {
     "node": ">=22"

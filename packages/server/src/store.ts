@@ -252,6 +252,33 @@ CREATE TABLE IF NOT EXISTS funnel_events (
   n INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, event)
 );
+CREATE TABLE IF NOT EXISTS traffic_daily (
+  day TEXT NOT NULL,
+  class TEXT NOT NULL,
+  grp TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, class, grp)
+);
+CREATE TABLE IF NOT EXISTS traffic_callers (
+  day TEXT NOT NULL,
+  class TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  h TEXT NOT NULL,
+  PRIMARY KEY (day, class, scope, h)
+);
+CREATE TABLE IF NOT EXISTS traffic_distinct (
+  day TEXT NOT NULL,
+  class TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (day, class, scope)
+);
+CREATE TABLE IF NOT EXISTS traffic_tools (
+  day TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, tool)
+);
 CREATE TABLE IF NOT EXISTS claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_key TEXT NOT NULL,
@@ -691,6 +718,52 @@ export class Store {
       "SELECT total, created_at FROM score_history WHERE source_key = ? AND score_version = ? ORDER BY id ASC LIMIT 1", [key, now.score_version]);
     if (!first || Number(now.total) <= Number(first.total)) return null;
     return { from: Number(first.total), to: Number(now.total), days: Math.max(1, Math.round((Date.now() - Number(first.created_at)) / 86_400_000)) };
+  }
+
+  /**
+   * Today's random salt for caller hashes (see traffic.ts). Kept only while the day lasts: compactTraffic deletes it,
+   * so a stored hash can never be recomputed from an address afterwards.
+   */
+  async trafficSalt(day: string): Promise<string> {
+    return this.getOrCreateSecret(`traffic_salt:${day}`, () => randomBytes(32).toString("hex"));
+  }
+  /**
+   * One request: +1 to the day's total for its class and page group, the caller's day-salted hash for distinct counts
+   * (scope "all", and "mcp" for the MCP endpoint), and +1 per MCP tool called. No address, path or user agent is kept.
+   */
+  async recordTraffic(day: string, cls: string, grp: string, hash: string | null, mcp: boolean, tools: string[]) {
+    const stmts: { sql: string; args: InValue[] }[] = [
+      { sql: "INSERT INTO traffic_daily (day, class, grp, n) VALUES (?, ?, ?, 1) ON CONFLICT(day, class, grp) DO UPDATE SET n = n + 1", args: [day, cls, grp] },
+    ];
+    if (hash) {
+      stmts.push({ sql: "INSERT OR IGNORE INTO traffic_callers (day, class, scope, h) VALUES (?, ?, 'all', ?)", args: [day, cls, hash] });
+      if (mcp) stmts.push({ sql: "INSERT OR IGNORE INTO traffic_callers (day, class, scope, h) VALUES (?, ?, 'mcp', ?)", args: [day, cls, hash] });
+    }
+    for (const tool of tools) stmts.push({ sql: "INSERT INTO traffic_tools (day, tool, n) VALUES (?, ?, 1) ON CONFLICT(day, tool) DO UPDATE SET n = n + 1", args: [day, tool] });
+    await this.db.batch(stmts, "write");
+  }
+  /** +1 per MCP tool called today. Only the tool's name is kept. */
+  async recordTools(day: string, tools: string[]) {
+    if (!tools.length) return;
+    await this.db.batch(tools.map((tool) => ({ sql: "INSERT INTO traffic_tools (day, tool, n) VALUES (?, ?, 1) ON CONFLICT(day, tool) DO UPDATE SET n = n + 1", args: [day, tool] })), "write");
+  }
+  /** Turn every finished day's caller hashes into plain counts, then delete the hashes and that day's salt. Runs from the daily cron. */
+  async compactTraffic(today: string) {
+    await this.db.batch([
+      { sql: "INSERT OR REPLACE INTO traffic_distinct (day, class, scope, n) SELECT day, class, scope, COUNT(*) FROM traffic_callers WHERE day < ? GROUP BY day, class, scope", args: [today] },
+      { sql: "DELETE FROM traffic_callers WHERE day < ?", args: [today] },
+      { sql: "DELETE FROM secrets WHERE name LIKE 'traffic_salt:%' AND name < ?", args: [`traffic_salt:${today}`] },
+    ], "write");
+  }
+  /** For the operator only: the last `days` of traffic by class, page group, distinct callers and MCP tool. */
+  async trafficReport(days: number) {
+    const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+    const daily = await this.rows<{ day: string; class: string; grp: string; n: number }>("SELECT day, class, grp, n FROM traffic_daily WHERE day >= ? ORDER BY day", [since]);
+    const finished = await this.rows<{ day: string; class: string; scope: string; n: number }>("SELECT day, class, scope, n FROM traffic_distinct WHERE day >= ?", [since]);
+    const live = await this.rows<{ day: string; class: string; scope: string; n: number }>("SELECT day, class, scope, COUNT(*) AS n FROM traffic_callers WHERE day >= ? GROUP BY day, class, scope", [since]);
+    const tools = await this.rows<{ day: string; tool: string; n: number }>("SELECT day, tool, n FROM traffic_tools WHERE day >= ? ORDER BY day", [since]);
+    const num = <T extends { n: unknown }>(r: T) => ({ ...r, n: Number(r.n) });
+    return { since, daily: daily.map(num), distinct: [...finished, ...live].map(num), tools: tools.map(num) };
   }
 
   /** For the operator only (admin token): how newcomers move from registering to being useful, over the last `days`. */

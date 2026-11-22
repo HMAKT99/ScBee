@@ -13,7 +13,7 @@ import { LOGO_SVG } from "./card.js";
  * Nothing in it runs on its own: the skills act only when the human asks, and every write needs the human's yes.
  * Bump PLUGIN_VERSION when any of the plugin's files change.
  */
-export const PLUGIN_VERSION = "1.0.4";
+export const PLUGIN_VERSION = "1.0.5";
 /** find-agent is also published on its own (skills/find-agent, ClawHub), so it carries its own version. */
 export const FIND_AGENT_VERSION = "1.1.0";
 
@@ -117,7 +117,7 @@ Everything goes to one service, ScBee at ${base}, and only when you run a skill 
 | launch-check or agent-ready-check lists it (only after your yes) | \`POST ${base}/api/register\`, then \`/api/verify\` | The repo address; the key it returns is shown to you once |
 | find-agent, if the MCP tool is unavailable | \`GET ${base}/api/handoff?need=...\` | The short description of the need, without names, paths or code |
 
-ScBee keeps the public score and score history of a scored project until its owner opts out (${base}/optout), and daily totals that hold no address or visitor id. A hashed network address is held for about an hour for rate limits. Details: ${base}/privacy. Terms: ${base}/terms.
+ScBee keeps the public score and score history of a scored project until its owner opts out (${base}/optout), and daily totals that hold no address or visitor id. A hashed network address is held for about an hour for rate limits, and a hash of the address and browser name mixed with a random value made for that day is held until the day's visitors are counted, then deleted with that value. Details: ${base}/privacy. Terms: ${base}/terms.
 
 ## Support
 

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { INTERNAL, toolNames } from "./traffic.js";
 import { Readable } from "node:stream";
 
 /**
@@ -23,7 +24,7 @@ export function inProcessFetch(handler: Handler, ip: string): typeof fetch {
     const headers: Record<string, string> = {};
     new Headers(init?.headers).forEach((v, k) => { headers[k] = v; });
     headers["x-forwarded-for"] = ip;
-    const req = Object.assign(Readable.from(body ? [Buffer.from(body)] : []), { url: u.pathname + u.search, method: init?.method ?? "GET", headers, socket: { remoteAddress: ip } });
+    const req = Object.assign(Readable.from(body ? [Buffer.from(body)] : []), { url: u.pathname + u.search, method: init?.method ?? "GET", headers, socket: { remoteAddress: ip }, [INTERNAL]: true });
     return new Promise<Response>((resolve, reject) => {
       let status = 200;
       const out = new Headers();
@@ -55,7 +56,7 @@ export interface McpHttpOptions {
   /** Headers every answer carries (the site's security headers). */
   headers: Record<string, string>;
   /** Called once for a request that runs a tool, so calls can be counted. */
-  onToolCall: () => Promise<unknown> | void;
+  onToolCall: (tools: string[]) => Promise<unknown> | void;
 }
 
 export async function handleMcp(req: IncomingMessage, res: ServerResponse, o: McpHttpOptions): Promise<void> {
@@ -78,7 +79,7 @@ export async function handleMcp(req: IncomingMessage, res: ServerResponse, o: Mc
   if (body === null || typeof body !== "object") return rpcError(res, 400, -32600, "body must be a JSON-RPC message");
   const messages = Array.isArray(body) ? body : [body];
   if (messages.length > 10) return rpcError(res, 400, -32600, "at most 10 messages per request");
-  if (messages.some((m) => (m as { method?: unknown } | null)?.method === "tools/call")) await o.onToolCall();
+  if (messages.some((m) => (m as { method?: unknown } | null)?.method === "tools/call")) await o.onToolCall(toolNames(body));
 
   // Loaded on first use, so pages that never touch MCP do not pay for it at start-up.
   const [{ createServer }, { StreamableHTTPServerTransport }] = await Promise.all([import("scbee-mcp"), import("@modelcontextprotocol/sdk/server/streamableHttp.js")]);

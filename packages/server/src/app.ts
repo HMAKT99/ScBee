@@ -9,6 +9,7 @@ import { configureSite, getSite, type SiteConfig } from "./config.js";
 import { atomFeed } from "./atom.js";
 import { radarMd, radarPage, RADAR_MIN_SCORE, weeklyMd, weeklyPage, type RadarItem, type WeeklyDigest } from "./radar.js";
 import { trustMd, trustPage } from "./trust.js";
+import { callerHash, classify, isAsset, pathGroup, seenFrom } from "./traffic.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
 import { boardGuideMd, boardGuidePage, boardHandoffMd, handoffSchema } from "./boardHandoff.js";
@@ -419,7 +420,8 @@ export function createApp(opts: AppOptions) {
       await deliver({ id: d.id, agent_id: d.agent_id, kind: d.kind, title: d.title, body: d.body, url: d.url, created_at: d.created_at }, { url: d.url_hook, nonce: d.nonce });
       retried++;
     }
-    return { forecasts_checked: forecasts, deliveries_retried: retried };
+    await store.compactTraffic(new Date().toISOString().slice(0, 10));
+    return { forecasts_checked: forecasts, deliveries_retried: retried, traffic_compacted: true };
   }
   /**
    * Adds up to `limit` NEW projects across the collections, in parallel and inside a time budget (a Vercel function may run only 15 s).
@@ -1193,6 +1195,11 @@ export function createApp(opts: AppOptions) {
       const days = Math.min(Math.max(Number(url.searchParams.get("days") ?? 30) || 30, 1), 365);
       return json(res, 200, { note: "Operator view. Real counts from the database; events are per-day counts with no identities.", ...(await store.onboardingReport(days)) });
     }
+    if (method === "GET" && path === "/api/admin/traffic") {
+      adminAuth(req);
+      const days = Math.min(Math.max(Number(url.searchParams.get("days") ?? 30) || 30, 1), 90);
+      return json(res, 200, { note: "Operator view. Per-day totals by class and page group, distinct callers from day-salted hashes, MCP calls per tool. Edge-cached pages never reach the server, so these are floors.", ...(await store.trafficReport(days)) });
+    }
     if (method === "POST" && path === "/api/admin/hide") {
       adminAuth(req);
       const t = await store.byHandle(str((await readJson(req)).handle, 39, "handle"));
@@ -1204,16 +1211,33 @@ export function createApp(opts: AppOptions) {
     throw new HttpError(404, "not found");
   }
 
+  /** Today's salt for caller hashes, read once per day per instance rather than on every request. */
+  let salt: { day: string; value: string } | null = null;
+  /**
+   * Count this request by class and page group (traffic.ts). Daily totals and day-salted caller hashes only: no address,
+   * path or user agent is stored. Never slows a failure into an error: anything that goes wrong here is ignored.
+   */
+  async function countRequest(req: IncomingMessage, url: URL) {
+    const s = seenFrom(req, url.pathname, url.searchParams);
+    if (isAsset(url.pathname, s.method)) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const cls = classify(s);
+    if (salt?.day !== day) salt = { day, value: await store.trafficSalt(day) };
+    const hash = cls === "scbee_self" ? null : callerHash(salt.value, clientIp(req), s.userAgent);
+    await store.recordTraffic(day, cls, pathGroup(url.pathname), hash, url.pathname === "/mcp", []);
+  }
+
   async function handler(req: IncomingMessage, res: ServerResponse) {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       const method = req.method ?? "GET";
+      await countRequest(req, url).catch(() => undefined);
       if (url.pathname.startsWith("/api/")) return await api(req, res, url);
       if (url.pathname === "/mcp") {
         // A person who opens the address in a browser is sent to the instructions; clients speak JSON-RPC over POST.
         if (method === "GET" && String(req.headers.accept ?? "").includes("text/html")) { res.writeHead(302, { ...SECURITY_HEADERS, location: "/#connect", "cache-control": "no-store" }); return void res.end(); }
         if (method === "POST") await limit(`mcp:${clientIp(req)}`, 300, 3600_000);
-        return await handleMcp(req, res, { baseUrl, handler, ip: clientIp(req), headers: SECURITY_HEADERS, onToolCall: () => funnel("mcp_http_call") });
+        return await handleMcp(req, res, { baseUrl, handler, ip: clientIp(req), headers: SECURITY_HEADERS, onToolCall: async (tools) => { await funnel("mcp_http_call"); await store.recordTools(new Date().toISOString().slice(0, 10), tools).catch(() => undefined); } });
       }
       if (method !== "GET" && method !== "HEAD") throw new HttpError(405, "method not allowed");
       const p = url.pathname;
