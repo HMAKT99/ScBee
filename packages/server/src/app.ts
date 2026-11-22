@@ -433,12 +433,17 @@ export function createApp(opts: AppOptions) {
       retried++;
     }
     await store.compactTraffic(new Date().toISOString().slice(0, 10));
+    const msBeforeIndex = Date.now() - tickStarted;
     // The index of public MCP Registry entries, and ScBeeBot's few polite visits, in what is left of the 15 seconds.
     const index = await runIndexer(store, { baseUrl, fetchOpts: opts.fetchOpts ?? {}, deadline: tickStarted + 12_000 }).catch((e) => ({ error: e instanceof Error ? e.message.slice(0, 120) : "index run failed" }));
     // Which need pages are published (at least MIN_ENTRIES real entries), computed once a day for pages and the sitemap.
-    const needs = await qualifyNeeds(store).catch(() => null);
+    let needsError: string | null = null;
+    const needs = await qualifyNeeds(store).catch((e) => { needsError = e instanceof Error ? e.message.slice(0, 120) : "need pages failed"; return null; });
     if (needs) await store.setIndexState("need_pages", JSON.stringify(needs));
-    return { forecasts_checked: forecasts, deliveries_retried: retried, traffic_compacted: true, index, need_pages: needs ? needs.pages.length : null, unmet_without_page: needs?.unmet_without_page ?? [] };
+    const result = { forecasts_checked: forecasts, deliveries_retried: retried, traffic_compacted: true, ms_before_index: msBeforeIndex, ms_total: Date.now() - tickStarted, index, need_pages: needs ? needs.pages.length : null, need_pages_error: needsError, unmet_without_page: needs?.unmet_without_page ?? [] };
+    // One line in the runtime log per run, so the operator can see what happened (counts and short error messages only).
+    console.log(`[cron/tick] ${JSON.stringify({ ...result, unmet_without_page: result.unmet_without_page.length })}`);
+    return result;
   }
   /**
    * Adds up to `limit` NEW projects across the collections, in parallel and inside a time budget (a Vercel function may run only 15 s).
