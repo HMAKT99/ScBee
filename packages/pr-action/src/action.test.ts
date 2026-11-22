@@ -137,13 +137,24 @@ const harness = (over: Partial<Deps> & { comments?: any[]; status?: number } = {
     pull_request: { number: 7, base: { sha: "b".repeat(40), ref: "main" }, head: { sha: "c".repeat(40), repo: { full_name: "o/r" } } },
   };
   const deps: Deps = {
-    env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", INPUT_GITHUB_TOKEN: "t" },
+    env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", "INPUT_GITHUB-TOKEN": "t" },
     event, fetch: f, headTree: dirTree(headDir), baseTree: () => dirTree(baseDir), now: NOW, ...over,
   };
   return { deps, calls, writes: () => calls.filter((c) => c.method !== "GET") };
 };
 
 describe("running on a pull request", () => {
+  it("reads inputs the way the runner passes them (INPUT_GITHUB-TOKEN, hyphen kept)", async () => {
+    const real = harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", "INPUT_GITHUB-TOKEN": "t", "INPUT_FAIL-UNDER": "99" } });
+    const r = await run(real.deps);
+    expect(real.writes()).toHaveLength(1);
+    expect(r.code).toBe(1);
+    // the underscore spelling still works for direct calls
+    const direct = harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", INPUT_GITHUB_TOKEN: "t" } });
+    await run(direct.deps);
+    expect(direct.writes()).toHaveLength(1);
+  });
+
   it("posts one comment on the pull request that triggered it, and nowhere else", async () => {
     const h = harness();
     const r = await run(h.deps);
@@ -179,15 +190,15 @@ describe("running on a pull request", () => {
   });
 
   it("fail-under fails only below the number, and a bad value is ignored", async () => {
-    expect((await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", INPUT_GITHUB_TOKEN: "t", INPUT_FAIL_UNDER: "99" } }).deps)).code).toBe(1);
-    expect((await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", INPUT_GITHUB_TOKEN: "t", INPUT_FAIL_UNDER: "1" } }).deps)).code).toBe(0);
-    const bad = await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", INPUT_GITHUB_TOKEN: "t", INPUT_FAIL_UNDER: "lots" } }).deps);
+    expect((await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", "INPUT_GITHUB-TOKEN": "t", "INPUT_FAIL-UNDER": "99" } }).deps)).code).toBe(1);
+    expect((await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", "INPUT_GITHUB-TOKEN": "t", "INPUT_FAIL-UNDER": "1" } }).deps)).code).toBe(0);
+    const bad = await run(harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "pull_request", "INPUT_GITHUB-TOKEN": "t", "INPUT_FAIL-UNDER": "lots" } }).deps);
     expect(bad.code).toBe(0);
     expect(bad.log.join(" ")).toContain("fail-under must be a number");
   });
 
   it("outside a pull request (a push), reports in the summary and comments nowhere", async () => {
-    const h = harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "push", INPUT_GITHUB_TOKEN: "t" } });
+    const h = harness({ env: { GITHUB_REPOSITORY: "o/r", GITHUB_EVENT_NAME: "push", "INPUT_GITHUB-TOKEN": "t" } });
     const r = await run(h.deps);
     expect(h.writes()).toEqual([]);
     expect(r.outputs["score-change"]).toBe("");

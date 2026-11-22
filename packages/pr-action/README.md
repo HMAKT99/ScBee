@@ -11,7 +11,7 @@ name: ScBee
 on: pull_request
 permissions: { contents: read, pull-requests: write }
 jobs:
-  scbee: { runs-on: ubuntu-latest, steps: [ uses: actions/checkout@v4, uses: HMAKT99/scbee-action@v1 ] }
+  scbee: { runs-on: ubuntu-latest, steps: [ uses: actions/checkout@v5, uses: HMAKT99/scbee-action@v1 ] }
 ```
 
 The same, spelled out, with the optional check:
@@ -26,7 +26,7 @@ jobs:
   scbee:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: HMAKT99/scbee-action@v1
         with:
           fail-under: 70   # optional: fail the check below this launch readiness score
