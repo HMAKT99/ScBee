@@ -12,6 +12,7 @@ import { trustMd, trustPage } from "./trust.js";
 import { callerHash, classify, isAsset, pathGroup, seenFrom } from "./traffic.js";
 import { entryDestination, entryView, rankIndexed, runIndexer } from "./indexer.js";
 import { botMd, botPage } from "./bot.js";
+import { alternativesFor, MIN_ENTRIES, NEEDS, needMd, needPage, needPath, needsIndexMd, needsIndexPage, qualifyNeeds, resolveNeed, entryCount } from "./needs.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
 import { boardGuideMd, boardGuidePage, boardHandoffMd, handoffSchema } from "./boardHandoff.js";
@@ -181,6 +182,10 @@ export function createApp(opts: AppOptions) {
   });
   /** The operator's own owner key (from the site's repo), so their listings are never counted as someone else joining. */
   const operatorOwner = () => `github:${(getSite().repoUrl.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1] ?? "").toLowerCase()}`;
+  /** The need pages published by the last daily run: which slugs, how many entries, and merged duplicates. */
+  const needPages = async (): Promise<{ pages: { slug: string; count: number }[]; canonical: Record<string, string> }> => {
+    try { const j = JSON.parse((await store.indexState("need_pages")) ?? "null"); return j && Array.isArray(j.pages) ? j : { pages: [], canonical: {} }; } catch { return { pages: [], canonical: {} }; }
+  };
   /** A project's entries in the public index, with hand-offs sent in the last 30 days, for its page. */
   const indexedNotes = async (key: string) =>
     Promise.all((await store.indexedForProject(key)).map(async (r) => ({ name: r.title ?? r.key, handoffs: await store.indexedHandoffs(r.id) })));
@@ -430,7 +435,10 @@ export function createApp(opts: AppOptions) {
     await store.compactTraffic(new Date().toISOString().slice(0, 10));
     // The index of public MCP Registry entries, and ScBeeBot's few polite visits, in what is left of the 15 seconds.
     const index = await runIndexer(store, { baseUrl, fetchOpts: opts.fetchOpts ?? {}, deadline: tickStarted + 12_000 }).catch((e) => ({ error: e instanceof Error ? e.message.slice(0, 120) : "index run failed" }));
-    return { forecasts_checked: forecasts, deliveries_retried: retried, traffic_compacted: true, index };
+    // Which need pages are published (at least MIN_ENTRIES real entries), computed once a day for pages and the sitemap.
+    const needs = await qualifyNeeds(store).catch(() => null);
+    if (needs) await store.setIndexState("need_pages", JSON.stringify(needs));
+    return { forecasts_checked: forecasts, deliveries_retried: retried, traffic_compacted: true, index, need_pages: needs ? needs.pages.length : null, unmet_without_page: needs?.unmet_without_page ?? [] };
   }
   /**
    * Adds up to `limit` NEW projects across the collections, in parallel and inside a time budget (a Vercel function may run only 15 s).
@@ -1448,7 +1456,8 @@ export function createApp(opts: AppOptions) {
             const v = await siteScore(wHost, ip);
             const claim = await store.claimStatus(`url:https://${wHost}`);
             const indexed = await indexedNotes(`url:https://${wHost}`);
-            return page(200, projectPage({ ...v, claim, indexed, indexable: await indexable(`url:https://${wHost}`, v.listed || claim === "claimed", v.result.total) }, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady, claim, indexed }, band(v.result.total).label));
+            const alternatives = await alternativesFor(store, `url:https://${wHost}`).catch(() => []);
+            return page(200, projectPage({ ...v, claim, indexed, alternatives, indexable: await indexable(`url:https://${wHost}`, v.listed || claim === "claimed", v.result.total) }, baseUrl), scoreMd(baseUrl, { path: v.path, name: v.title, description: v.description, result: v.result, agentReady: v.agentReady, claim, indexed, alternatives }, band(v.result.total).label));
           } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
         }
       }
@@ -1479,8 +1488,9 @@ export function createApp(opts: AppOptions) {
             const rise = await store.scoreRise(key);
             const featuredSince = await store.featuredSince(key, RADAR_MIN_SCORE);
             const indexed = await indexedNotes(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`);
-            return page(200, projectPage({ ...v, claim, usage, preview, rise, featuredSince, indexed, shareRise: url.searchParams.has("rise"), indexable: await indexable(key, v.listed || claim === "claimed", v.result.total) }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
-              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage, preview, indexed }, band(v.result.total).label));
+            const alternatives = await alternativesFor(store, `github:${owner.toLowerCase()}/${repo.toLowerCase()}`).catch(() => []);
+            return page(200, projectPage({ ...v, claim, usage, preview, rise, featuredSince, indexed, alternatives, shareRise: url.searchParams.has("rise"), indexable: await indexable(key, v.listed || claim === "claimed", v.result.total) }, baseUrl, await forecastFor(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`), await constellation(`github:${owner.toLowerCase()}/${repo.toLowerCase()}`)),
+              scoreMd(baseUrl, { path: `github.com/${v.owner}/${v.repo}`, name: `${v.owner}/${v.repo}`, description: v.description, result: v.result, agentReady: v.agentReady, claim, usage, preview, indexed, alternatives }, band(v.result.total).label));
           } catch (e) {
             if (e instanceof HttpError && e.status !== 400) return page(e.status, notFound(e.message));
             throw e;
@@ -1516,7 +1526,8 @@ export function createApp(opts: AppOptions) {
         const handles = (await store.list("", false, 1000)).map((x) => x.handle);
         // Only the score pages search engines may index: gallery projects that scored well (the same line as the radar).
         const gallery = (await galleryData()).flatMap((c) => c.items.filter((i) => i.score >= RADAR_MIN_SCORE).map((i) => i.project));
-        return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)], (await store.pairs()).map((x) => pairPath(x.a, x.b)), COLLECTIONS.map((c) => c.id)), "application/xml");
+        const needUrls = (await needPages()).pages.map((x) => needPath(x.slug));
+        return send(res, 200, sitemapXml(baseUrl, handles, [...new Set(gallery)], [...(await store.pairs()).map((x) => pairPath(x.a, x.b)), ...needUrls], COLLECTIONS.map((c) => c.id)), "application/xml");
       }
       if (p === "/manage") return page(200, managePage());
       if (p === "/gallery") { const cols = await galleryData(); return page(200, galleryPage(cols), galleryMd(baseUrl, cols)); }
@@ -1556,6 +1567,19 @@ export function createApp(opts: AppOptions) {
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));
       if (p === "/with/vercel-board") return page(200, boardGuidePage(baseUrl), boardGuideMd(baseUrl));
+      if (p === "/for") { const np = await needPages(); return page(200, needsIndexPage(baseUrl, np.pages), needsIndexMd(baseUrl, np.pages)); }
+      const needMatch = p.match(/^\/for\/([a-z0-9-]{2,60})$/);
+      if (needMatch) {
+        const np = await needPages();
+        const to = np.canonical[needMatch[1]!];
+        if (to) { res.writeHead(301, { ...SECURITY_HEADERS, location: needPath(to), "cache-control": "public, max-age=3600" }); return void res.end(); }
+        const need = NEEDS.find((n) => n.slug === needMatch[1]);
+        if (!need) return page(404, notFound());
+        const r = await resolveNeed(store, need);
+        // Published only when the daily run found enough entries and there still are; otherwise the page exists but is noindex.
+        const published = np.pages.some((x) => x.slug === need.slug) && entryCount(r) >= MIN_ENTRIES;
+        return page(200, needPage(baseUrl, r, published), needMd(baseUrl, r, published));
+      }
       if (p === "/bot") { const n = await store.indexedCount(); return page(200, botPage(baseUrl, n), botMd(baseUrl, n)); }
       const gm = p.match(/^\/gallery\/([a-z0-9-]{2,40})$/);
       if (gm) {

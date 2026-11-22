@@ -22,6 +22,8 @@ export interface ProjectView {
   preview?: ListingPreview;
   /** Entries for this project in the public index (from the official MCP Registry), with hand-offs sent in 30 days. */
   indexed?: { name: string; handoffs: number }[];
+  /** Up to 3 alternatives from the index, each with a specific reason. When present, generic category links are left out. */
+  alternatives?: { name: string; href: string; reason: string }[];
   /** Search engines may index the page: the owner listed it, or it is in the gallery and scored well. Everything else stays noindex. */
   indexable?: boolean;
   /** Set when the recorded score went up under the same rules: the earliest total, the latest, and the days between. */
@@ -198,7 +200,8 @@ ${p.description ? `<p class="lead mt16">${esc(p.description)}</p>` : ""}${p.usag
 ${fixes}
 <h2 class="h2s">Breakdown</h2><div class="comps">${comps}</div>
 ${p.agentReady ? agentReadySection(p.agentReady, path, base) : ""}
-${graph ? constellationSection(graph) : ""}
+${p.alternatives?.length ? `<h2 class="h2s">Alternatives</h2><div class="specimen"><ul class="items">${p.alternatives.map((a) => `<li><a href="${esc(a.href)}" rel="nofollow"><strong>${esc(a.name)}</strong></a> <span class="badge">Indexed · unclaimed</span><span class="fix">${esc(a.reason)}</span></li>`).join("")}</ul><p class="note">From ScBee's index of the official MCP Registry, matched by fixed rules. Not verified; check what each can access. <a href="/bot">What the index is</a>.</p></div>` : ""}
+${graph ? constellationSection(p.alternatives?.length ? { ...graph, edges: graph.edges.filter((e) => !(e.type === "COMPOSES_WITH" && e.weight < 0.6)) } : graph) : ""}
 ${fc ? forecastSection(fc.forecast, fc.verdicts) : ""}
 ${riseSection}
 ${p.featuredSince && path.startsWith("github.com/") ? `<h2 class="h2s" id="featured">Featured on the Launch Radar</h2><div class="specimen">
