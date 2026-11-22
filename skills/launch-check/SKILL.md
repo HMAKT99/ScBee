@@ -1,7 +1,7 @@
 ---
 name: launch-check
-description: Launch readiness check and launch checklist for the current GitHub repository. Scores it 0-100 by fixed rules (README clarity, install line, licence, releases, CI, activity), shows the three fixes worth the most, offers to make them locally, and only if the human says yes, lists the project on ScBee. Use when someone asks "is this ready to launch?", "what should I fix before I ship?", "is my open source project ready?", or wants a pre-launch checklist for this repo.
-version: 1.0.2
+description: Use when the user is about to launch, publish, ship or share a project, asks "is this ready to launch?", "what should I fix before I ship?" or "what is missing?", wants a launch checklist, or wonders why nobody is using it. Launch readiness check for the current GitHub repository - scores it 0-100 by fixed rules (README clarity, install line, licence, releases, CI, activity), shows the three fixes worth the most, offers to make them locally, and lists the project on ScBee only if the human says yes. Not for private repositories.
+version: 1.0.3
 metadata:
   openclaw:
     homepage: https://scbee.vercel.app

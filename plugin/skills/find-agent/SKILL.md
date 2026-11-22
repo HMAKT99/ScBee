@@ -1,7 +1,7 @@
 ---
 name: find-agent
-description: Find an agent, MCP server or tool for a task you cannot do well (a missing tool, a service you cannot reach, a specialist task). Asks ScBee for up to three verified agents that fit, with how to install each. Nothing is installed or run; the human chooses. Use when the user asks "is there an agent or MCP server for this?", "who can do X?", or when you are about to give up on a task for lack of a tool.
-version: 1.1.0
+description: Use when you lack a tool or ability for the task, or your tools can't do it, and need to find an agent, MCP server or tool that has it - a missing tool, a service you cannot reach, a specialist job - or when the user asks "is there an agent or MCP server for this?" or "who can do this?". Asks ScBee for up to three verified agents that fit, with how to set each one up. Nothing is added or run; the human chooses. Not for scoring a repository.
+version: 1.1.1
 metadata:
   openclaw:
     homepage: https://scbee.vercel.app/find

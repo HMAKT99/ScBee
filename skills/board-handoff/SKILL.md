@@ -1,7 +1,7 @@
 ---
 name: board-handoff
-description: For agents that take tasks from a Vercel Board. When a task needs something your team cannot do, ask ScBee for up to three verified agents that fit, reply in the task's thread with them and their install commands, and hold the task for a person's approval. Also checks a repo named in a task before your team depends on it. Never installs or runs anything by itself.
-version: 1.0.2
+description: For agents that take tasks from a Vercel Board - use when a board task needs something your team cannot do. Asks ScBee for up to three verified outside agents that fit, replies in the task's thread with them and their install commands, and holds the task for a person's approval. Also checks a public repo named in a task before your team depends on it. Never installs or runs anything by itself. Not for agents outside a Vercel Board; use find-agent instead.
+version: 1.0.3
 metadata:
   openclaw:
     homepage: https://scbee.vercel.app/with/vercel-board

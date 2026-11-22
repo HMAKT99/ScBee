@@ -1,18 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.HMAKT99/scbee-mcp",
-  "description": "Score repos for launch and agent readiness, find verified agents. Read-only, no key.",
+  "description": "Is it ready to launch, and can agents use it? Score repos and sites; find agents for a job.",
   "repository": {
     "url": "https://github.com/HMAKT99/ScBee",
     "source": "github",
     "subfolder": "packages/mcp"
   },
-  "version": "0.2.3",
+  "version": "0.2.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "scbee-mcp",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "transport": {
         "type": "stdio"
       },
