@@ -27,7 +27,7 @@ Everything goes to one service, ScBee at https://scbee.vercel.app, and only when
 | launch-check or agent-ready-check lists it (only after your yes) | `POST https://scbee.vercel.app/api/register`, then `/api/verify` | The repo address; the key it returns is shown to you once |
 | find-agent, if the MCP tool is unavailable | `GET https://scbee.vercel.app/api/handoff?need=...` | The short description of the need, without names, paths or code |
 
-ScBee keeps the public score and score history of a scored project until its owner opts out (https://scbee.vercel.app/optout), and daily totals that hold no address or visitor id. A hashed network address is held for about an hour for rate limits. Details: https://scbee.vercel.app/privacy. Terms: https://scbee.vercel.app/terms.
+ScBee keeps the public score and score history of a scored project until its owner opts out (https://scbee.vercel.app/optout), and daily totals that hold no address or visitor id. A hashed network address is held for about an hour for rate limits, and a hash of the address and browser name mixed with a random value made for that day is held until the day's visitors are counted, then deleted with that value. Details: https://scbee.vercel.app/privacy. Terms: https://scbee.vercel.app/terms.
 
 ## Support
 
