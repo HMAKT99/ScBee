@@ -63,6 +63,8 @@ describe("tools", () => {
     expect(srv.packages).toHaveLength(1);
     expect(srv.packages[0]).toMatchObject({ registryType: "npm", identifier: pkg.name, version: pkg.version, transport: { type: "stdio" } });
     expect(srv.description.length).toBeLessThanOrEqual(100);
+    // the hosted endpoint, so registry clients can offer the no-install option
+    expect(srv.remotes).toEqual([{ type: "streamable-http", url: "https://scbee.vercel.app/mcp" }]);
     const env = Object.fromEntries(srv.packages[0].environmentVariables.map((e: any) => [e.name, e]));
     expect(env.SCBEE_URL.isRequired).toBe(false);
     expect(env.SCBEE_API_KEY).toMatchObject({ isRequired: false, isSecret: true });
