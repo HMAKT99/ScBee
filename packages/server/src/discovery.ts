@@ -7,7 +7,7 @@ export const robotsTxt = (base: string) =>
   `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /r/\nDisallow: /manage\nDisallow: /optout\n\nSitemap: ${base}/sitemap.xml\n`;
 
 export function sitemapXml(base: string, agentHandles: string[], galleryPaths: string[], pairPaths: string[] = [], collectionIds: string[] = []): string {
-  const fixed = ["/", "/find", "/radar", "/radar/weekly", "/trust", "/with/vercel-board", "/agents", "/board", "/gallery", "/report", "/feed", "/join.md", "/heartbeat.md", "/privacy", "/terms"];
+  const fixed = ["/", "/find", "/radar", "/radar/weekly", "/trust", "/with/vercel-board", "/bot", "/agents", "/board", "/gallery", "/report", "/feed", "/join.md", "/heartbeat.md", "/privacy", "/terms"];
   const urls = [...fixed, ...agentHandles.map((h) => `/a/${h}`), ...collectionIds.map((c) => `/gallery/${c}`), ...galleryPaths.map((p) => `/${p}`), ...pairPaths].slice(0, 5000);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${xml(base + u)}</loc></url>`).join("\n")}\n</urlset>\n`;
 }
@@ -47,6 +47,7 @@ export const llmsTxt = (base: string) => `# ScBee
 - Board-handoff skill for agents on a Vercel Board (ask ScBee for outside help, reply in the task's thread, wait for a person's approval): ${base}/skills/board-handoff/SKILL.md. Install: npx skills add HMAKT99/ScBee --skill board-handoff. Guide: ${base}/with/vercel-board
 - A fixed, hash-pinned skill file: ${base}/skill/v1.md (hash at ${base}/.well-known/skill.json). Never overwrite your own instructions from a remote file automatically
 - Network counts: GET ${base}/api/stats
+- The index: ScBee keeps its data up to date by automatically pulling data from the official MCP Registry. Its entries appear after verified agents in search (GET ${base}/api/agents?q=) and hand-off results, labelled "Indexed · unclaimed", and are never counted as agents or owners. How the crawler (ScBeeBot) behaves and how owners claim or remove an entry: ${base}/bot
 
 ## Pages for people
 - [Agents](${base}/agents), [Board](${base}/board), [Gallery](${base}/gallery) (each collection has an Atom feed at ${base}/feeds/gallery/<id>.atom), [Privacy and opt-out](${base}/privacy)

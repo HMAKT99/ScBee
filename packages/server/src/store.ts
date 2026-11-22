@@ -1,6 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createClient, type Client, type InValue } from "@libsql/client";
-import { MIN_CONNECTIONS_FOR_DEGREES, degreesOfSeparation, possibleIntroductions, mergeCard, parseCard, type AgentCard, type Profile } from "@scbee/registry-core";
+import { MIN_CONNECTIONS_FOR_DEGREES, degreesOfSeparation, possibleIntroductions, mergeCard, parseCard, type AgentCard, type IndexedEntry, type Profile } from "@scbee/registry-core";
+
+/** A stored index entry (third-party text: show it as untrusted data). */
+export interface IndexedRow { id: number; key: string; title: string | null; description: string; version: string; repo: string | null; website: string | null; remote: string | null; pkg: string | null; status: string; host: string | null; tools_json: string | null; card_json: string | null; probed_at: number | null; probe_note: string | null; fetched_at: number }
 
 export interface AgentRow {
   id: number;
@@ -278,6 +281,46 @@ CREATE TABLE IF NOT EXISTS traffic_tools (
   tool TEXT NOT NULL,
   n INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, tool)
+);
+CREATE TABLE IF NOT EXISTS indexed_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  title TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  version TEXT NOT NULL DEFAULT '',
+  repo TEXT,
+  website TEXT,
+  remote TEXT,
+  pkg TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  host TEXT,
+  repo_key TEXT,
+  site_key TEXT,
+  registry_updated_at TEXT,
+  fetched_at INTEGER NOT NULL,
+  tools_json TEXT,
+  card_json TEXT,
+  probed_at INTEGER,
+  probe_note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_indexed_host ON indexed_entries(host);
+CREATE INDEX IF NOT EXISTS idx_indexed_repo ON indexed_entries(repo_key);
+CREATE INDEX IF NOT EXISTS idx_indexed_site ON indexed_entries(site_key);
+CREATE TABLE IF NOT EXISTS index_state (
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bot_hosts (
+  host TEXT PRIMARY KEY,
+  last_day TEXT NOT NULL,
+  failures INTEGER NOT NULL DEFAULT 0,
+  retry_after INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS indexed_handoffs (
+  day TEXT NOT NULL,
+  entry_id INTEGER NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, entry_id)
 );
 CREATE TABLE IF NOT EXISTS claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -764,6 +807,91 @@ export class Store {
     const tools = await this.rows<{ day: string; tool: string; n: number }>("SELECT day, tool, n FROM traffic_tools WHERE day >= ? ORDER BY day", [since]);
     const num = <T extends { n: unknown }>(r: T) => ({ ...r, n: Number(r.n) });
     return { since, daily: daily.map(num), distinct: [...finished, ...live].map(num), tools: tools.map(num) };
+  }
+
+  // ---- the index: public MCP Registry entries, apart from agents (never counted as agents or owners) ----
+  async indexState(name: string): Promise<string | null> {
+    return (await this.one<{ value: string }>("SELECT value FROM index_state WHERE name = ?", [name]))?.value ?? null;
+  }
+  async setIndexState(name: string, value: string | null) {
+    if (value === null) await this.run("DELETE FROM index_state WHERE name = ?", [name]);
+    else await this.run("INSERT INTO index_state (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value", [name, value]);
+  }
+  /** Apply one registry page: insert or update entries, and delete the ones the registry marked deleted. */
+  async applyIndexed(entries: IndexedEntry[]) {
+    const now = Date.now();
+    const stmts: { sql: string; args: InValue[] }[] = [];
+    for (const e of entries) {
+      if (e.status === "deleted") {
+        stmts.push({ sql: "DELETE FROM indexed_handoffs WHERE entry_id IN (SELECT id FROM indexed_entries WHERE key = ?)", args: [e.key] });
+        stmts.push({ sql: "DELETE FROM indexed_entries WHERE key = ?", args: [e.key] });
+        continue;
+      }
+      const hostOf = (u: string | null) => { try { return u ? new URL(u).hostname.toLowerCase() : null; } catch { return null; } };
+      const host = hostOf(e.remote) ?? hostOf(e.website);
+      const repoKey = e.repo ? `github:${e.repo.slice("github.com/".length).toLowerCase()}` : null;
+      const siteHost = hostOf(e.website) ?? hostOf(e.remote);
+      stmts.push({
+        sql: `INSERT INTO indexed_entries (key, title, description, version, repo, website, remote, pkg, status, host, repo_key, site_key, registry_updated_at, fetched_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(key) DO UPDATE SET title = excluded.title, description = excluded.description, version = excluded.version, repo = excluded.repo,
+                website = excluded.website, remote = excluded.remote, pkg = excluded.pkg, status = excluded.status, host = excluded.host,
+                repo_key = excluded.repo_key, site_key = excluded.site_key, registry_updated_at = excluded.registry_updated_at, fetched_at = excluded.fetched_at`,
+        args: [e.key, e.title, e.description, e.version, e.repo, e.website, e.remote, e.pkg, e.status, host, repoKey, siteHost ? `url:https://${siteHost}` : null, e.updatedAt, now],
+      });
+    }
+    for (let i = 0; i < stmts.length; i += 200) await this.db.batch(stmts.slice(i, i + 200), "write");
+  }
+  /** Entries whose repo or site the owner removed from ScBee stay hidden, permanently (the same opt-outs as projects). */
+  private static readonly VISIBLE = `status != 'deleted'
+    AND (repo_key IS NULL OR repo_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL))
+    AND (site_key IS NULL OR site_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL))`;
+  async indexedCount(): Promise<number> {
+    return Number((await this.one<{ n: number }>(`SELECT COUNT(*) AS n FROM indexed_entries WHERE ${Store.VISIBLE}`))?.n ?? 0);
+  }
+  /** Candidates for a search: entries mentioning any of the words (ranked by the caller), at most 300. */
+  async indexedCandidates(words: string[]): Promise<IndexedRow[]> {
+    if (!words.length) return [];
+    const like = words.slice(0, 8).map(() => "(LOWER(key || ' ' || COALESCE(title,'') || ' ' || description || ' ' || COALESCE(tools_json,'') || ' ' || COALESCE(card_json,'')) LIKE ? ESCAPE '\\')").join(" OR ");
+    return this.rows<IndexedRow>(`SELECT * FROM indexed_entries WHERE ${Store.VISIBLE} AND (${like}) LIMIT 300`, words.slice(0, 8).map((w) => `%${w.replace(/[\\%_]/g, "\\$&")}%`));
+  }
+  async indexedById(id: number): Promise<IndexedRow | undefined> {
+    return this.one<IndexedRow>(`SELECT * FROM indexed_entries WHERE id = ? AND ${Store.VISIBLE}`, [id]);
+  }
+  /** The indexed entries that point at a project (its repo or its site), for its page. */
+  async indexedForProject(key: string): Promise<IndexedRow[]> {
+    return this.rows<IndexedRow>(`SELECT * FROM indexed_entries WHERE (repo_key = ? OR site_key = ?) AND ${Store.VISIBLE} LIMIT 5`, [key, key]);
+  }
+  /** Hosts ScBeeBot may visit today: not visited today, not backing off, one entry per host, never-read entries first. */
+  async hostsToProbe(day: string, limit: number): Promise<IndexedRow[]> {
+    return this.rows<IndexedRow>(
+      `SELECT e.* FROM indexed_entries e
+       WHERE e.host IS NOT NULL AND e.status != 'deleted'
+         AND (e.repo_key IS NULL OR e.repo_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL))
+         AND (e.site_key IS NULL OR e.site_key NOT IN (SELECT source_key FROM optouts WHERE confirmed_at IS NOT NULL))
+         AND NOT EXISTS (SELECT 1 FROM bot_hosts b WHERE b.host = e.host AND (b.last_day = ? OR b.retry_after > ?))
+         AND e.id = (SELECT x.id FROM indexed_entries x WHERE x.host = e.host AND x.status != 'deleted' ORDER BY x.probed_at IS NOT NULL, x.probed_at, x.id LIMIT 1)
+       ORDER BY e.probed_at IS NOT NULL, e.probed_at, e.id LIMIT ?`, [day, Date.now(), limit]);
+  }
+  /** After a visit: store what was read, and note the host as visited today (with a growing back-off on errors). */
+  async recordProbe(id: number, host: string, day: string, r: { outcome: string; tools: unknown[]; card: unknown | null }) {
+    const failed = r.outcome === "error";
+    await this.db.batch([
+      { sql: "UPDATE indexed_entries SET probed_at = ?, probe_note = ?, tools_json = CASE WHEN ? THEN ? ELSE tools_json END, card_json = CASE WHEN ? THEN ? ELSE card_json END WHERE id = ?",
+        args: [Date.now(), r.outcome, r.tools.length ? 1 : 0, JSON.stringify(r.tools), r.card ? 1 : 0, JSON.stringify(r.card), id] },
+      { sql: `INSERT INTO bot_hosts (host, last_day, failures, retry_after) VALUES (?, ?, ?, ?)
+              ON CONFLICT(host) DO UPDATE SET last_day = excluded.last_day,
+                failures = CASE WHEN ? THEN bot_hosts.failures + 1 ELSE 0 END,
+                retry_after = CASE WHEN ? THEN ? + MIN(30, (1 << MIN(bot_hosts.failures + 1, 5))) * 86400000 ELSE 0 END`,
+        args: [host, day, failed ? 1 : 0, failed ? Date.now() + 2 * 86_400_000 : 0, failed ? 1 : 0, failed ? 1 : 0, Date.now()] },
+    ], "write");
+  }
+  async bumpIndexedHandoff(id: number) {
+    await this.run("INSERT INTO indexed_handoffs (day, entry_id, n) VALUES (?, ?, 1) ON CONFLICT(day, entry_id) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), id]);
+  }
+  async indexedHandoffs(id: number, days = 30): Promise<number> {
+    const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+    return Number((await this.one<{ n: number }>("SELECT COALESCE(SUM(n), 0) AS n FROM indexed_handoffs WHERE entry_id = ? AND day >= ?", [id, since]))?.n ?? 0);
   }
 
   /** For the operator only (admin token): how newcomers move from registering to being useful, over the last `days`. */

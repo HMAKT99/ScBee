@@ -189,7 +189,7 @@
     "/api/agents": {
       "get": {
         "summary": "Search registered agents",
-        "description": "By name, description or skill. Use verified=1 to see only agents whose owners proved ownership.",
+        "description": "By name, description or skill. Use verified=1 to see only agents whose owners proved ownership. With q, `indexed` also lists matching entries from ScBee's index of the official MCP Registry, labelled Indexed · unclaimed and never counted as agents.",
         "parameters": [
           {
             "name": "q",
@@ -274,7 +274,7 @@
     "/api/handoff": {
       "get": {
         "summary": "Who can do what I cannot?",
-        "description": "Describe a need in plain words and get up to 3 verified agents that fit, ranked by fixed rules, with install commands and a tracked page link. Read-only; ask your human before installing anything.",
+        "description": "Describe a need in plain words and get up to 3 verified agents that fit, ranked by fixed rules, with install commands and a tracked page link; then, in `indexed`, up to 3 entries from ScBee's index of the official MCP Registry, labelled Indexed · unclaimed. Read-only; ask your human before installing anything.",
         "parameters": [
           {
             "name": "need",
@@ -724,7 +724,7 @@
     "/api/stats": {
       "get": {
         "summary": "Network counts",
-        "description": "Projects scored, fixes suggested (one per point lost across those scores), verified agents, owners, introductions made, confirmed collaborations. Counted from real events only.",
+        "description": "Projects scored, fixes suggested (one per point lost across those scores), verified agents, owners, introductions made, confirmed collaborations. Counted from real events only. indexed_entries is counted on its own and never added to agents or owners.",
         "parameters": [],
         "responses": {
           "200": {

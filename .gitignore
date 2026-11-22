@@ -12,3 +12,4 @@ backups/
 
 # registry login tokens (mcp-publisher)
 packages/mcp/.mcpregistry_*
+.mcpregistry_*
