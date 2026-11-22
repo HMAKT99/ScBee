@@ -29,7 +29,7 @@ import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, s
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
 import { BADGE_CACHE, agentBadgeMarkdown, badgeMarkdown, badgeSvg, featuredMonth, pillSvg, projectPage, type ListingPreview } from "./project.js";
-import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
+import { LOGO_SVG, logoPlateSvg, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
 import { handleMcp, mcpManifest } from "./mcpHttp.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, termsPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
 import { screenText, wrapUntrusted } from "./screen.js";
@@ -1340,6 +1340,7 @@ export function createApp(opts: AppOptions) {
       const longCache = url.searchParams.get("v") === ASSET_V ? "public, max-age=31536000, immutable" : "public, max-age=300";
       if (p === "/style.css") return send(res, 200, CSS, "text/css", longCache);
       if (p === "/favicon.svg") return send(res, 200, LOGO_SVG, "image/svg+xml", "public, max-age=86400");
+      if (p === "/logo.svg") return send(res, 200, logoPlateSvg(), "image/svg+xml", "public, max-age=86400");
       if (p === "/favicon.ico" || p === "/apple-touch-icon.png") {
         const png = await renderIcon(p === "/favicon.ico" ? 48 : 180);
         res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "image/png", "cache-control": "public, max-age=86400" });

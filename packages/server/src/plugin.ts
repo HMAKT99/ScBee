@@ -1,6 +1,6 @@
 import { launchCheckMd } from "./launchCheck.js";
 import { agentReadyMd } from "./agentReadySkill.js";
-import { LOGO_SVG } from "./card.js";
+import { LOGO_SVG, logoPlateSvg } from "./card.js";
 
 /**
  * The ScBee plugin for Claude Code (and any client that reads the same plugin layout): the hosted MCP endpoint, the
@@ -103,7 +103,14 @@ export function cursorPluginFiles(base: string, repoUrl: string): Record<string,
       keywords: p.keywords,
     }),
     "cursor-plugin/mcp.json": j({ mcpServers: { scbee: { url: `${base}/mcp` } } }),
-    "cursor-plugin/assets/logo.svg": LOGO_SVG + "\n",
+    "cursor-plugin/assets/logo.svg": logoPlateSvg() + "\n",
+    // the repo's list of Cursor plugins: Cursor reads it from the repo root and finds the plugin in its folder
+    ".cursor-plugin/marketplace.json": j({
+      name: "scbee",
+      owner: { name: "ScBee", url: repoUrl },
+      metadata: { description: "ScBee for Cursor: launch readiness and an agent and MCP server finder" },
+      plugins: [{ name: "scbee", source: "cursor-plugin", description: "Is your repo ready to launch, and can AI agents use it? Scores, fixes, and agents or MCP servers by what they do. Read-only, no key." }],
+    }),
     "cursor-plugin/skills/launch-check/SKILL.md": launchCheckMd(base),
     "cursor-plugin/skills/agent-ready-check/SKILL.md": agentReadyMd(base),
     "cursor-plugin/skills/find-agent/SKILL.md": findAgentMd(base),
