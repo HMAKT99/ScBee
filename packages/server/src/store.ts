@@ -893,6 +893,12 @@ export class Store {
     const rows = await this.rows<{ source_key: string }>(`SELECT source_key FROM agents WHERE verified = 1 AND hidden = 0 AND source_key IN (${k.map(() => "?").join(",")})`, k);
     return new Set(rows.map((r) => r.source_key));
   }
+  /** Index entries the registry published or updated since an ISO date: how many, and the newest few. */
+  async indexedChangedSince(since: string, limit = 12): Promise<{ count: number; rows: IndexedRow[] }> {
+    const count = Number((await this.one<{ n: number }>(`SELECT COUNT(*) AS n FROM indexed_entries WHERE registry_updated_at >= ? AND ${Store.VISIBLE}`, [since]))?.n ?? 0);
+    const rows = await this.rows<IndexedRow>(`SELECT * FROM indexed_entries WHERE registry_updated_at >= ? AND ${Store.VISIBLE} ORDER BY registry_updated_at DESC, id DESC LIMIT ?`, [since, limit * 2]);
+    return { count, rows };
+  }
   async bumpIndexedHandoff(id: number) {
     await this.run("INSERT INTO indexed_handoffs (day, entry_id, n) VALUES (?, ?, 1) ON CONFLICT(day, entry_id) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), id]);
   }

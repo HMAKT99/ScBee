@@ -13,6 +13,7 @@ import { callerHash, classify, isAsset, pathGroup, seenFrom } from "./traffic.js
 import { entryDestination, entryView, rankIndexed, runIndexer } from "./indexer.js";
 import { botMd, botPage } from "./bot.js";
 import { entryMd, entryPage } from "./entry.js";
+import { mcpWeekMd, mcpWeekPage, newestOf, type McpWeek } from "./mcpRadar.js";
 import { alternativesFor, MIN_ENTRIES, NEEDS, needMd, needPage, needPath, needsIndexMd, needsIndexPage, qualifyNeeds, resolveNeed, entryCount } from "./needs.js";
 import { SKILL_VERSION, skillMd } from "./skill.js";
 import { launchCheckMd } from "./launchCheck.js";
@@ -186,6 +187,16 @@ export function createApp(opts: AppOptions) {
   /** The need pages published by the last daily run: which slugs, how many entries, and merged duplicates. */
   const needPages = async (): Promise<{ pages: { slug: string; count: number }[]; canonical: Record<string, string> }> => {
     try { const j = JSON.parse((await store.indexState("need_pages")) ?? "null"); return j && Array.isArray(j.pages) ? j : { pages: [], canonical: {} }; } catch { return { pages: [], canonical: {} }; }
+  };
+  /** This week in the index: what the registry published, the biggest needs, and what people did not find. */
+  const mcpWeek = async (): Promise<McpWeek> => {
+    const sinceDate = new Date(Date.now() - 7 * 86_400_000);
+    const since = sinceDate.toISOString().slice(0, 10);
+    const changed = await store.indexedChangedSince(sinceDate.toISOString());
+    const np = await needPages();
+    const needs = np.pages.slice().sort((a, b) => b.count - a.count).slice(0, 10).map((x) => ({ slug: x.slug, title: NEEDS.find((n) => n.slug === x.slug)?.title ?? x.slug, count: x.count }));
+    const unmet = (await store.unmetDemand()).slice(0, 10).map((u) => ({ word: u.word, misses: u.misses }));
+    return { since, total: await store.indexedCount(), changed: changed.count, newest: newestOf(changed.rows), needs, unmet };
   };
   /** A project's entries in the public index, with hand-offs sent in the last 30 days, for its page. */
   const indexedNotes = async (key: string) =>
@@ -1572,6 +1583,7 @@ export function createApp(opts: AppOptions) {
           return page(200, fixPage(v.path, host, v.files, baseUrl), fixMd(baseUrl, v.path, host, v.files));
         } catch (e) { if (e instanceof HttpError) return page(e.status, notFound(e.message)); throw e; }
       }
+      if (p === "/radar/mcp") { const w = await mcpWeek(); return page(200, mcpWeekPage(w), mcpWeekMd(baseUrl, w)); }
       if (p === "/radar/weekly") { const d = await weeklyDigest(); return page(200, weeklyPage(d), weeklyMd(baseUrl, d)); }
       if (p === "/radar") { const items = await radarItems(); return page(200, radarPage(items, 7), radarMd(baseUrl, items, 7)); }
       if (p === "/trust") return page(200, trustPage(), trustMd(baseUrl));
@@ -1618,6 +1630,15 @@ export function createApp(opts: AppOptions) {
         if (!col) return page(404, notFound());
         return atom(atomFeed({ id: `${baseUrl}/feeds/gallery/${col.id}.atom`, title: `${getSite().name}: ${col.title}`, subtitle: col.blurb, selfUrl: `${baseUrl}/feeds/gallery/${col.id}.atom`, siteUrl: `${baseUrl}/gallery/${col.id}`,
           entries: col.items.map((i) => ({ id: `${baseUrl}/${i.project}`, title: `${i.name}: ${i.score}/100`, link: `${baseUrl}/${i.project}`, updated: i.updated ?? 0, summary: i.description })) }));
+      }
+      if (p === "/feeds/radar-mcp.atom") {
+        // One entry per week, named by the Monday it started on.
+        const w = await mcpWeek();
+        const now = new Date(); const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
+        const wk = monday.toISOString().slice(0, 10);
+        return atom(atomFeed({ id: `${baseUrl}/feeds/radar-mcp.atom`, title: `${getSite().name}: MCP servers this week`, subtitle: "Servers published to the official MCP Registry, the biggest needs, and what people did not find", selfUrl: `${baseUrl}/feeds/radar-mcp.atom`, siteUrl: `${baseUrl}/radar/mcp`,
+          entries: [{ id: `${baseUrl}/radar/mcp#${wk}`, title: `Week of ${wk}: ${w.changed} MCP servers published or updated`, link: `${baseUrl}/radar/mcp`, updated: monday.getTime(),
+            summary: w.needs.length ? `Biggest needs: ${w.needs.slice(0, 3).map((n) => `${n.title} (${n.count})`).join(", ")}` : "Need pages appear as the index fills." }] }));
       }
       if (p === "/feeds/radar-weekly.atom") {
         // One entry per week, named by the Monday it started on, so a reader sees each week once.
