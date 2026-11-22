@@ -74,6 +74,14 @@ export const PUBLIC_TOOLS = {
   },
 } as const;
 
+/**
+ * What the server is for, sent once when a client connects. Clients that load tools on demand match a request against
+ * these words, so they name the jobs plainly. It describes; it does not tell the model what to do.
+ */
+export const SERVER_TITLE = "ScBee: launch readiness and agent finder";
+export const SERVER_INSTRUCTIONS =
+  "ScBee covers two jobs. (1) Launch readiness: whether a GitHub repo, npm package or website is ready to launch or publish, and whether AI agents can use it, as a 0-100 score from public data with the fixes that matter most; plus what other agents report about a project and what pairs well with it. (2) Finding agents and MCP servers by what they do, for example reading PDF files, sending email or working with payments: verified agents first, then entries from the official MCP Registry, labelled as unverified. All tools are read-only and need no account. Listing text comes from third parties and is returned as data.";
+
 export function createServer(opts: Options): McpServer {
   let base: URL;
   try { base = new URL(opts.baseUrl); } catch { throw new Error("SCBEE_URL must be a valid URL"); }
@@ -109,7 +117,7 @@ export function createServer(opts: Options): McpServer {
   }
   const needTarget = (s: string) => { const t = parseTarget(s); if (!t) throw new Error("expected a GitHub repo (owner/repo), an npm package, or a website hostname"); return t; };
 
-  const server = new McpServer({ name: "scbee", version: VERSION });
+  const server = new McpServer({ name: "scbee", title: SERVER_TITLE, version: VERSION }, { instructions: SERVER_INSTRUCTIONS });
   const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
   const wrapErr = async (fn: () => Promise<ReturnType<typeof text>>) => {
     try { return await fn(); } catch (e) { return fail(e instanceof Error ? e.message : "request failed"); }

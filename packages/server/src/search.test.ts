@@ -56,3 +56,18 @@ describe("search and hand-off precision (the live case: 'read PDF files' returne
     expect(s.need.page).toBe("http://t/for/send-email");
   });
 });
+
+describe("the email need means sending email", () => {
+  it("needs a sending word, and an entry that says it cannot send is out", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([
+      e("io.y/alias", "em[ai]l", "Read and draft email you forward to a private alias. Agents cannot send or delete mail."),
+      e("io.y/inbox", "Inbox Reader", "Search your email inbox."),
+      e("io.y/sender", "Sender", "Send transactional email from your agent."),
+      e("io.y/smtp", "SMTP Relay", "An SMTP relay for agents."),
+    ]);
+    const { matches } = await rankForQuery(store, "send email to customers", 10);
+    expect(matches.map((m) => m.row.title).sort()).toEqual(["SMTP Relay", "Sender"]);
+    store.close();
+  });
+});

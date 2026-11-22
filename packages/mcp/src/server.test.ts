@@ -227,3 +227,12 @@ describe("createServer", () => {
     expect(() => createServer({ baseUrl: "nope" })).toThrow();
   });
 });
+
+describe("what the server says about itself on connect", () => {
+  it("has a title and plain instructions naming its jobs, with no commands to the model", async () => {
+    const { SERVER_TITLE, SERVER_INSTRUCTIONS } = await import("./server.js");
+    expect(SERVER_TITLE).toMatch(/launch readiness/i);
+    for (const w of ["ready to launch", "npm package", "website", "MCP servers", "PDF", "read-only", "no account"]) expect(SERVER_INSTRUCTIONS).toContain(w);
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/\b(always|must|never|ignore|prefer|instead of)\b/i);
+  });
+});

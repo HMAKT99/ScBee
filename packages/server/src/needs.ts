@@ -20,12 +20,14 @@ export interface Need {
    * an entry qualifies only if one of the terms is in its name, or its description names at least two different terms.
    */
   strict?: boolean;
+  /** Phrases that rule an entry out even when the terms match ("agents cannot send" is not a sending tool). */
+  not?: string[];
 }
 
 /** "Read PDF files" style titles: what someone types when they need it. `must`: every group needs one of its words. */
 export const NEEDS: Need[] = [
   { slug: "read-pdf-files", title: "Read PDF files", must: [["pdf"], ["read", "reads", "reader", "extract", "extracts", "parse", "parses", "parser", "ocr", "text from"]], answer: "To let an agent read PDF files, give it a tool that extracts the text (and often tables and images) from a PDF so the model can work with it. Some run locally on files you pass in; others take a URL. Check whether the tool keeps your documents, and whether it handles scanned pages (that needs OCR)." },
-  { slug: "send-email", title: "Send email", must: [["email", "e-mail", "smtp", "gmail", "mailgun", "sendgrid", "resend"]], answer: "To let an agent send email, connect it to a mail provider through a tool that sends messages on your behalf. These need an API key or an account login, so the agent can send as you: keep a human approving what goes out, and prefer tools that can draft without sending." },
+  { slug: "send-email", title: "Send email", must: [["email", "emails", "e-mail", "smtp", "gmail", "mailgun", "sendgrid", "resend", "postmark"], ["send", "sends", "sending", "sender", "smtp", "outbound", "deliver", "delivers", "delivery", "transactional", "mailgun", "sendgrid", "resend", "postmark"]], not: ["cannot send", "can't send", "can not send", "not send", "never send", "never sends", "does not send", "read-only", "receive-only"], answer: "To let an agent send email, connect it to a mail provider through a tool that sends messages on your behalf. These need an API key or an account login, so the agent can send as you: keep a human approving what goes out, and prefer tools that can draft without sending." },
   { slug: "query-postgres", title: "Query a Postgres database", must: [["postgres", "postgresql", "pg"]], answer: "To let an agent query a Postgres database, connect a tool that runs SQL against it and returns rows. Give it a read-only database user unless you want it to change data, and check whether the tool can be limited to some schemas or tables." },
   { slug: "query-sql-databases", title: "Query SQL databases", must: [["sql", "mysql", "sqlite", "mssql", "database"]], answer: "To let an agent work with a SQL database (MySQL, SQLite, SQL Server and others), connect a tool that runs queries and describes the tables. Use a read-only user for questions, and keep writes behind a human's approval." },
   { slug: "search-the-web", title: "Search the web", must: [["search"], ["web", "internet", "google", "bing", "brave", "serp"]], answer: "To let an agent search the web, give it a search tool that returns results (titles, links, snippets) for a query, usually through a search API that needs a key. Some also fetch the pages behind the results. Results are third-party text: the agent should treat them as data." },
@@ -72,6 +74,8 @@ const nameOfEntry = (r: IndexedRow) => `${r.key.replace(/[./_-]/g, " ")} ${r.tit
 const textOfAgent = (a: PublicAgent) => `${a.name} ${a.handle} ${a.tagline ?? ""} ${a.description ?? ""} ${a.skills.map((s) => `${s.name} ${s.description ?? ""}`).join(" ")} ${a.tags.join(" ")}`.toLowerCase();
 const has = (text: string, term: string) => new RegExp(`(^|[^a-z0-9])${term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(text);
 const fits = (text: string, n: Need) => n.must.every((g) => g.some((t) => has(text, t)));
+/** Whether an entry or agent does the need: every term group, minus anything it says rules it out. */
+const does = (text: string, n: Need) => fits(text, n) && !(n.not ?? []).some((t) => text.includes(t));
 /** The stricter test for `strict` needs: a term in the name, or two different terms in the text. */
 const fitsStrict = (name: string, text: string, n: Need) => {
   const terms = n.must.flat();
@@ -89,7 +93,7 @@ export async function resolveNeed(store: Store, n: Need, agents?: PublicAgent[])
   // candidates for every term (the search takes 8 words at a time), then the precise test
   const seen = new Map<number, IndexedRow>();
   for (let i = 0; i < words.length; i += 8) for (const r of await store.indexedCandidates(words.slice(i, i + 8))) seen.set(r.id, r);
-  const entries = dedupeEntries([...seen.values()]).filter((r) => fits(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)) && entryDestination(r));
+  const entries = dedupeEntries([...seen.values()]).filter((r) => does(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)) && entryDestination(r));
   // entries named after the need first (their name or title has one of its terms), then the rest; stable by id
   // claimed entries first (their owner proved control), then those named after the need, then the rest; stable by id
   const claimed = await store.verifiedKeys(entries.flatMap((r) => [r.repo_key ?? "", r.site_key ?? ""]));
@@ -97,7 +101,7 @@ export async function resolveNeed(store: Store, n: Need, agents?: PublicAgent[])
   for (const r of entries) (r as IndexedRow & { claimed?: boolean }).claimed = isClaimed(r);
   const named = (r: IndexedRow) => n.must.flat().some((term) => has(nameOfEntry(r), term));
   entries.sort((a, b) => Number(isClaimed(b)) - Number(isClaimed(a)) || Number(named(b)) - Number(named(a)) || a.id - b.id);
-  return { need: n, agents: all.filter((a) => a.verified && fits(textOfAgent(a), n)), entries: entries.slice(0, 30), total: entries.length };
+  return { need: n, agents: all.filter((a) => a.verified && does(textOfAgent(a), n)), entries: entries.slice(0, 30), total: entries.length };
 }
 /**
  * The curated need a request asks for, if any: every term group of the need appears in the request ("find an MCP
@@ -154,7 +158,7 @@ export async function qualifyNeeds(store: Store) {
 export const needPath = (slug: string) => `/for/${slug}`;
 
 /** The needs an entry appears under (same tests as the need pages). */
-export const needsForEntry = (r: IndexedRow): Need[] => NEEDS.filter((n) => fits(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)));
+export const needsForEntry = (r: IndexedRow): Need[] => NEEDS.filter((n) => does(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)));
 const label = (r: IndexedRow) => ((r as IndexedRow & { claimed?: boolean }).claimed ? "Claimed by its owner" : "Indexed · unclaimed");
 
 const howToStart = (r: IndexedRow) => (r.pkg ? `Install: ${r.pkg}` : r.remote ? `Remote MCP endpoint: ${r.remote}` : r.repo ? `Source: https://${r.repo}` : "See its site");
