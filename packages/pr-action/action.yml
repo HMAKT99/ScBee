@@ -1,0 +1,29 @@
+name: ScBee PR score
+description: Scores a pull request's own files for launch readiness and agent-readiness, and keeps one comment up to date.
+author: ScBee
+branding:
+  icon: check-circle
+  color: orange
+inputs:
+  github-token:
+    description: The workflow's own token, used only to write one comment on the pull request that triggered the run.
+    required: false
+    default: ${{ github.token }}
+  fail-under:
+    description: Fail the check when this pull request's launch readiness score is below this number (0 to 100). Empty means never fail.
+    required: false
+    default: ""
+  path:
+    description: Folder of the checkout to score, relative to the workspace.
+    required: false
+    default: "."
+outputs:
+  score:
+    description: Launch readiness score of this pull request's files (0 to 100)
+  agent-ready:
+    description: Agent-Ready score of this pull request's files (0 to 100)
+  score-change:
+    description: Change in launch readiness against the base branch (empty outside pull requests)
+runs:
+  using: node24
+  main: dist/index.mjs
