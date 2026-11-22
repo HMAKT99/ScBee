@@ -1,7 +1,7 @@
 {
   "name": "scbee-pr-action",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ScBee's GitHub Action: scores a pull request's own files for launch readiness and agent-readiness, and keeps one comment up to date.",
   "type": "module",
   "main": "dist/index.js",

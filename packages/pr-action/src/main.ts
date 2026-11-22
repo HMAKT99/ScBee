@@ -21,6 +21,13 @@ export interface Result {
 
 const API = "https://api.github.com";
 
+/**
+ * An action input as the runner passes it: `with: { fail-under: 70 }` arrives as INPUT_FAIL-UNDER (upper-cased, the
+ * hyphen kept). The underscore spelling is accepted too, for anyone calling the script directly.
+ */
+export const input = (env: Record<string, string | undefined>, name: string): string =>
+  (env[`INPUT_${name.toUpperCase()}`] ?? env[`INPUT_${name.toUpperCase().replace(/-/g, "_")}`] ?? "").trim();
+
 /** Repository-wide facts from the event payload, with releases and tags read through the API (reading is allowed even on forks). */
 async function repoMeta(d: Deps, owner: string, repo: string, h: Record<string, string>): Promise<RepoMeta> {
   let r = d.event?.repository ?? null;
@@ -58,7 +65,7 @@ export async function run(d: Deps): Promise<Result> {
   const full = env.GITHUB_REPOSITORY ?? "";
   const [owner, repo] = full.split("/") as [string, string];
   if (!owner || !repo) return { code: 1, summary: "", log: ["GITHUB_REPOSITORY is not set; run this inside GitHub Actions."], outputs: {} };
-  const token = env.INPUT_GITHUB_TOKEN || "";
+  const token = input(env, "github-token");
   const h: Record<string, string> = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(token ? { authorization: `Bearer ${token}` } : {}) };
 
   const meta = await repoMeta(d, owner, repo, h);
@@ -113,7 +120,7 @@ export async function run(d: Deps): Promise<Result> {
     "score-change": base ? String(head.launch.total - base.launch.total) : "",
   };
 
-  const raw = (env.INPUT_FAIL_UNDER ?? "").trim();
+  const raw = input(env, "fail-under");
   let code: 0 | 1 = 0;
   if (raw !== "") {
     const min = Number(raw);
