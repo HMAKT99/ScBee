@@ -3,7 +3,7 @@ import { createClient, type Client, type InValue } from "@libsql/client";
 import { MIN_CONNECTIONS_FOR_DEGREES, degreesOfSeparation, possibleIntroductions, mergeCard, parseCard, type AgentCard, type IndexedEntry, type Profile } from "@scbee/registry-core";
 
 /** A stored index entry (third-party text: show it as untrusted data). */
-export interface IndexedRow { id: number; key: string; title: string | null; description: string; version: string; repo: string | null; website: string | null; remote: string | null; pkg: string | null; status: string; host: string | null; tools_json: string | null; card_json: string | null; probed_at: number | null; probe_note: string | null; fetched_at: number }
+export interface IndexedRow { id: number; key: string; title: string | null; description: string; version: string; repo: string | null; website: string | null; remote: string | null; pkg: string | null; status: string; host: string | null; repo_key?: string | null; site_key?: string | null; tools_json: string | null; card_json: string | null; probed_at: number | null; probe_note: string | null; fetched_at: number }
 
 export interface AgentRow {
   id: number;
@@ -885,6 +885,13 @@ export class Store {
                 retry_after = CASE WHEN ? THEN ? + MIN(30, (1 << MIN(bot_hosts.failures + 1, 5))) * 86400000 ELSE 0 END`,
         args: [host, day, failed ? 1 : 0, failed ? Date.now() + 2 * 86_400_000 : 0, failed ? 1 : 0, failed ? 1 : 0, Date.now()] },
     ], "write");
+  }
+  /** Which of these repo or site keys belong to a verified, visible agent: their index entries are claimed. */
+  async verifiedKeys(keys: string[]): Promise<Set<string>> {
+    const k = [...new Set(keys.filter(Boolean))].slice(0, 500);
+    if (!k.length) return new Set();
+    const rows = await this.rows<{ source_key: string }>(`SELECT source_key FROM agents WHERE verified = 1 AND hidden = 0 AND source_key IN (${k.map(() => "?").join(",")})`, k);
+    return new Set(rows.map((r) => r.source_key));
   }
   async bumpIndexedHandoff(id: number) {
     await this.run("INSERT INTO indexed_handoffs (day, entry_id, n) VALUES (?, ?, 1) ON CONFLICT(day, entry_id) DO UPDATE SET n = n + 1", [new Date().toISOString().slice(0, 10), id]);

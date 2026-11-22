@@ -1,6 +1,6 @@
 import type { PublicAgent, IndexedRow, Store } from "./store.js";
 import { esc, layout } from "./html.js";
-import { entryDestination } from "./indexer.js";
+import { dedupeEntries, entryDestination } from "./indexer.js";
 import { wrapData } from "./envelope.js";
 
 /**
@@ -13,7 +13,14 @@ import { wrapData } from "./envelope.js";
 export const MIN_ENTRIES = 3;
 export const MAX_PAGES = 100;
 
-export interface Need { slug: string; title: string; answer: string; must: string[][] }
+export interface Need {
+  slug: string; title: string; answer: string; must: string[][];
+  /**
+   * For needs whose words are often mentioned in passing (a tool that charges through Stripe is not a payments tool):
+   * an entry qualifies only if one of the terms is in its name, or its description names at least two different terms.
+   */
+  strict?: boolean;
+}
 
 /** "Read PDF files" style titles: what someone types when they need it. `must`: every group needs one of its words. */
 export const NEEDS: Need[] = [
@@ -45,7 +52,7 @@ export const NEEDS: Need[] = [
   { slug: "use-git", title: "Use git", must: [["git"]], answer: "To let an agent use git (status, diffs, commits, branches), give it a git tool on a working copy. Committing is easy to undo; pushing, force-pushing and deleting branches are not, so keep those behind a human's approval." },
   { slug: "take-notes-memory", title: "Give an agent long-term memory", must: [["memory", "long-term memory", "remember", "knowledge graph"]], answer: "To let an agent remember things between conversations, give it a memory tool that stores and retrieves notes or facts. Decide what it may store, where that lives, and how you can see and delete it." },
   { slug: "search-vector-database", title: "Search a vector database", must: [["vector", "embedding", "embeddings", "pinecone", "qdrant", "weaviate", "chroma", "rag"]], answer: "To let an agent search your own documents by meaning, connect a tool for a vector database that stores embeddings and returns the closest passages. Results are only as current as what you indexed." },
-  { slug: "process-payments", title: "Work with payments", must: [["stripe", "payment", "payments", "invoice", "invoices", "billing"]], answer: "To let an agent look up customers, invoices or payments, connect a tool for your payment provider. Moving money and refunds cannot be undone, so use a restricted key and keep anything that charges or refunds behind a human's approval." },
+  { slug: "process-payments", title: "Work with payments", strict: true, must: [["stripe", "paypal", "adyen", "braintree", "razorpay", "paddle", "mollie", "lemon squeezy", "payment", "payments", "billing", "invoice", "invoices", "invoicing", "refund", "refunds", "payout", "payouts", "accounting", "bookkeeping"]], answer: "To let an agent look up customers, invoices or payments, connect a tool for your payment provider. Moving money and refunds cannot be undone, so use a restricted key and keep anything that charges or refunds behind a human's approval." },
   { slug: "manage-crm", title: "Work with a CRM", must: [["crm", "salesforce", "hubspot", "pipedrive"]], answer: "To let an agent read or update customer records, connect a tool for your CRM with a limited user. Bulk edits and anything that emails customers should need a human's approval." },
   { slug: "read-maps-places", title: "Look up maps and places", must: [["map", "maps", "geocoding", "geocode", "directions", "openstreetmap"]], answer: "To let an agent look up addresses, places, directions or distances, connect a maps tool, usually through a maps API with a key. Check the provider's terms on storing the results." },
   { slug: "get-weather", title: "Get weather forecasts", must: [["weather", "forecast", "forecasts"]], answer: "To let an agent answer weather questions, give it a weather tool that returns current conditions and forecasts for a place. Most need an API key; some public services do not." },
@@ -65,6 +72,11 @@ const nameOfEntry = (r: IndexedRow) => `${r.key.replace(/[./_-]/g, " ")} ${r.tit
 const textOfAgent = (a: PublicAgent) => `${a.name} ${a.handle} ${a.tagline ?? ""} ${a.description ?? ""} ${a.skills.map((s) => `${s.name} ${s.description ?? ""}`).join(" ")} ${a.tags.join(" ")}`.toLowerCase();
 const has = (text: string, term: string) => new RegExp(`(^|[^a-z0-9])${term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(text);
 const fits = (text: string, n: Need) => n.must.every((g) => g.some((t) => has(text, t)));
+/** The stricter test for `strict` needs: a term in the name, or two different terms in the text. */
+const fitsStrict = (name: string, text: string, n: Need) => {
+  const terms = n.must.flat();
+  return terms.some((t) => has(name, t)) || new Set(terms.filter((t) => has(text, t))).size >= 2;
+};
 /** The words of a need's term that matched, for a specific reason ("mentions PDF"). */
 const matchedTerms = (text: string, n: Need) => n.must.map((g) => g.find((t) => has(text, t))).filter(Boolean) as string[];
 
@@ -74,10 +86,17 @@ export interface NeedResult { need: Need; agents: PublicAgent[]; entries: Indexe
 export async function resolveNeed(store: Store, n: Need, agents?: PublicAgent[]): Promise<NeedResult> {
   const all = agents ?? (await store.list("", true, 500));
   const words = [...new Set(n.must.flat().flatMap((t) => t.split(" ")))].filter((w) => w.length >= 2);
-  const entries = (await store.indexedCandidates(words.slice(0, 8))).filter((r) => fits(textOfEntry(r), n) && entryDestination(r));
+  // candidates for every term (the search takes 8 words at a time), then the precise test
+  const seen = new Map<number, IndexedRow>();
+  for (let i = 0; i < words.length; i += 8) for (const r of await store.indexedCandidates(words.slice(i, i + 8))) seen.set(r.id, r);
+  const entries = dedupeEntries([...seen.values()]).filter((r) => fits(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)) && entryDestination(r));
   // entries named after the need first (their name or title has one of its terms), then the rest; stable by id
+  // claimed entries first (their owner proved control), then those named after the need, then the rest; stable by id
+  const claimed = await store.verifiedKeys(entries.flatMap((r) => [r.repo_key ?? "", r.site_key ?? ""]));
+  const isClaimed = (r: IndexedRow) => claimed.has(r.repo_key ?? "") || claimed.has(r.site_key ?? "");
+  for (const r of entries) (r as IndexedRow & { claimed?: boolean }).claimed = isClaimed(r);
   const named = (r: IndexedRow) => n.must.flat().some((term) => has(nameOfEntry(r), term));
-  entries.sort((a, b) => Number(named(b)) - Number(named(a)) || a.id - b.id);
+  entries.sort((a, b) => Number(isClaimed(b)) - Number(isClaimed(a)) || Number(named(b)) - Number(named(a)) || a.id - b.id);
   return { need: n, agents: all.filter((a) => a.verified && fits(textOfAgent(a), n)), entries: entries.slice(0, 30), total: entries.length };
 }
 export const entryCount = (r: NeedResult) => r.agents.length + (r.total ?? r.entries.length);
@@ -113,13 +132,17 @@ export async function qualifyNeeds(store: Store) {
 
 export const needPath = (slug: string) => `/for/${slug}`;
 
+/** The needs an entry appears under (same tests as the need pages). */
+export const needsForEntry = (r: IndexedRow): Need[] => NEEDS.filter((n) => fits(textOfEntry(r), n) && (!n.strict || fitsStrict(nameOfEntry(r), textOfEntry(r), n)));
+const label = (r: IndexedRow) => ((r as IndexedRow & { claimed?: boolean }).claimed ? "Claimed by its owner" : "Indexed · unclaimed");
+
 const howToStart = (r: IndexedRow) => (r.pkg ? `Install: ${r.pkg}` : r.remote ? `Remote MCP endpoint: ${r.remote}` : r.repo ? `Source: https://${r.repo}` : "See its site");
 const toolNames = (r: IndexedRow) => { try { return (JSON.parse(r.tools_json ?? "[]") as { name: string }[]).map((t) => t.name).slice(0, 6); } catch { return []; } };
 
 export function needMd(base: string, res: NeedResult, published: boolean): string {
   const n = res.need;
   const agents = res.agents.map((a) => `- ${a.name} (@${a.handle}, verified): ${a.tagline ?? a.description ?? ""}${a.install ? `. Install: ${a.install}` : ""}. ${base}/r/${a.handle}?from=for`);
-  const entries = res.entries.map((r) => `- ${r.title ?? r.key} (Indexed · unclaimed): ${r.description}${toolNames(r).length ? ` Tools: ${toolNames(r).join(", ")}.` : ""} ${howToStart(r)}. ${base}/r/x/${r.id}`);
+  const entries = res.entries.map((r) => `- ${r.title ?? r.key} (${label(r)}): ${r.description}${toolNames(r).length ? ` Tools: ${toolNames(r).join(", ")}.` : ""} ${howToStart(r)}. ${base}/r/x/${r.id} (details: ${base}/i/${r.id})`);
   return `# ${n.title}
 
 ${n.answer}
@@ -138,7 +161,7 @@ export function needPage(base: string, res: NeedResult, published: boolean): str
   const n = res.need;
   const count = entryCount(res);
   const agentLis = res.agents.map((a) => `<li><a href="/r/${esc(a.handle)}?from=for"><strong>${esc(a.name)}</strong></a> <span class="badge ok">Verified</span><span class="fix">${esc(a.tagline ?? a.description ?? "")}${a.install ? ` · Install: <code>${esc(a.install)}</code>` : ""}</span></li>`).join("");
-  const entryLis = res.entries.map((r) => `<li><a href="/r/x/${r.id}" rel="nofollow"><strong>${esc(r.title ?? r.key)}</strong></a> <span class="badge">Indexed · unclaimed</span><span class="fix">${esc(r.description)}${toolNames(r).length ? ` · Tools: ${esc(toolNames(r).join(", "))}` : ""} · ${esc(howToStart(r))}</span></li>`).join("");
+  const entryLis = res.entries.map((r) => `<li><a href="/r/x/${r.id}" rel="nofollow"><strong>${esc(r.title ?? r.key)}</strong></a> <span class="badge${label(r) === "Claimed by its owner" ? " ok" : ""}">${label(r)}</span><span class="fix">${esc(r.description)}${toolNames(r).length ? ` · Tools: ${esc(toolNames(r).join(", "))}` : ""} · ${esc(howToStart(r))} · <a href="/i/${r.id}">details</a></span></li>`).join("");
   const ld = { "@context": "https://schema.org", "@type": "ItemList", name: `${n.title}: agents and MCP servers`, numberOfItems: count,
     itemListElement: [...res.agents.map((a) => ({ name: a.name, url: `${base}/a/${a.handle}` })), ...res.entries.map((r) => ({ name: r.title ?? r.key, url: entryDestination(r) ?? `${base}/r/x/${r.id}` }))].map((x, i) => ({ "@type": "ListItem", position: i + 1, ...x })) };
   const body = `<div class="wrap"><div class="page"><div class="label">For a need</div><h1 class="mt8">${esc(n.title)}</h1>
