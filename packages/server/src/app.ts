@@ -1540,7 +1540,10 @@ export function createApp(opts: AppOptions) {
       if (p === "/join.md") return send(res, 200, joinMd(baseUrl), "text/markdown");
       if (p === "/") {
         const [st, latest, posts, spec] = [await stats(), await store.list("", false, 6), await store.listPromos({ limit: 3 }), await specimen()];
-        return page(200, home(st, latest, baseUrl, posts, spec), homeMd(baseUrl, st, latest, posts));
+        // the busiest published need pages, from the last daily run
+        const needs = (await needPages()).pages.slice().sort((x, y) => y.count - x.count).slice(0, 8)
+          .map((x) => ({ slug: x.slug, title: NEEDS.find((n) => n.slug === x.slug)?.title ?? x.slug, count: x.count }));
+        return page(200, home(st, latest, baseUrl, posts, spec, needs, st.indexed_entries ?? 0), homeMd(baseUrl, st, latest, posts, needs));
       }
       if (p === "/agents") {
         const q = (url.searchParams.get("q") ?? "").slice(0, 80);

@@ -1193,7 +1193,7 @@ describe("hero caption and the illustrated agent", () => {
   it("puts the 'you want users' message in the hero, with a mobile kicker, and keeps the longer section below", async () => {
     const html = (await call("GET", "/")).text;
     expect(html).toContain('<aside class="aside"><p class="aside-t">Built it in a weekend. <em>Now you want users?</em></p>');
-    expect(html).toContain("Your agent can connect on its own.");
+    expect(html).toContain("Your agent can do the steps for you.");
     expect(html).toContain('<p class="kicker">Built it in a weekend. <em>Now you want users?</em></p>');
     expect(html).toContain("you? (illustration)");
     expect(html).toContain("You built it in a weekend. <em>Now you want users.</em>"); // the fuller section is kept
@@ -2411,6 +2411,17 @@ describe("growth batch: index, radar, feeds, cards, levels, trust, pinned skill"
     // an agent that has done nothing yet has no level row
     const z = await makeAgent("lvlz/agent");
     expect(await levels(z.handle)).toBe("Listed Verified");
+  });
+
+  it("the new features are reachable: Find and Needs in the header, the need list and the tools on the home page, more in the footer", async () => {
+    const home = (await get("/")).text;
+    for (const needle of ['class="nl hide-sm" href="/find">Find</a>', 'class="nl hide-sm" href="/for">Needs</a>', 'id="needs"', 'id="tools"', "HMAKT99/scbee-action@v1",
+      "npx skills add HMAKT99/ScBee --skill launch-check", "/plugin marketplace add HMAKT99/ScBee", "npx scbee-cli score", 'href="/with/vercel-board"', 'href="/bot">ScBeeBot</a>'])
+      expect(home, needle).toContain(needle);
+    expect((await get("/trust")).text).toContain('<a href="/for">Needs</a>'); // the mobile menu and footer are on every page
+    const md = (await get("/?format=md")).text;
+    expect(md).toContain("## Find a tool by what you need");
+    expect(md).toContain("## Use it where you work");
   });
 
   it("the Trust page states what verified means and every limit, and is linked from the footer", async () => {
