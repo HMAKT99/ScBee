@@ -28,11 +28,38 @@ describe("the curated needs", () => {
   });
 });
 
+describe("matching precision (bugs seen on the live pages)", () => {
+  it("an entry qualifies on its own name and description, not on a long tool list; PDF makers are not PDF readers", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([
+      entry("io.github.lead/getlead", "Find B2B leads and run outreach"),
+      entry("io.github.cat/cattalog", "Build print-ready PDF catalogs from templates"),
+      entry("io.github.ok/reader", "Extract text and tables from PDF files"),
+    ]);
+    const db = (store as unknown as { db: { execute: (q: { sql: string; args: unknown[] }) => Promise<unknown> } }).db;
+    // a generic entry whose tools mention email, notes and maps must not land on those pages
+    await db.execute({ sql: "UPDATE indexed_entries SET tools_json = ? WHERE key = 'io.github.lead/getlead'", args: [JSON.stringify([{ name: "send_email", description: "send email, take notes, location maps, read pdf" }])] });
+    const pdf = await resolveNeed(store, NEEDS.find((n) => n.slug === "read-pdf-files")!);
+    expect(pdf.entries.map((e) => e.key)).toEqual(["io.github.ok/reader"]);
+    for (const slug of ["send-email", "take-notes-memory", "read-maps-places"])
+      expect((await resolveNeed(store, NEEDS.find((n) => n.slug === slug)!)).entries.map((e) => e.key), slug).toEqual([]);
+    store.close();
+  });
+
+  it("entries named after the need come first", async () => {
+    const store = await Store.open(":memory:");
+    await store.applyIndexed([entry("io.github.a/tools", "A toolbox that can also send email"), entry("io.github.b/mailer", "Delivers messages", { title: "Email sender" })]);
+    const r = await resolveNeed(store, NEEDS.find((n) => n.slug === "send-email")!);
+    expect(r.entries.map((e) => e.key)).toEqual(["io.github.b/mailer", "io.github.a/tools"]);
+    store.close();
+  });
+});
+
 describe("which need pages are published", () => {
   it(`needs at least ${MIN_ENTRIES} real entries, with somewhere to send people`, async () => {
     const store = await Store.open(":memory:");
     await store.applyIndexed([
-      entry("io.github.a/p1", "Read PDF documents"), entry("io.github.a/p2", "Extract text from PDF"), entry("io.github.a/p3", "PDF to markdown"),
+      entry("io.github.a/p1", "Read PDF documents"), entry("io.github.a/p2", "Extract text from PDF"), entry("io.github.a/p3", "Parse PDF to markdown"),
       entry("io.github.b/w1", "Weather forecast lookups"), entry("io.github.b/w2", "Current weather"),
       entry("io.github.c/nolink", "PDF tool without a website", { website: null }),
     ]);
@@ -62,7 +89,7 @@ describe("need pages on the site", () => {
     store = await Store.open(":memory:");
     await store.applyIndexed([
       entry("io.github.a/p1", "Read PDF documents", { title: "Alpha PDF", repo: "github.com/acme/alpha" }),
-      entry("io.github.a/p2", "Extract text from PDF files"), entry("io.github.a/p3", "Convert PDF to markdown"),
+      entry("io.github.a/p2", "Extract text from PDF files"), entry("io.github.a/p3", "Parse PDF into markdown"),
       entry("io.github.pg/s1", "Postgres SQL database query 1"), entry("io.github.pg/s2", "Postgres SQL database query 2"), entry("io.github.pg/s3", "Postgres SQL database query 3"),
       entry("io.github.w/w1", "Weather forecast lookups"),
     ]);
@@ -117,7 +144,7 @@ describe("need pages on the site", () => {
     const alts = await alternativesFor(store, "github:acme/alpha");
     expect(alts.length).toBeGreaterThan(0);
     expect(alts.length).toBeLessThanOrEqual(3);
-    expect(alts[0]!.reason).toMatch(/^Also read PDF files \(matched on "pdf"\)\.$/);
+    expect(alts[0]!.reason).toMatch(/^Also read PDF files \(matched on "pdf", "[a-z ]+"\)\.$/);
     expect(alts.every((a) => a.href.startsWith("/r/x/"))).toBe(true);
     expect(await alternativesFor(store, "github:nobody/here")).toEqual([]);
   });
