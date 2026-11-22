@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "scbee": {
+      "url": "https://scbee.vercel.app/mcp"
+    }
+  }
+}

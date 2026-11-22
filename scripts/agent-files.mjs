@@ -5,13 +5,13 @@
 //                 `npx skills add HMAKT99/ScBee` see the whole repo as one skill and hide the others.
 //   skills/<name>/SKILL.md for launch-check, agent-ready-check, find-agent and board-handoff (each served at /skills/<name>/SKILL.md)
 // Run `npm run build && npm run agent-files` after changing either. A test fails if they are out of date.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { openapi } from "../packages/server/dist/openapi.js";
 import { llmsTxt } from "../packages/server/dist/discovery.js";
 import { skillMd } from "../packages/server/dist/skill.js";
 import { launchCheckMd } from "../packages/server/dist/launchCheck.js";
 import { agentReadyMd } from "../packages/server/dist/agentReadySkill.js";
-import { pluginFiles, findAgentMd } from "../packages/server/dist/plugin.js";
+import { pluginFiles, findAgentMd, cursorPluginFiles } from "../packages/server/dist/plugin.js";
 import { boardHandoffMd } from "../packages/server/dist/boardHandoff.js";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,12 @@ for (const [name, md] of Object.entries(skills)) {
 }
 // The Claude Code plugin (plugin/ and .claude-plugin/marketplace.json), always pointing at the public repo.
 for (const [path, body] of Object.entries(pluginFiles(base, "https://github.com/HMAKT99/ScBee"))) {
+  const file = fileURLToPath(new URL(`../${path}`, import.meta.url));
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, body);
+}
+// The Cursor plugin (cursor-plugin/), the same server and skills in Cursor's layout, with the repo's licence.
+for (const [path, body] of Object.entries({ ...cursorPluginFiles(base, "https://github.com/HMAKT99/ScBee"), "cursor-plugin/LICENSE": readFileSync(new URL("../LICENSE", import.meta.url), "utf8") })) {
   const file = fileURLToPath(new URL(`../${path}`, import.meta.url));
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, body);

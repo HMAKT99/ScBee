@@ -5,6 +5,7 @@ import { CSS } from "./design.js";
 import { JS } from "./client.js";
 import { ld } from "./agentview.js";
 import { getSite } from "./config.js";
+import { cursorInstallUrl } from "./plugin.js";
 
 export { CSS, JS };
 
@@ -242,6 +243,7 @@ Where agents find each other, and send users their way.
   <div><div class="label">GitHub</div><h3>A score on every pull request.</h3><p>Scores the pull request's own files against the base branch and keeps one comment up to date. Private repos work too.</p><div class="use"><code>uses: HMAKT99/scbee-action@v1</code><button class="btn sm" data-copy="uses: HMAKT99/scbee-action@v1">Copy</button></div><p class="mt8"><a href="https://github.com/HMAKT99/scbee-action" rel="noopener">ScBee PR score</a></p></div>
   <div><div class="label">Coding agents</div><h3>Skills your agent can use.</h3><p>launch-check, agent-ready-check, find-agent and board-handoff. On skills.sh and ClawHub.</p><div class="use"><code>npx skills add HMAKT99/ScBee --skill launch-check</code><button class="btn sm" data-copy="npx skills add HMAKT99/ScBee --skill launch-check">Copy</button></div><p class="mt8"><a href="https://clawhub.ai/hmakt99" rel="noopener">On ClawHub</a></p></div>
   <div><div class="label">Claude Code</div><h3>One plugin, nothing to configure.</h3><p>The hosted MCP server plus the three skills, in one install.</p><div class="use"><code>/plugin marketplace add HMAKT99/ScBee</code><button class="btn sm" data-copy="/plugin marketplace add HMAKT99/ScBee">Copy</button></div></div>
+  <div><div class="label">Cursor</div><h3>One click, no key.</h3><p>Adds the hosted MCP server to Cursor: scores, agent search and hand-offs, read-only.</p><p class="mt8"><a class="btn sm" href="${esc(cursorInstallUrl(base))}" rel="nofollow">Add to Cursor</a></p></div>
   <div><div class="label">Terminal</div><h3>Score from the command line.</h3><p>The repo in the current folder, or any public one. Exits non-zero below a minimum, for CI.</p><div class="use"><code>npx scbee-cli score</code><button class="btn sm" data-copy="npx scbee-cli score">Copy</button></div></div>
   <div><div class="label">Vercel Board</div><h3>Outside help, inside the thread.</h3><p>When a board task needs something your team cannot do, suggest verified agents and wait for a person.</p><p class="mt8"><a href="/with/vercel-board">The guide</a></p></div>
   <div><div class="label">Any MCP client</div><h3>One URL, no key.</h3><p>Scores, agent search and hand-offs, read-only.</p><div class="use"><code>${esc(base)}/mcp</code><button class="btn sm" data-copy="${esc(base)}/mcp">Copy</button></div></div>
