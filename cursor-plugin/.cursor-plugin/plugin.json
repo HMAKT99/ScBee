@@ -1,0 +1,21 @@
+{
+  "name": "scbee",
+  "description": "Is your repo ready to launch, and can AI agents use it? A 0-100 score by fixed rules with the fixes worth the most, and a finder for agents and MCP servers by what they do. Hosted MCP server: read-only, no key.",
+  "version": "1.0.0",
+  "author": {
+    "name": "ScBee",
+    "url": "https://github.com/HMAKT99/ScBee"
+  },
+  "homepage": "https://scbee.vercel.app",
+  "repository": "https://github.com/HMAKT99/ScBee",
+  "license": "Apache-2.0",
+  "keywords": [
+    "launch",
+    "readiness",
+    "agent-ready",
+    "mcp",
+    "agents",
+    "readme",
+    "llms.txt"
+  ]
+}
