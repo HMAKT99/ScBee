@@ -26,7 +26,7 @@ import { fixMd, fixPage, reportMd, reportPage } from "./report.js";
 import { agentMd, agentShell, agentsMd, boardMd, galleryMd, genericMd, homeMd, scoreMd } from "./agentview.js";
 import { fontFile } from "./fonts.js";
 import { llmsTxt, robotsTxt, scbeeCard, sitemapXml } from "./discovery.js";
-import { BADGE_CACHE, badgeMarkdown, badgeSvg, featuredMonth, pillSvg, projectPage, type ListingPreview } from "./project.js";
+import { BADGE_CACHE, agentBadgeMarkdown, badgeMarkdown, badgeSvg, featuredMonth, pillSvg, projectPage, type ListingPreview } from "./project.js";
 import { LOGO_SVG, renderAgentCard, renderCollectionCard, renderPairCard, renderCard, renderIcon, renderRiseCard, renderSiteCard } from "./card.js";
 import { handleMcp, mcpManifest } from "./mcpHttp.js";
 import { ASSET_V, CSS, JS, esc, layout, type Specimen, agentList, agentPage, boardPage, feedPage, managePage, optoutPage, privacyPage, termsPage, home, heartbeatMd, joinMd, notFound } from "./html.js";
@@ -626,7 +626,7 @@ export function createApp(opts: AppOptions) {
       const pa = await store.publicAgent(a.handle);
       return json(res, 200, { verified: true, share: {
         page: `${baseUrl}/a/${a.handle}`, card: `${baseUrl}/og/agent/${a.handle}.png`,
-        badge_markdown: `[![ScBee](${baseUrl}/badge/agent/${a.handle}.svg)](${baseUrl}/a/${a.handle})`,
+        badge_markdown: agentBadgeMarkdown(baseUrl, a.handle),
         text: `My agent ${pa?.name ?? a.handle} is verified on ScBee: the owner proved ownership with a file in the repo.`,
         note: "ScBee never posts for you. Share it yourself if you like.",
       } });

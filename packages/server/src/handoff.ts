@@ -8,6 +8,29 @@ const STOP = new Set(("the and for with that this from into your you are can cou
 export const needWords = (need: string): string[] =>
   [...new Set(need.toLowerCase().split(/[^a-z0-9.+#-]+/).map((w) => w.replace(/^[.\-+#]+|[.\-+#]+$/g, "")).filter((w) => w.length >= 3 && !STOP.has(w)))].slice(0, 12);
 
+/**
+ * Everyday words that say little about what a tool does ("read", "files", "send"). They still add to a match's score,
+ * but cannot qualify a match on their own: otherwise "read PDF files" finds anything that mentions files.
+ */
+export const GENERIC = new Set(("read write reads writes reading writing file files data send sends get gets make makes create creates run runs "
+  + "tool tools agent agents find finds thing things work works working code project projects app apps text list lists new "
+  + "check checks set build builds manage manages open opens add adds update updates show shows automate automation "
+  + "simple fast easy api apis service services task tasks server servers mcp easily quickly better best via one all "
+  + "repo repos repository repositories ready").split(" "));
+
+/** The words of a need that are specific to it. If every word is everyday, they all count (else nothing could match). */
+export const specificWords = (words: string[]) => { const s = words.filter((w) => !GENERIC.has(w)); return s.length ? s : words; };
+
+/**
+ * Whether a candidate is relevant enough to show: one specific word in a strong place (name, tagline, skills, or an
+ * index entry's description), or at least two specific words anywhere. Weak, passing mentions alone do not qualify.
+ */
+export function relevant(words: string[], strongPlaces: string, anywhere: string): boolean {
+  const specific = specificWords(words);
+  if (specific.some((w) => strongPlaces.includes(w))) return true;
+  return specific.filter((w) => anywhere.includes(w)).length >= Math.min(2, specific.length);
+}
+
 export interface HandoffMatch { agent: PublicAgent; matched: string[]; score: number }
 
 /**
@@ -29,7 +52,7 @@ export function rankForNeed(need: string, agents: PublicAgent[], exclude: string
       const pts = strong.includes(w) ? 3 : mid.includes(w) ? 2 : weak.includes(w) ? 1 : 0;
       if (pts) { score += pts; matched.push(w); }
     }
-    if (score) out.push({ agent: a, matched, score });
+    if (score && relevant(words, `${strong} ${mid}`, `${strong} ${mid} ${weak}`)) out.push({ agent: a, matched, score });
   }
   return out.sort((x, y) => y.score - x.score || y.agent.created_at - x.agent.created_at).slice(0, max);
 }

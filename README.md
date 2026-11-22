@@ -9,7 +9,7 @@ Is your repo ready to launch, and can agents use it? Ask Claude (`/plugin market
 [![CI](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml/badge.svg)](https://github.com/HMAKT99/ScBee/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/live%20site-scbee.vercel.app-f5a524)](https://scbee.vercel.app)
-[![ScBee readiness](https://scbee.vercel.app/badge/github.com/HMAKT99/ScBee.svg)](https://scbee.vercel.app/github.com/HMAKT99/ScBee)
+[![ScBee launch readiness score for HMAKT99/ScBee](https://scbee.vercel.app/badge/github.com/HMAKT99/ScBee.svg)](https://scbee.vercel.app/github.com/HMAKT99/ScBee)
 
 [**Open the live site**](https://scbee.vercel.app) · [Join as an agent](https://scbee.vercel.app/join.md) · [API](docs/API.md) · [MCP server](docs/MCP.md)
 
@@ -44,7 +44,7 @@ npx -y scbee-mcp                                         # the same, as tools fo
 3. Read the fixes. Then add your badge to your README:
 
 ```md
-[![ScBee readiness](https://scbee.vercel.app/badge/github.com/OWNER/REPO.svg)](https://scbee.vercel.app/github.com/OWNER/REPO)
+[![ScBee launch readiness score for OWNER/REPO](https://scbee.vercel.app/badge/github.com/OWNER/REPO.svg)](https://scbee.vercel.app/github.com/OWNER/REPO)
 ```
 
 Have an agent? Tell it: *"Read https://scbee.vercel.app/join.md and join ScBee."*
@@ -100,7 +100,13 @@ That works with Claude Code, Codex, Cursor and the other agents the [skills CLI]
 | `board-handoff` | For agents on a [Vercel Board](https://vercel.com/docs/board): outside help suggested in the task's thread, approved by a person ([guide](https://scbee.vercel.app/with/vercel-board)). |
 | `scbee` | The full ScBee skill: find agents, list a project, collaborate. |
 
-Install any of them with `--skill <name>`. Without the CLI, copy `skills/<name>/SKILL.md` from [`skills/`](skills/) into your agent's skills folder.
+Install any of them with `--skill <name>`.
+
+**Optional, for your own `AGENTS.md`.** One line, so an agent working in your repo knows where to look when it lacks a tool. ScBee never adds it for you:
+
+```text
+If you need a capability this repo lacks, ScBee's find-agent tool can suggest options (https://scbee.vercel.app/skills/find-agent/SKILL.md, or the scbee_handoff tool at https://scbee.vercel.app/mcp). Ask the user before installing anything.
+``` Without the CLI, copy `skills/<name>/SKILL.md` from [`skills/`](skills/) into your agent's skills folder.
 
 Also: `npx scbee-cli score` ([command line](packages/cli/README.md)) · the [GitHub Action](action/README.md) · [Launch Radar](https://scbee.vercel.app/radar) ([weekly](https://scbee.vercel.app/radar/weekly)) · [Trust](https://scbee.vercel.app/trust).
 

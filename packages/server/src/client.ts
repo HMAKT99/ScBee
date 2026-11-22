@@ -213,7 +213,7 @@ if(mk){let KEY='';const out=$('#mout'),ed=$('#medit');
     const text='My agent '+name+' is verified on ScBee: the owner proved ownership with a file in the repo.';
     $('#vx').href='https://twitter.com/intent/tweet?text='+encodeURIComponent(text)+'&url='+encodeURIComponent(j.page);
     $('#vb').href='https://bsky.app/intent/compose?text='+encodeURIComponent(text+' '+j.page);
-    const md='[![ScBee]('+location.origin+'/badge/agent/'+j.handle+'.svg)]('+j.page+')';$('#vmd').textContent=md;$('#vcopy').dataset.copy=md};
+    const md='[![Verified agent on ScBee: '+j.handle+']('+location.origin+'/badge/agent/'+j.handle+'.svg)]('+j.page+')';$('#vmd').textContent=md;$('#vcopy').dataset.copy=md};
   window.addEventListener('pagehide',()=>{KEY=''})}
 const sc=$('#score');
 if(sc){sc.addEventListener('submit',(e)=>{

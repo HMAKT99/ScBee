@@ -69,9 +69,26 @@ export const CLAIM_LABEL = { unclaimed: "Scored \u00b7 unclaimed", pending: "Lis
 /** Badges are cheap to serve: browsers keep them an hour, the CDN a day, and a stale one is fine for a week. */
 export const BADGE_CACHE = "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 
-/** The README snippet: the readiness badge, linking back to the score page. */
+/** "owner/repo" or "example.com", for badge text. */
+const shortName = (path: string) => path.replace(/^github\.com\//, "").replace(/^web\//, "");
+/**
+ * README snippets. The alt text says what the badge means, so an agent reading a README as text learns it too.
+ */
 export function badgeMarkdown(base: string, path: string): string {
-  return `[![ScBee readiness](${base}/badge/${path}.svg)](${base}/${path})`;
+  return `[![ScBee launch readiness score for ${shortName(path)}](${base}/badge/${path}.svg)](${base}/${path})`;
+}
+export function agentReadyBadgeMarkdown(base: string, path: string): string {
+  return `[![ScBee Agent-Ready score for ${shortName(path)} (can AI agents use it?)](${base}/badge/agent-ready/${path}.svg)](${base}/${path})`;
+}
+/**
+ * An optional line an owner may add to their own AGENTS.md. It tells the agent working in that repo where to look when
+ * it lacks a capability, and to ask first. It is offered to owners, never written into anyone's files by ScBee.
+ */
+export const agentsMdSnippet = (base: string) =>
+  `If you need a capability this repo lacks, ScBee's find-agent tool can suggest options (${base}/skills/find-agent/SKILL.md, or the scbee_handoff tool at ${base}/mcp). Ask the user before installing anything.`;
+
+export function agentBadgeMarkdown(base: string, handle: string): string {
+  return `[![Verified agent on ScBee: ${handle}](${base}/badge/agent/${handle}.svg)](${base}/a/${handle})`;
 }
 
 /** Flat badge for READMEs. Colour reflects the band. A project that cannot be scored gets a grey "not scored", never an error. */
@@ -143,7 +160,7 @@ const renderComps = (r: ScoreResult): string => r.components.map((c) => `<sectio
 function agentReadySection(ar: ScoreResult, path: string, base: string): string {
   const b = agentBand(ar.total);
   const lost = ar.components.flatMap((c) => c.items.filter((i) => i.fix && i.points < i.max)).sort((x, y) => (y.max - y.points) - (x.max - x.points)).slice(0, 3);
-  const badgeMd = `[![Agent-ready](${base}/badge/agent-ready/${path}.svg)](${base}/${path})`;
+  const badgeMd = agentReadyBadgeMarkdown(base, path);
   return `<h2 class="h2s">Agent-ready</h2><div class="specimen">
 <p><strong>${ar.total}/100</strong> <span class="band">${esc(b.label)}</span> Can other agents find, install and trust this? Checked from public files by fixed rules (version ${esc(ar.version)}).</p>
 ${lost.length ? `<ol class="list">${lost.map((i) => `<li>${esc(i.fix)} <span class="mute">(+${i.max - i.points})</span></li>`).join("")}</ol>${path.startsWith("github.com/") || path.startsWith("web/") ? `<p><a class="btn sm" href="/fix/${esc(path)}">Generate the missing files</a>${path.startsWith("github.com/") ? ` <span class="mute small">New project? Start from the <a href="https://github.com/HMAKT99/agent-ready-starter" rel="noopener">agent-ready starter</a>.</span>` : ""}</p>` : ""}` : `<p>Nothing to fix. Agents can find, install and trust this.</p>`}
@@ -216,7 +233,7 @@ ${p.featuredSince && path.startsWith("github.com/") ? `<h2 class="h2s" id="featu
 <h2 class="h2s">Add the badge to your README</h2>
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy</button></div>
 ${p.indexed?.length ? `<p class="note mt16">In ScBee's index from the official MCP Registry as ${p.indexed.map((x) => `<strong>${esc(x.name)}</strong> (${x.handoffs} hand-off${x.handoffs === 1 ? "" : "s"} sent from ScBee in the last 30 days)`).join(", ")}. <a href="/bot">What the index is</a>.</p>` : ""}
-${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner proved control with a file in the ${p.path?.startsWith("web/") ? "site" : "repo"}. They can edit the listing on <a href="/manage">Manage a listing</a> or remove it at any time from <a href="/optout">Remove a project</a>.</p>`
+${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner proved control with a file in the ${p.path?.startsWith("web/") ? "site" : "repo"}. They can edit the listing on <a href="/manage">Manage a listing</a> or remove it at any time from <a href="/optout">Remove a project</a>.</p><p class="mute mt16">Optional, for the owner: a line for this project's AGENTS.md, so an agent working in it knows where to look when it lacks a tool.</p><div class="use"><code>${esc(agentsMdSnippet(base))}</code><button class="btn sm" data-copy="${esc(agentsMdSnippet(base))}">Copy</button></div>`
   : p.claim === "pending" ? `<p class="note mt16" id="claim">A listing was started but the owner has not proved control yet. Until then it is not a verified agent. Owner? Follow the verify step in <a href="/join.md">join.md</a>, or recover the key from <a href="/manage">Manage a listing</a>.</p>`
   : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`, p.preview) : ""}
 <p class="note mt24">This is a readiness score, not a prediction of success. It reads only public data (score version ${esc(r.version)}), is computed by fixed rules with no AI model, and was checked ${esc(new Date(p.fetchedAt).toISOString().slice(0, 16).replace("T", " "))} UTC.</p></div></div>`;
