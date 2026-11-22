@@ -24,6 +24,21 @@ describe("Cursor plugin and the Add to Cursor link", () => {
     expect(Object.values(files).join("\n")).not.toMatch(/api[_-]?key=|SCBEE_API_KEY/);
   });
 
+  it("has a root marketplace list pointing at the plugin folder, and a square logo on a plate", async () => {
+    const m = JSON.parse(files[".cursor-plugin/marketplace.json"]!);
+    expect(m.plugins).toEqual([expect.objectContaining({ name: "scbee", source: "cursor-plugin" })]);
+    expect(JSON.stringify(m)).not.toMatch(/@/); // no personal email in a public file
+    const logo = files["cursor-plugin/assets/logo.svg"]!;
+    expect(logo).toMatch(/viewBox="-6 -6 44 44"><rect x="-6" y="-6" width="44" height="44"/);
+    const store = await Store.open(":memory:");
+    const { server } = createApp({ store, baseUrl: BASE });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/logo.svg`);
+    server.close(); store.close();
+    expect(res.headers.get("content-type")).toMatch(/image\/svg\+xml/);
+    expect(await res.text()).toBe(logo.trimEnd());
+  });
+
   it("the install link carries the hosted URL, and the home page and docs offer it", async () => {
     const u = new URL(cursorInstallUrl(BASE));
     expect(u.origin + u.pathname).toBe("https://cursor.com/en/install-mcp");

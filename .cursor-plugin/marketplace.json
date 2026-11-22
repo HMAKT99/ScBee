@@ -1,0 +1,17 @@
+{
+  "name": "scbee",
+  "owner": {
+    "name": "ScBee",
+    "url": "https://github.com/HMAKT99/ScBee"
+  },
+  "metadata": {
+    "description": "ScBee for Cursor: launch readiness and an agent and MCP server finder"
+  },
+  "plugins": [
+    {
+      "name": "scbee",
+      "source": "cursor-plugin",
+      "description": "Is your repo ready to launch, and can AI agents use it? Scores, fixes, and agents or MCP servers by what they do. Read-only, no key."
+    }
+  ]
+}

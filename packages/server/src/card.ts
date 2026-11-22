@@ -144,6 +144,8 @@ export async function renderCollectionCard(title: string, count: number, domain 
 }
 
 /** The brand mark as a standalone SVG (favicon, touch icon). Transparent corners, amber hexagon, three connected points. */
+/** The logo on a square dark plate, for directories that want a 1:1 logo with a background (Cursor Marketplace). */
+export const logoPlateSvg = () => LOGO_SVG.replace('viewBox="0 0 32 32">', 'viewBox="-6 -6 44 44"><rect x="-6" y="-6" width="44" height="44" rx="9" fill="#111111"/>');
 export const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M16 2 28 9v14L16 30 4 23V9z" fill="#f2a20f"/><path d="M10.5 20.5 16 11.5l5.5 6.5" fill="none" stroke="#0d0d0d" stroke-width="1.6" stroke-linejoin="round"/><circle cx="10.5" cy="20.5" r="2.3" fill="#0d0d0d"/><circle cx="16" cy="11.5" r="2.3" fill="#0d0d0d"/><circle cx="21.5" cy="18" r="2.3" fill="#0d0d0d"/></svg>`;
 
 const iconCache = new Map<number, Buffer>();
