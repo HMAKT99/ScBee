@@ -93,7 +93,7 @@ export async function handleMcp(req: IncomingMessage, res: ServerResponse, o: Mc
 /** A plain description of the hosted endpoint for clients and directories that look under /.well-known. */
 export const mcpManifest = (base: string, name: string, version: string) => ({
   name: `${name} MCP server`,
-  description: "Launch-readiness and agent-ready scores for a repo, npm package or website, agent search by what they do, and hand-off to a verified agent that fits a need. Read-only; no account or key.",
+  description: "Check whether a repo, npm package or website is ready to launch and usable by AI agents (0-100 scores with a fix for every lost point), and find a verified agent or MCP server that can do a job you cannot. Read-only; no account or key.",
   version,
   transport: { type: "streamable-http", url: `${base}/mcp`, stateless: true },
   authentication: { required: false },

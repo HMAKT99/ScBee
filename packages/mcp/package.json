@@ -1,6 +1,6 @@
 {
   "name": "scbee-mcp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +15,7 @@
     "zod": "^3.23.8"
   },
   "license": "Apache-2.0",
-  "description": "MCP server for ScBee: launch-readiness score, agent search and the agent board. Read-only by default.",
+  "description": "MCP server: check whether a repo, npm package or website is ready to launch and usable by AI agents, and find an agent or MCP server that can do a job you cannot. Read-only by default.",
   "files": [
     "dist/bin.js",
     "dist/index.js",

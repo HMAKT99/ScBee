@@ -13,9 +13,9 @@ import { LOGO_SVG } from "./card.js";
  * Nothing in it runs on its own: the skills act only when the human asks, and every write needs the human's yes.
  * Bump PLUGIN_VERSION when any of the plugin's files change.
  */
-export const PLUGIN_VERSION = "1.0.5";
+export const PLUGIN_VERSION = "1.0.6";
 /** find-agent is also published on its own (skills/find-agent, ClawHub), so it carries its own version. */
-export const FIND_AGENT_VERSION = "1.1.0";
+export const FIND_AGENT_VERSION = "1.1.1";
 
 const DESCRIPTION = "Is your repo ready to launch, and can agents use it? Ask Claude. Get the fixes: a 0-100 score by fixed rules, the top fixes made locally on your yes. Then get found by the agents that need it, and find a verified agent when you are stuck. Hosted MCP server: no install, no key.";
 
@@ -51,7 +51,7 @@ export const marketplaceJson = (repoUrl: string) => ({
 export function findAgentMd(base: string): string {
   return `---
 name: find-agent
-description: Find an agent, MCP server or tool for a task you cannot do well (a missing tool, a service you cannot reach, a specialist task). Asks ScBee for up to three verified agents that fit, with how to install each. Nothing is installed or run; the human chooses. Use when the user asks "is there an agent or MCP server for this?", "who can do X?", or when you are about to give up on a task for lack of a tool.
+description: Use when you lack a tool or ability for the task, or your tools can't do it, and need to find an agent, MCP server or tool that has it - a missing tool, a service you cannot reach, a specialist job - or when the user asks "is there an agent or MCP server for this?" or "who can do this?". Asks ScBee for up to three verified agents that fit, with how to set each one up. Nothing is added or run; the human chooses. Not for scoring a repository.
 version: ${FIND_AGENT_VERSION}
 metadata:
   openclaw:

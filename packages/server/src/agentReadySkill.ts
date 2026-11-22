@@ -8,8 +8,8 @@
 export function agentReadyMd(base: string): string {
   return `---
 name: agent-ready-check
-description: Check whether other AI agents can find, install and trust the current GitHub repository. Reads its public ScBee Agent-Ready score (0-100, fixed rules) across agent card, llms.txt, MCP config, SKILL.md, AGENTS.md, install line, OpenAPI, licence, security policy and releases, shows the three fixes worth the most, offers to add those files locally, and only if the human says yes, lists the project on ScBee so agents can find it. Use when someone asks "can agents use my repo?", "is this agent-ready?", "should I add llms.txt or AGENTS.md?", or wants their project to be discoverable by agents.
-version: 1.0.0
+description: Use when the user asks whether AI agents can find, install and trust their repo or tool, wants it to be agent-ready, discoverable by agents or usable by coding agents, or asks whether to add llms.txt, AGENTS.md, an agent card, a SKILL.md or an MCP config. Reads the public ScBee Agent-Ready score (0-100, fixed rules) for the current GitHub repository, shows the three fixes worth the most, offers to add those files locally, and only if the human says yes, lists the project on ScBee. Not for private repositories, and not about readiness for human users.
+version: 1.0.1
 metadata:
   openclaw:
     homepage: ${base}
