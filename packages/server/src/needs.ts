@@ -1,6 +1,6 @@
 import type { PublicAgent, IndexedRow, Store } from "./store.js";
 import { esc, layout } from "./html.js";
-import { dedupeEntries, entryDestination } from "./indexer.js";
+import { dedupeEntries, entryDestination, rankIndexed, type IndexedMatch } from "./indexer.js";
 import { wrapData } from "./envelope.js";
 
 /**
@@ -99,6 +99,27 @@ export async function resolveNeed(store: Store, n: Need, agents?: PublicAgent[])
   entries.sort((a, b) => Number(isClaimed(b)) - Number(isClaimed(a)) || Number(named(b)) - Number(named(a)) || a.id - b.id);
   return { need: n, agents: all.filter((a) => a.verified && fits(textOfAgent(a), n)), entries: entries.slice(0, 30), total: entries.length };
 }
+/**
+ * The curated need a request asks for, if any: every term group of the need appears in the request ("find an MCP
+ * server that can read PDF files" is "Read PDF files"). The need with the most groups wins, as the most specific.
+ */
+export function needForQuery(q: string): Need | null {
+  const t = q.toLowerCase();
+  return NEEDS.filter((n) => fits(t, n)).sort((a, b) => b.must.length - a.must.length)[0] ?? null;
+}
+
+/**
+ * Index entries for a search or hand-off. A request that is one of the curated needs gets that need's precise rules,
+ * so it returns what its need page lists (a PDF catalog builder does not "read PDF files"). Anything else falls back
+ * to the word ranking.
+ */
+export async function rankForQuery(store: Store, q: string, max: number): Promise<{ need: Need | null; matches: IndexedMatch[] }> {
+  const n = needForQuery(q);
+  if (!n) return { need: null, matches: await rankIndexed(store, q, max) };
+  const res = await resolveNeed(store, n, []);
+  return { need: n, matches: res.entries.slice(0, max).map((row) => ({ row, matched: matchedTerms(textOfEntry(row), n), score: 0 })) };
+}
+
 export const entryCount = (r: NeedResult) => r.agents.length + (r.total ?? r.entries.length);
 
 /**

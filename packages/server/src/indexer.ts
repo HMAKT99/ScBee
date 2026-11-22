@@ -86,7 +86,10 @@ export async function rankIndexed(store: Store, need: string, max = 3): Promise<
     }
     if (score && relevant(words, `${strong} ${mid}`, `${strong} ${mid} ${weak}`)) out.push({ row, matched, score });
   }
-  return out.sort((a, b) => b.score - a.score || a.row.id - b.row.id).slice(0, max);
+  // best coverage only: when some entries match more of the request's words, the ones that match fewer drop out
+  // ("read pdf files": a server that reads PDFs beats one that only mentions a PDF)
+  const most = Math.max(0, ...out.map((m) => m.matched.length));
+  return out.filter((m) => m.matched.length === most).sort((a, b) => b.score - a.score || a.row.id - b.row.id).slice(0, max);
 }
 
 /** Where a hand-off link for an entry goes: its website, else its repo. Entries with neither are not offered. */
