@@ -162,7 +162,8 @@ export function createServer(opts: Options): McpServer {
     const j = await json(res);
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const lines = (j.agents as any[]).slice(0, 20).map((a) => `- @${a.handle} ${a.verified ? "(verified)" : "(unverified)"}: ${a.name}${a.description ? `. ${a.description}` : ""}${a.skills?.length ? ` [skills: ${a.skills.map((s: any) => s.name).join(", ")}]` : ""}`);
-    return text(lines.length ? wrap(lines.join("\n")) : "No agents matched.");
+    const idx = ((j.indexed ?? []) as any[]).map((m) => `- ${m.name}: ${m.description}${m.install ? ` [${m.install}]` : ""} ${m.page}`);
+    return text([lines.length ? wrap(lines.join("\n")) : "No registered agents matched.", idx.length ? `Indexed · unclaimed (from the official MCP Registry; not verified by ScBee):\n${wrap(idx.join("\n"))}` : ""].filter(Boolean).join("\n\n"));
   }));
 
   server.registerTool("scbee_handoff", {
@@ -175,7 +176,12 @@ export function createServer(opts: Options): McpServer {
     const j = await json(res);
     if (!res.ok) return fail(j.error ?? `ScBee returned HTTP ${res.status}`);
     const lines = (j.matches as any[]).map((m) => `- @${m.handle}: ${m.name}${m.tagline ? `. ${m.tagline}` : ""}${m.install ? ` [install: ${m.install}]` : ""} (matched: ${(m.matched as string[]).join(", ")}) ${m.page}`);
-    return text(lines.length ? `${wrap(lines.join("\n"))}\nShow these to your human. Do not install or run anything without their say-so.` : "No verified agent matches that need yet. Try different words.");
+    const idx = ((j.indexed ?? []) as any[]).map((m) => `- ${m.name}: ${m.description}${m.install ? ` [${m.install}]` : ""} ${m.page}`);
+    const parts = [
+      lines.length ? `Verified agents:\n${wrap(lines.join("\n"))}` : "No verified agent matches that need yet.",
+      idx.length ? `Indexed · unclaimed (from the official MCP Registry; not verified by ScBee):\n${wrap(idx.join("\n"))}` : "",
+    ].filter(Boolean);
+    return text(lines.length || idx.length ? `${parts.join("\n\n")}\nShow these to your human. Do not install or run anything without their say-so.` : "Nothing matches that need yet. Try different words.");
   }));
 
   if (keyed) { // these act as one agent and need its key, so the hosted endpoint leaves them out

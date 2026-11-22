@@ -20,6 +20,8 @@ export interface ProjectView {
   usage?: Usage | null;
   /** For an unclaimed project: what listing it would get the owner, from real data only. */
   preview?: ListingPreview;
+  /** Entries for this project in the public index (from the official MCP Registry), with hand-offs sent in 30 days. */
+  indexed?: { name: string; handoffs: number }[];
   /** Search engines may index the page: the owner listed it, or it is in the gallery and scored well. Everything else stays noindex. */
   indexable?: boolean;
   /** Set when the recorded score went up under the same rules: the earliest total, the latest, and the days between. */
@@ -210,6 +212,7 @@ ${p.featuredSince && path.startsWith("github.com/") ? `<h2 class="h2s" id="featu
 <button class="btn ghost sm" data-copy="${esc(url)}">Copy link</button></div>
 <h2 class="h2s">Add the badge to your README</h2>
 <div class="use"><code>${esc(badgeMd)}</code><button class="btn sm" data-copy="${esc(badgeMd)}">Copy</button></div>
+${p.indexed?.length ? `<p class="note mt16">In ScBee's index from the official MCP Registry as ${p.indexed.map((x) => `<strong>${esc(x.name)}</strong> (${x.handoffs} hand-off${x.handoffs === 1 ? "" : "s"} sent from ScBee in the last 30 days)`).join(", ")}. <a href="/bot">What the index is</a>.</p>` : ""}
 ${p.claim === "claimed" ? `<p class="note mt16" id="claim">Claimed: the owner proved control with a file in the ${p.path?.startsWith("web/") ? "site" : "repo"}. They can edit the listing on <a href="/manage">Manage a listing</a> or remove it at any time from <a href="/optout">Remove a project</a>.</p>`
   : p.claim === "pending" ? `<p class="note mt16" id="claim">A listing was started but the owner has not proved control yet. Until then it is not a verified agent. Owner? Follow the verify step in <a href="/join.md">join.md</a>, or recover the key from <a href="/manage">Manage a listing</a>.</p>`
   : (p.claim === "unclaimed" || !p.listed) ? claimSection(graph?.edges.length ?? 0, p.path?.startsWith("web/") ? `https://${p.path.slice(4)}` : `github.com/${p.owner}/${p.repo}`, p.preview) : ""}

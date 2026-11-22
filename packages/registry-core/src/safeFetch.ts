@@ -17,6 +17,8 @@ export interface RawResponse {
   status: number;
   location?: string;
   body: string;
+  /** Response headers, lower-cased (some callers need one, for example an MCP session id). */
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 export type Requester = (
@@ -73,7 +75,7 @@ export const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, t
             if (truncate) {
               // Keep what we have (enough for a page head) and stop reading.
               chunks.push(c.subarray(0, Math.max(0, c.length - (size - maxBytes))));
-              resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8") });
+              resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8"), headers: res.headers });
               req.destroy();
               return;
             }
@@ -83,7 +85,7 @@ export const defaultRequester: Requester = (r, { timeoutMs, maxBytes, headers, t
           chunks.push(c);
         });
         res.on("end", () =>
-          resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8") }),
+          resolve({ status: res.statusCode ?? 0, location: res.headers.location, body: Buffer.concat(chunks).toString("utf8"), headers: res.headers }),
         );
         res.on("error", reject);
       },
@@ -145,4 +147,18 @@ export async function safePostJson(
   const resolved = await assertPublicUrl(url, lookup);
   const res = await requester(resolved, { timeoutMs, maxBytes: 16 * 1024, headers: { "content-type": "application/json", ...headers }, method: "POST", body });
   return { status: res.status, body: res.body };
+}
+
+/**
+ * One request with any method to a public https URL, returning status, body and headers. Same SSRF protections as the
+ * other helpers (public addresses only, pinned to the validated IP), and redirects are never followed.
+ */
+export async function safeRequest(
+  url: string,
+  { method = "GET", body, headers, maxBytes = 256 * 1024, timeoutMs = 4000, lookup = defaultLookup, requester = defaultRequester }:
+    { method?: string; body?: string; headers?: Record<string, string>; maxBytes?: number; timeoutMs?: number; lookup?: Lookup; requester?: Requester } = {},
+): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  const resolved = await assertPublicUrl(url, lookup);
+  const res = await requester(resolved, { timeoutMs, maxBytes, ...(headers ? { headers } : {}), method, ...(body !== undefined ? { body } : {}) });
+  return { status: res.status, body: res.body, headers: res.headers ?? {} };
 }
