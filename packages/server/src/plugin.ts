@@ -13,7 +13,7 @@ import { LOGO_SVG } from "./card.js";
  * Nothing in it runs on its own: the skills act only when the human asks, and every write needs the human's yes.
  * Bump PLUGIN_VERSION when any of the plugin's files change.
  */
-export const PLUGIN_VERSION = "1.0.6";
+export const PLUGIN_VERSION = "1.0.7";
 /** find-agent is also published on its own (skills/find-agent, ClawHub), so it carries its own version. */
 export const FIND_AGENT_VERSION = "1.1.1";
 

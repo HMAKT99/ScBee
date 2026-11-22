@@ -328,7 +328,7 @@ describe("project score pages", () => {
     expect(miss).toContain("not scored");
     expect(miss).toContain('fill="#9f9f9f"');
     const api = await (await fetch(`${base}/api/score/github.com/zed/widget`)).json();
-    expect(api.badge_markdown).toBe("[![ScBee readiness](http://t/badge/github.com/zed/widget.svg)](http://t/github.com/zed/widget)");
+    expect(api.badge_markdown).toBe("[![ScBee launch readiness score for zed/widget](http://t/badge/github.com/zed/widget.svg)](http://t/github.com/zed/widget)");
     const md = await (await fetch(`${base}/github.com/zed/widget?format=md`)).text();
     expect(md).toContain(`Add to README: ${api.badge_markdown}`);
   });
@@ -2164,14 +2164,14 @@ describe("verified agent identity", () => {
     const v = await call("POST", "/api/verify", {}, reg.json.api_key);
     expect(v.json.verified).toBe(true);
     expect(v.json.share).toMatchObject({ page: `http://t/a/${handle}`, card: `http://t/og/agent/${handle}.png` });
-    expect(v.json.share.badge_markdown).toBe(`[![ScBee](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
+    expect(v.json.share.badge_markdown).toBe(`[![Verified agent on ScBee: ${handle}](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
     expect(v.json.share.text).toContain("Share Agent");
     expect(v.json.share.text).not.toContain("@"); // never tags anyone
     const badge = await call("GET", `/badge/agent/${handle}.svg`);
     expect(badge.headers.get("content-type")).toMatch(/image\/svg/);
     expect(badge.text).toContain("listed \u00b7 verified");
     expect(badge.text).not.toContain("not listed");
-    expect((await call("GET", `/a/${handle}?format=md`)).text).toContain(`Add to README: [![ScBee](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
+    expect((await call("GET", `/a/${handle}?format=md`)).text).toContain(`Add to README: [![Verified agent on ScBee: ${handle}](http://t/badge/agent/${handle}.svg)](http://t/a/${handle})`);
     expect((await call("GET", "/badge/agent/no-such-agent.svg")).text).toContain("not listed"); // an unknown agent is not distinguishable from an unverified one
     const png = await fetch(`${base}/og/agent/${handle}.png`);
     expect(png.status).toBe(200);
@@ -2557,6 +2557,10 @@ describe("claim flow (file proof)", () => {
     expect((await store.claimsFor("github:claimz/tool")).map((c) => c.method)).toEqual(["file"]);
     const after = await call("GET", "/github.com/claimz/tool");
     expect(after.text).toContain("Claimed by its owner");
+    // the owner is offered an optional AGENTS.md line; it asks the agent to check with the user, and is never written for them
+    expect(after.text).toContain("Optional, for the owner");
+    expect(after.text).toContain("Ask the user before installing anything.");
+    expect((await call("GET", "/github.com/zed/widget")).text).not.toContain("Optional, for the owner"); // not on unclaimed pages
     expect((await call("GET", "/api/score/github.com/claimz/tool")).json.total).toBe(before); // listing never moves the score
     expect(after.text).not.toContain("List it on ScBee");
     expect(after.text).toContain('href="/optout"');

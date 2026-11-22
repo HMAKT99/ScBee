@@ -1,6 +1,6 @@
 import { botUserAgent, fetchRegistryPage, probeEntry, type FetchOptions } from "@scbee/registry-core";
 import type { IndexedRow, Store } from "./store.js";
-import { needWords } from "./handoff.js";
+import { needWords, relevant } from "./handoff.js";
 
 /**
  * The daily index run, inside the cron and a time budget (the function may run for 15 seconds):
@@ -72,7 +72,7 @@ export async function rankIndexed(store: Store, need: string, max = 3): Promise<
       const pts = strong.includes(w) ? 3 : mid.includes(w) ? 2 : weak.includes(w) ? 1 : 0;
       if (pts) { score += pts; matched.push(w); }
     }
-    if (score) out.push({ row, matched, score });
+    if (score && relevant(words, `${strong} ${mid}`, `${strong} ${mid} ${weak}`)) out.push({ row, matched, score });
   }
   return out.sort((a, b) => b.score - a.score || a.row.id - b.row.id).slice(0, max);
 }

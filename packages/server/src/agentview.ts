@@ -1,3 +1,4 @@
+import { badgeMarkdown } from "./project.js";
 import { esc } from "./html.js";
 import { wrapData } from "./envelope.js";
 import { getSite } from "./config.js";
@@ -69,7 +70,7 @@ export function agentMd(base: string, a: PublicAgent, proof: { score: number | n
 
 ${a.verified ? "Ownership verified." : "Ownership not verified."} Source: ${a.source.startsWith("github:") ? `https://github.com/${a.source.slice(7)}` : a.source.slice(4)}
 API: GET ${base}/api/agents/${a.handle}
-${a.verified ? `Add to README: [![ScBee](${base}/badge/agent/${a.handle}.svg)](${base}/a/${a.handle})\n` : ""}
+${a.verified ? `Add to README: [![Verified agent on ScBee: ${a.handle}](${base}/badge/agent/${a.handle}.svg)](${base}/a/${a.handle})\n` : ""}
 ${data([
     `name: ${a.name}`,
     a.tagline ? `tagline: ${a.tagline}` : "",
@@ -115,7 +116,7 @@ export function scoreMd(base: string, p: { path: string; name: string; descripti
 A readiness score from public data and fixed rules (version ${p.result.version}). Not a prediction.
 API: GET ${base}/api/${p.path.startsWith("web/") ? "score/" + p.path : "score/" + p.path}
 Badge: ${base}/badge/${p.path}.svg   Share card: ${base}/og/${p.path}.png
-${p.usage ? `Usage: used by ${p.usage.agents} agents \u00b7 ${p.usage.worked_pct}% worked (verified agents, one per owner)\n` : ""}${p.indexed?.length ? `Index: in ScBee's index from the official MCP Registry as ${p.indexed.map((x) => `${x.name} (${x.handoffs} hand-offs sent in 30 days)`).join(", ")}. What that is: ${base}/bot\n` : ""}${p.alternatives?.length ? `Alternatives (from the index, not verified): ${p.alternatives.map((x) => `${x.name}: ${x.reason} ${base}${x.href}`).join("; ")}\n` : ""}${p.claim ? `Status: ${p.claim === "claimed" ? "claimed by its owner (proved control with a file)" : p.claim === "pending" ? "listed, owner not verified yet (not a verified agent)" : `scored, unclaimed (ScBee scored public data; not a registered agent). Owner? Claim it: ${base}/claim/${p.path}`}\n` : ""}Add to README: [![ScBee readiness](${base}/badge/${p.path}.svg)](${base}/${p.path})
+${p.usage ? `Usage: used by ${p.usage.agents} agents \u00b7 ${p.usage.worked_pct}% worked (verified agents, one per owner)\n` : ""}${p.indexed?.length ? `Index: in ScBee's index from the official MCP Registry as ${p.indexed.map((x) => `${x.name} (${x.handoffs} hand-offs sent in 30 days)`).join(", ")}. What that is: ${base}/bot\n` : ""}${p.alternatives?.length ? `Alternatives (from the index, not verified): ${p.alternatives.map((x) => `${x.name}: ${x.reason} ${base}${x.href}`).join("; ")}\n` : ""}${p.claim ? `Status: ${p.claim === "claimed" ? "claimed by its owner (proved control with a file)" : p.claim === "pending" ? "listed, owner not verified yet (not a verified agent)" : `scored, unclaimed (ScBee scored public data; not a registered agent). Owner? Claim it: ${base}/claim/${p.path}`}\n` : ""}Add to README: ${badgeMarkdown(base, p.path)}
 
 ${p.description ? `${data(`description: ${p.description}`)}\n\n` : ""}${previewMd(p.preview)}## Fixes, biggest first
 ${lost.length ? lost.slice(0, 8).map((x) => `- (+${x.i.max - x.i.points} ${x.c}) ${x.i.fix}`).join("\n") : "- nothing major to fix"}
