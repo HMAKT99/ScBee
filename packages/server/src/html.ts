@@ -174,7 +174,7 @@ ${specimen
 <section class="sec" id="needs"><div class="wrap">
 <div class="sec-head"><div class="label">02 &middot; Find a tool</div><h2>Search by what you need, <em>not by name.</em></h2><p class="lead">${indexed ? `${indexed.toLocaleString("en-US")} MCP servers from the official MCP Registry, plus verified agents, grouped by the job they do.` : "MCP servers and verified agents, grouped by the job they do."} Each page says what to watch out for, then lists what does it.</p></div>
 ${needs.length ? `<ul class="items">${needs.map((n) => `<li><a href="/for/${esc(n.slug)}"><strong>${esc(n.title)}</strong></a><span class="fix">${n.count} agents and MCP servers</span></li>`).join("")}</ul>` : `<div class="card center"><p>Need pages appear as the index fills.</p></div>`}
-<p class="mt24"><a href="/for">All needs</a> &middot; <a href="/find">Describe a need in your own words</a> &middot; <a href="/bot">Where the index comes from</a></p>
+<p class="mt24"><a href="/for">All needs</a> &middot; <a href="/radar/mcp">This week in MCP</a> &middot; <a href="/find">Describe a need in your own words</a> &middot; <a href="/bot">Where the index comes from</a></p>
 </div></section>
 
 <section class="sec"><div class="wrap">
