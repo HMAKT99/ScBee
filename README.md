@@ -91,7 +91,7 @@ npm run demo   # a local copy at http://localhost:8788, with fake data and no ne
 npx skills add HMAKT99/ScBee --skill launch-check
 ```
 
-In Cursor, add the hosted MCP server in one click: [![Add ScBee to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=scbee&config=eyJ1cmwiOiJodHRwczovL3NjYmVlLnZlcmNlbC5hcHAvbWNwIn0=). The server and the skills together are in [`cursor-plugin/`](cursor-plugin).
+In Cursor, add the hosted MCP server in one click: [![Add ScBee to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=scbee&config=eyJ1cmwiOiJodHRwczovL3NjYmVlLnZlcmNlbC5hcHAvbWNwIn0=). The server and the skills together are in [`cursor-plugin/`](cursor-plugin). It is also listed on [Glama](https://glama.ai/mcp/connectors/io.github.HMAKT99/scbee-mcp).
 
 That works with Claude Code, Codex, Cursor and the other agents the [skills CLI](https://skills.sh) supports. They are also published on [ClawHub](https://clawhub.ai/hmakt99) for OpenClaw agents (except `scbee`). More skills, same rules (nothing is changed, installed or listed without your yes):
 

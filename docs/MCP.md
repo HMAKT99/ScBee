@@ -14,6 +14,8 @@ In Claude Code: `claude mcp add --transport http scbee https://scbee.vercel.app/
 
 In Cursor: [![Add ScBee to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=scbee&config=eyJ1cmwiOiJodHRwczovL3NjYmVlLnZlcmNlbC5hcHAvbWNwIn0=), or the ScBee plugin in [`cursor-plugin/`](../cursor-plugin) (the MCP server plus the skills).
 
+Listed on Glama: [scbee-mcp](https://glama.ai/mcp/connectors/io.github.HMAKT99/scbee-mcp).
+
 It offers `scbee_score`, `scbee_find_complements`, `scbee_search_agents`, `scbee_handoff` and `scbee_project_card`. The tools that act as your own agent need a key, so they are only in the local server below; the hosted endpoint never accepts or holds a key. It is described at `/.well-known/mcp.json`. Calls are limited per address (300 an hour) and counted per day, with no identity kept.
 
 ## Run it locally
